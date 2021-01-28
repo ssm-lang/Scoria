@@ -14,9 +14,11 @@ module SSM where
 import Language.Embedded.Imperative
 import Language.Embedded.Imperative.CMD hiding (If, While)
 import qualified Language.Embedded.Imperative.Frontend as FE
-import Control.Monad.Operational.Higher
 
-import Data.List.NonEmpty
+import Control.Monad.Operational.Higher
+import Control.Monad.Reader
+
+import Data.List.NonEmpty hiding (unzip, zip)
 
 -- | SSM expressions
 data SSMExp a where
@@ -46,34 +48,59 @@ data BinOp a b rettype where
 -- | SSM commands
 data SSMCMD fs a where
     -- if 2 < 3 then a = 3 else a = 5
-    If :: expr Bool -> prog () -> Maybe (prog ()) -> SSMCMD (Param3 prog exp pred) ()
+    If :: expr Bool -> prog () -> Maybe (prog ()) -> SSMCMD (Param3 prog expr pred) ()
     -- while True a = a + 1
-    While :: expr Bool -> prog () -> SSMCMD (Param3 prog exp pred) ()
+    While :: expr Bool -> prog () -> SSMCMD (Param3 prog expr pred) ()
     -- after 2 s a = 3
-    After :: expr a -> Ref a -> expr b -> SSMCMD (Param3 prog exp pred) ()
+    After :: expr a -> Ref a -> expr b -> SSMCMD (Param3 prog expr pred) ()
     -- wait a, b, c
-    Wait :: NonEmpty (Ref a) -> SSMCMD (Param3 prog exp pred) ()
+    Wait :: NonEmpty (Ref a) -> SSMCMD (Param3 prog expr pred) ()
     -- fork fib(n-1,r1), fib(n-2,r2)
     -- NOTE: expr b demands that all expressions be of the same type. Need to circle back
     -- here and figure out the best way to do this.
-    Fork :: NonEmpty (Ref a, NonEmpty (expr b)) -> SSMCMD (Param3 prog exp pred) ()
+    Fork :: NonEmpty (Ref a, NonEmpty (expr b)) -> SSMCMD (Param3 prog expr pred) ()
 
 {- The following three instances are needed for imperative-edls to be able to mix and match
 different kind of commands. I will look into how to implement these later. -}
 instance HFunctor SSMCMD where
-    hfmap _ (After _ _ _) = undefined
-    hfmap _ (Wait _)      = undefined
-    hfmap _ (Fork _)      = undefined
+    hfmap f (If c then' (Just else')) = If c (f then') (Just (f else'))
+    hfmap f (If c then' Nothing)      = If c (f then') Nothing
+    hfmap f (While condition body)    = While condition (f body)
+    hfmap _ (After d x v)             = After d x v
+    hfmap _ (Wait x)                  = Wait x
+    hfmap _ (Fork procedures)         = Fork procedures
 
 instance HBifunctor SSMCMD where
-    hbimap _ _ (After _ _ _) = undefined
-    hbimap _ _ (Wait _)      = undefined
-    hbimap _ _ (Fork _)      = undefined
+    hbimap f g (If c then' (Just else')) = If (g c) (f then') (Just (f else'))
+    hbimap f g (If c then' Nothing)      = If (g c) (f then') Nothing
+    hbimap f g (After e1 v e2)           = After (g e1) v (g e2)
+    hbimap _ _ (Wait vars)               = Wait vars
+    hbimap f g (Fork calls)              = Fork $ nemap (\(v,args) -> (v,nemap g args)) calls
+      where nemap = Data.List.NonEmpty.map
 
 instance (SSMCMD :<: instr) => Reexpressible SSMCMD instr env where
-    reexpressInstrEnv reexp (After _ _ _) = undefined
-    reexpressInstrEnv reexp (Wait _)      = undefined
-    reexpressInstrEnv reexp (Fork _)      = undefined
+    reexpressInstrEnv reexp (If c thn mels) = do
+        c' <- reexp c
+        ReaderT $ \env ->
+            let els' = case mels of
+                        Just els -> Just $ runReaderT els env
+                        Nothing  -> Nothing
+            in singleInj $ If c' (runReaderT thn env) els'
+    reexpressInstrEnv reexp (While c body) = do
+        c' <- reexp c
+        ReaderT $ \env -> singleInj $ While c' (runReaderT body env)
+    reexpressInstrEnv reexp (After e1 v e2)  = do
+        e1' <- reexp e1
+        e2' <- reexp e2
+        ReaderT $ \env -> singleInj $ After e1' v e2'
+    reexpressInstrEnv reexp (Wait vars) = ReaderT $ \_ -> singleInj $ Wait vars
+    reexpressInstrEnv reexp (Fork pc) = do
+        let pc'          = toList pc
+        let (funs, args) = unzip pc'
+        let args'        = Prelude.map toList args
+        args''          <- mapM (mapM reexp) args'
+        let res          = fromList $ zip funs (Prelude.map fromList args'')
+        ReaderT $ \env -> singleInj $ Fork res
 
 {- ********** Frontend Functions **********-}
 {- These are functions that the users are intended to use. We don't want to expose
