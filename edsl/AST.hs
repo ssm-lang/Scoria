@@ -69,6 +69,3 @@ data Arg a where
 
 -- | SSM programs. A program consists of zero or more routines and one main routine.
 type Program = ([Routine], Routine)
-
--- | We need some monad to write our programs in. Keep this here just for now.
-type SSM a = IO a
