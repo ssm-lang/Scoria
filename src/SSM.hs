@@ -52,12 +52,14 @@ data SSMCMD fs a where
     -- while True a = a + 1
     While :: expr Bool -> prog () -> SSMCMD (Param3 prog expr pred) ()
     -- after 2 s a = 3
-    After :: expr a -> Ref a -> expr b -> SSMCMD (Param3 prog expr pred) ()
+    After :: expr Int -> Ref a -> expr b -> SSMCMD (Param3 prog expr pred) ()
     -- wait a, b, c
     Wait :: NonEmpty (Ref a) -> SSMCMD (Param3 prog expr pred) ()
     -- fork fib(n-1,r1), fib(n-2,r2)
     -- NOTE: expr b demands that all expressions be of the same type. Need to circle back
     -- here and figure out the best way to do this.
+    -- NODE: Need not be nonempty
+    -- NOTE: Inner nonempty needs to be normal ID
     Fork :: NonEmpty (Ref a, NonEmpty (expr b)) -> SSMCMD (Param3 prog expr pred) ()
 
 {- The following three instances are needed for imperative-edls to be able to mix and match
@@ -123,7 +125,7 @@ while condition body = singleInj (While condition body)
 
 -- | Schedule a future assignment
 after :: (pred a, SSMCMD :<: instr)
-      => expr a 
+      => expr Int
       -> Ref a 
       -> expr b 
       -> ProgramT instr (Param2 expr pred) m ()
