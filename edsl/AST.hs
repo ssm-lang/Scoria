@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleInstances #-}
 module AST where
 
 import Control.Monad.Reader
@@ -69,3 +70,13 @@ data Arg a where
 
 -- | SSM programs. A program consists of zero or more routines and one main routine.
 type Program = ([Routine], Routine)
+
+{- ********** Instances ********** -}
+
+instance Num (SSMExp Int) where
+    (+) = (\e1 e2 -> BOp e1 e2 OPlus)
+    (*) = (\e1 e2 -> BOp e1 e2 OTimes)
+    abs = undefined -- for now
+    signum = undefined -- for now
+    fromInteger i = Lit (LInt (fromInteger i))
+    negate = undefined
