@@ -13,7 +13,7 @@ data Ref a where
 
 -- | SSM expressions
 data SSMExp a where
-    Var :: Ref a    -> SSMExp a                            -- ^ Variables
+    Var :: Ref a    -> SSMExp a                      -- ^ Variables
     Lit :: SSMLit a -> SSMExp a                            -- ^ Literals
     UOp :: SSMExp a -> UnaryOp a b -> SSMExp b             -- ^ Unary operators
     BOp :: SSMExp a -> SSMExp b -> BinOp a b c-> SSMExp c  -- ^ Binary operators
@@ -74,9 +74,9 @@ type Program = ([Routine], Routine)
 {- ********** Instances ********** -}
 
 instance Num (SSMExp Int) where
-    (+) = (\e1 e2 -> BOp e1 e2 OPlus)
-    (*) = (\e1 e2 -> BOp e1 e2 OTimes)
-    abs = undefined -- for now
-    signum = undefined -- for now
+    (+)           = (\e1 e2 -> BOp e1 e2 OPlus)
+    (*)           = (\e1 e2 -> BOp e1 e2 OTimes)
+    abs           = undefined -- for now
+    signum        = undefined -- for now
     fromInteger i = Lit (LInt (fromInteger i))
-    negate = undefined
+    negate        = undefined
