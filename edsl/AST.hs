@@ -63,6 +63,7 @@ data Routine where
 
 -- | Routine arguments
 data Arg a where
+    ByLit :: SSMExp a -> Arg a
     ByVal :: Ref a -> Arg a  -- ^ Normal, by value, parameters
     ByRef :: Ref a -> Arg a  -- ^ Reference parameters. Use them like normal variables, with the
                              -- ^ understanding that they will change a value in at least one other
