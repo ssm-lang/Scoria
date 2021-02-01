@@ -1,12 +1,23 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE RankNTypes #-}
 module SSM where
 
 import AST
 
 import Data.List.NonEmpty hiding (unzip, zip)
 
-type SSM a = IO a -- placeholder for _some_ monad, TBD at a later time (need to talk with Koen)
+type SSM a = IO a
+
+{- Can not write something like this. Need impredicative types apparently.
+   We can only declare variables of the same type, also. -}
+{- type SSM a = WriterT ([Ref a, SSMExp a], [SSMStm]) IO a -}
+
+{- | Turn a literal into an expression. I tried to use num instance for SSMExp
+but if I write `2` it can not deduce that I mean e.g `2 :: Int` and not `2 :: Integer`,
+so I had to annotate the expression.. this looks better than that, at least. -}
+int :: Int -> SSMExp Int
+int = Lit . LInt
 
 -- | Declare a variable
 var :: String -> SSMExp a -> SSM (Ref a)    
@@ -85,9 +96,9 @@ myfib = method "myfib" $ \n' r' -> do
     n <- arg n'
     r <- arg r'
 
-    r1 <- var "r1" 0
-    r2 <- var "r2" 0
-    if' (n <. 2)
+    r1 <- var "r1" (int 0)
+    r2 <- var "r2" (int 0)
+    if' (n <. (int 2))
             (after (int 1) r (int 1))
             (Just (fork [ myfib `app` (n -. int 1) `app` r1
                         , myfib `app` (n -. int 2) `app` r2
