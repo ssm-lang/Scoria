@@ -57,15 +57,6 @@ if' = undefined
 (<:) :: SSMExp a -> SSMExp a -> SSMExp Bool
 (<:) = undefined
 
-{- | Defining a procedure.
-NOTE: This is what we spoke of Koen, but I am not sure if I am implementing it as you thought about
-it. The `a` is polymorphic so it can very well be `a -> b`, which is nice as we can then use a
-variable amount of arguments. However, now when it comes to application I am not sure
-how it will work! As you see this doesn't return a function, so we can not apply it. Ideally
-we'd be able to write e.g `myway r1`. -}
-procedure :: String -> (a -> b) -> a -> b
-procedure = undefined
-
 data Function a where
     Name   :: String -> (Arg a -> b) -> Function (Arg a -> b)
     CByRef :: Function (Arg a -> b) -> Ref a -> Function b
@@ -83,13 +74,24 @@ instance App SSMExp where
 method :: String -> (a -> b) -> Function (a -> b)
 method = undefined
 
-appRef :: Function (Arg a -> b) -> Ref a -> Function b
-appRef = undefined
-
-appVal :: Function (Arg a -> b) -> SSMExp a -> Function b
-appVal = undefined
+mainprogram :: String -> SSM () -> Function (SSM ())
+mainprogram = undefined
 
 -- fibonacci example from his paper
+
+{-
+Generally about this approach:
+  - Several variants of input arguments, can obviously not match on `ByRef` and expect
+    it to work. We would like abstraction and application to work seamlessly without having
+    to care about if the argument is passed by reference or not.
+  - We don't necessarily view references as expressions, so whenever we want to e.g add
+    two expressions where one of them is a variable, we need a 'getter' that turns the
+    `Ref a` into a `SSMExp a`. In some places in the syntax we explicitly only allow references,
+    so we can catch potential type errors, at the cost of readability (the code will be cluttered).
+  - Need a type class to more seamlessly be able to apply either references or expressions to
+    functions.
+
+-}
 
 mywait :: Function (Arg Int -> SSM ())
 mywait = method "mywait" $ \(ByRef r) ->
@@ -100,6 +102,7 @@ mysum = method "mysum" $ \(ByRef r1) (ByRef r2) (ByRef r) -> do
     fork [ mywait `app` r1
          , mywait `app` r2
          ]
+    after (int 1) r (valOf r1 + valOf r2)
 
 myfib :: Function (Arg Int -> Arg Int -> SSM ())
 myfib = method "myfib" $ \(ByVal n) (ByRef r) -> do
@@ -111,6 +114,12 @@ myfib = method "myfib" $ \(ByVal n) (ByRef r) -> do
                       , myfib `app` (valOf n - int 2) `app` r2
                       , mysum `app` r1 `app` r2 `app` r
                       ]))
+
+mymain :: Function (SSM ())
+mymain = mainprogram "mymain" $ do
+    r <- var "r" (int 0)
+    fork [myfib `app` int 13 `app` r]
+    undefined
 
 -- fibonacci example from his paper
 
