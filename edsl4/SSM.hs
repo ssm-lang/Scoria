@@ -16,6 +16,57 @@ type SSM a = IO a
 
 newtype Ref a = Ref Var
 newtype Exp a = Exp SSMExp
+newtype Argument (cc :: CC) a = Argument (Arg cc)
+
+int :: Int -> Exp Int
+int i = Exp $ Lit TInt $ LInt TInt i
+
+-- | Declare a variable
+var :: String -> Exp a -> SSM (Ref a)    
+var name e = undefined
+
+wait :: [Ref a] -> SSM ()
+wait r = undefined
+
+-- | Delayed assignment
+after :: Exp Int -> Ref a -> Exp a -> SSM ()
+after = undefined
+
+fork :: [Function (SSM ())] -> SSM ()
+fork = undefined
+
+-- The @-operator
+changed :: Ref a -> SSM ()
+changed = undefined
+
+if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()
+if' = undefined
+
+while' :: Exp Bool -> SSM () -> SSM ()
+while' = undefined
+
+arg :: Argument c a -> SSM (Ref a)
+arg = undefined
+
+method :: String -> (a -> b) -> Function (a -> b)
+method = undefined
+
+mainprogram :: String -> SSM () -> Function (SSM ())
+mainprogram = undefined
+
+data Function a where
+    Name :: String -> (Argument c a -> b) -> Function (Argument c a -> b)
+    App  :: Function (Argument c a -> b) -> Exp a -> Function b
+
+class App tycon where
+    app :: SSMType a => Function (Argument c a -> b) -> tycon a -> Function b
+
+instance App Ref where
+    app f r'@(Ref r) = let t = typeOf r'
+                       in App f (Exp (Var t r))
+
+instance App Exp where
+    app = App
 
 class BOps tycon1 tycon2 where
     (+.) :: forall a . SSMType a => tycon1 a -> tycon2 a -> Exp a
@@ -63,61 +114,17 @@ instance BOps Ref Ref where
     (Ref r1) <. (Ref r2)   = let t = TBool
                              in Exp $ BOp t (Var t r1) (Var t r2) OLT
 
-int :: Int -> Exp Int
-int i = Exp $ Lit TInt $ LInt TInt i
-
--- | Declare a variable
-var :: String -> Exp a -> SSM (Ref a)    
-var name e = undefined
-
-wait :: [Ref a] -> SSM ()
-wait r = undefined
-
--- | Delayed assignment
-after :: Exp Int -> Ref a -> Exp a -> SSM ()
-after = undefined
-
-fork :: [Function (SSM ())] -> SSM ()
-fork = undefined
-
-if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()
-if' = undefined
-
-newtype Argument (cc :: CC) a = Argument (Arg cc)
-
-arg :: Argument c a -> SSM (Ref a)
-arg = undefined
-
-data Function a where
-    Name :: String -> (Argument c a -> b) -> Function (Argument c a -> b)
-    App  :: Function (Argument c a -> b) -> Exp a -> Function b
-
-class App tycon where
-    app :: SSMType a => Function (Argument c a -> b) -> tycon a -> Function b
-
-instance App Ref where
-    app f r'@(Ref r) = let t = typeOf r'
-                       in App f (Exp (Var t r))
-
-instance App Exp where
-    app = App
-
-method :: String -> (a -> b) -> Function (a -> b)
-method = undefined
-
-mainprogram :: String -> SSM () -> Function (SSM ())
-mainprogram = undefined
-
 -- fibonacci example from his paper
 
 {-
 
 Generally about this approach:
-    - This approach _does_ make a distinction between references and expressions.
-      Compared to version 2 I have created a typeclass in AST.hs where I define
-      operators such as +. and -.. These allow me to write r +. e regardless the types
-      of the operands. We can be very type specific in those places where we want to, and
-      not having to care where we don't want to care.
+    - I have removed the phantom types from the AST and added another component
+      to the elements of the AST, with type `Type`. Instead of `LInt 2 :: SSMLit Int`
+      we now have `LInt TInt 2 :: SSMLit`. This allows us to generate appropriate code
+      at code generation.
+      Instead of this frontend defined in this file using the AST directly there is now an
+      IR - Exp a, Ref a & Argument c a, which the typed frontend use.
 -}
 
 mywait :: Function (Argument ByReference Int -> SSM ())
