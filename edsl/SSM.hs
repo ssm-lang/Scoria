@@ -157,9 +157,9 @@ myfib = box "myfib" $ \n r -> do
     r2 <- var "r2" (int 0)
     if' (n <. (int 2))
             (after (int 1) r (int 1))
-            (Just (fork [ myfib undefined (ref r1) --(n -. int 1) r1
-                        , myfib undefined (ref r2) --(n -. int 2) r2
-                        , mysum (ref r1) (ref r2) undefined --r
+            (Just (fork [ myfib (n -. int 1) (ref r1)
+                        , myfib (n -. int 2) (ref r2)
+                        , mysum (ref r1) (ref r2) r
                         ]))
 
 {-int :: Int -> Exp Int
