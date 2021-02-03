@@ -41,15 +41,15 @@ data Var where
 
 -- | SSM expressions
 data SSMExp where
-    Var :: Type -> Var -> SSMExp                            -- ^ Variables
-    Lit :: Type -> SSMLit -> SSMExp                            -- ^ Literals
-    UOp :: Type -> SSMExp -> UnaryOp -> SSMExp             -- ^ Unary operators
-    BOp :: Type -> SSMExp -> SSMExp -> BinOp -> SSMExp  -- ^ Binary operators
+    Var :: String -> SSMExp                            -- ^ Variables
+    Lit :: SSMLit -> SSMExp                            -- ^ Literals
+    UOp :: SSMExp -> UnaryOp -> SSMExp             -- ^ Unary operators
+    BOp :: SSMExp -> SSMExp -> BinOp -> SSMExp  -- ^ Binary operators
 
 -- | SSM literals
 data SSMLit where
-    LInt  :: Type -> Int  -> SSMLit   -- ^ Integer literals
-    LBool :: Type -> Bool -> SSMLit  -- ^ Boolean literals
+    LInt  :: Int  -> SSMLit   -- ^ Integer literals
+    LBool :: Bool -> SSMLit  -- ^ Boolean literals
 
 {-- | SSM unary operators. We use phantom types to represent the argument type
 and the result type of the operator. E.g At (a :: Ref b) :: UnaryOp Bool. -}
@@ -63,6 +63,7 @@ data BinOp where
     OMinus :: BinOp  -- ^ subtraction
     OTimes :: BinOp  -- ^ multiplication
     OLT    :: BinOp  -- ^ less-than
+    OEQ    :: BinOp
 
 -- | SSM statements
 data SSMStm where

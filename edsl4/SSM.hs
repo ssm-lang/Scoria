@@ -7,16 +7,19 @@ import AST hiding (Arg, SSMType)
 import Control.Monad.Writer
 
 import Data.IORef
-import Data.List.NonEmpty hiding (unzip, zip)
 
-type SSM a = IO a
+data SSM a
+instance Functor SSM
+instance Applicative SSM
+instance Monad SSM
 
+-- | Arguments to our functions
 class Arg a where
     arg :: String -> a -> SSM a
 
 instance (Arg a, Arg b) => Arg (a,b) where
     arg name (x,y) = do
-        x' <- arg name x -- TODO this is wrong though -- what names should they have?
+        x' <- arg name x -- TODO is this wrong though? What names should the components have? Surely not the same name.
         y' <- arg name y
         return (x',y')
 
@@ -40,22 +43,22 @@ instance Res b => Box (SSM b) where
 {- | Instead of talking about variables it makes sense to talk about streams.
 We will ever only want to talk about references to streams. It makes no sense to talk
 about a reference to a literal. -}
-newtype Stream a = Stream SSMExp -- idk, we just refer to them by names? variables
-newtype Ref a    = Ref (IORef a) -- references that are shared
-newtype Exp a    = Exp SSMExp    -- expressions
+data Stream a = Stream String -- streams, just a name and/or a value?
+newtype Ref a = Ref (IORef a) -- references that are shared
+newtype Exp a = Exp SSMExp    -- expressions
 
 -- | Types we can use in the EDSL
 class SSMType a where
     toSSM :: a -> SSMExp
 
 instance SSMType Int where
-    toSSM = undefined
+    toSSM i = Lit $ LInt i
 
 instance SSMType Bool where
-    toSSM = undefined
+    toSSM b = Lit $ LBool b
 
 instance SSMType (Stream a) where
-    toSSM = undefined
+    toSSM (Stream name) = Var name
 
 -- | Arguments we can apply SSM procedures to
 instance SSMType a => Arg (Exp a) where
@@ -71,7 +74,10 @@ instance SSMType a => Arg (Stream a) where
 instance Res () where
     result = undefined
 
--- | Containers that we can assign values to
+
+{- | Containers that we can assign values to. Capture it in this class so that we
+can use the same function `assign` regardless of whether we are writing to a reference
+or a stream. -}
 class Assignable a b where
     assign :: a -> b -> SSM ()
 
@@ -81,24 +87,74 @@ instance Assignable (Stream a) (tycon a) where
 instance Assignable (Ref (Stream a)) (tycon a) where
     assign = undefined
 
+class BinOps tycon1 tycon2 where
+    (+.)  :: tycon1 a -> tycon2 a -> Exp a
+    (-.)  :: tycon1 a -> tycon2 a -> Exp a
+    (*.)  :: tycon1 a -> tycon2 a -> Exp a
+    (<.)  :: tycon1 a -> tycon2 a -> Exp Bool
+    (==.) :: tycon1 a -> tycon2 a -> Exp Bool
+
+instance BinOps Exp Exp where
+    (Exp e1) +. (Exp e2)  = Exp $ BOp e1 e2 OPlus
+    (Exp e1) -. (Exp e2)  = Exp $ BOp e1 e2 OMinus
+    (Exp e1) *. (Exp e2)  = Exp $ BOp e1 e2 OTimes
+    (Exp e1) <. (Exp e2)  = Exp $ BOp e1 e2 OLT
+    (Exp e1) ==. (Exp e2) = Exp $ BOp e1 e2 OEQ
+
+instance BinOps Stream Stream where
+    e1 +. e2  = Exp $ BOp (toSSM e1) (toSSM e2) OPlus
+    e1 -. e2  = Exp $ BOp (toSSM e1) (toSSM e2) OMinus
+    e1 *. e2  = Exp $ BOp (toSSM e1) (toSSM e2) OTimes
+    e1 <. e2  = Exp $ BOp (toSSM e1) (toSSM e2) OLT
+    e1 ==. e2 = Exp $ BOp (toSSM e1) (toSSM e2) OEQ
+
+instance BinOps Exp Stream where
+    (Exp e1) +. e2  = Exp $ BOp e1 (toSSM e2) OPlus
+    (Exp e1) -. e2  = Exp $ BOp e1 (toSSM e2) OMinus
+    (Exp e1) *. e2  = Exp $ BOp e1 (toSSM e2) OTimes
+    (Exp e1) <. e2  = Exp $ BOp e1 (toSSM e2) OLT
+    (Exp e1) ==. e2 = Exp $ BOp e1 (toSSM e2) OEQ
+
+instance BinOps Stream Exp where
+    e1 +.  (Exp e2) = Exp $ BOp (toSSM e1) e2 OPlus
+    e1 -.  (Exp e2) = Exp $ BOp (toSSM e1) e2 OMinus
+    e1 *.  (Exp e2) = Exp $ BOp (toSSM e1) e2 OTimes
+    e1 <.  (Exp e2) = Exp $ BOp (toSSM e1) e2 OLT
+    e1 ==. (Exp e2) = Exp $ BOp (toSSM e1) e2 OEQ
+
+instance Num a => Num (Exp a) where
+    (Exp e1) + (Exp e2) = Exp $ BOp e1 e2 OPlus
+    (Exp e1) * (Exp e2) = Exp $ BOp e1 e2 OTimes
+    abs                 = undefined -- for now
+    signum              = undefined -- for now
+    fromInteger i       = Exp $ Lit (LInt (fromInteger i))
+    negate              = undefined
+
+
 int :: Int -> Exp Int
-int i = Exp $ Lit TInt $ LInt TInt i
+int i = Exp $ Lit $ LInt i
 
 -- | Dereference a stream
-val :: Ref (Stream a) -> Stream a
-val = undefined
+deref :: Ref (Stream a) -> Stream a
+deref = undefined
 
 -- | Grab the address of a stream
-adr :: Stream a -> Ref (Stream a)
-adr = undefined
+ref :: Stream a -> Ref (Stream a)
+ref = undefined
+
+-- | Grab the value from a stream
+val :: Stream a -> Exp a
+val = undefined
 
 -- | Only way to create a stream (variable)
 var :: String -> Exp a -> SSM (Stream a)
 var = undefined
 
+-- | Assignment, e.g n `becomes` (r1 + r2)
 becomes :: Stream a -> Exp a -> SSM ()
 becomes = undefined
 
+-- | Wait for one of many variables to be written to
 wait :: [Stream a] -> SSM ()
 wait r = undefined
 
@@ -106,6 +162,7 @@ wait r = undefined
 after :: Assignable a b => Exp Int -> a -> b -> SSM ()
 after = undefined
 
+-- | Create child processes
 fork :: [SSM ()] -> SSM ()
 fork = undefined
 
@@ -113,9 +170,11 @@ fork = undefined
 changed :: Stream a -> SSM ()
 changed = undefined
 
+-- | Conditional executing with a dangling else
 if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()
 if' = undefined
 
+-- | Repeat computation until condition becomes true
 while' :: Exp Bool -> SSM () -> SSM ()
 while' = undefined
 
@@ -123,24 +182,24 @@ while' = undefined
 
 mywait :: Ref (Stream Int) -> SSM ()
 mywait = box "mywait" $ \r -> do
-    wait [val r]
+    wait [deref r]
 
 mysum :: Ref (Stream Int) -> Ref (Stream Int) -> Ref (Stream Int) -> SSM ()
 mysum = box "mysum" $ \r1 r2 r -> do
     fork [ mywait r1
          , mywait r2
          ]
-    after (int 1) r (undefined :: Exp Int) --(r1 +. r2)
+    after (int 1) r ((val . deref) r1 + (val . deref) r2)
 
 myfib :: Stream Int -> Ref (Stream Int) -> SSM ()
 myfib = box "myfib" $ \n r -> do
     r1 <- var "r1" (int 0)
     r2 <- var "r2" (int 0)
-    if' undefined --(n <. (int 2))
+    if' (n <. (int 2))
             (after (int 1) r (int 1))
-            (Just (fork [ myfib undefined (adr r1) --(n -. int 1) r1
-                        , myfib undefined (adr r2) --(n -. int 2) r2
-                        , mysum (adr r1) (adr r2) undefined --r
+            (Just (fork [ myfib undefined (ref r1) --(n -. int 1) r1
+                        , myfib undefined (ref r2) --(n -. int 2) r2
+                        , mysum (ref r1) (ref r2) undefined --r
                         ]))
 
 {-int :: Int -> Exp Int
