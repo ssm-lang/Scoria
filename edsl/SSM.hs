@@ -43,21 +43,12 @@ instance Res b => Box (SSM b) where
 newtype Ref a = Ref (IORef a) -- references that are shared
 newtype Exp a = Exp SSMExp    -- expressions
 
--- | Types we can use in the EDSL
-class SSMType a where
-    toSSM :: a -> SSMExp
-
-instance SSMType Int where
-    toSSM i = Lit $ LInt i
-
-instance SSMType Bool where
-    toSSM b = Lit $ LBool b
 
 -- | Arguments we can apply SSM procedures to
-instance SSMType a => Arg (Exp a) where
+instance Arg (Exp a) where
     arg name b = undefined
 
-instance SSMType a => Arg (Ref a) where
+instance Arg (Ref a) where
     arg name e = undefined
 
 -- | Possible results of SSM procedures
