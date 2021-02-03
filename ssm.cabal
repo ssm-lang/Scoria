@@ -53,45 +53,6 @@ library ssm-edsl
     , mtl
   default-language: Haskell2010
 
-library ssm-edsl-two
-  exposed-modules:
-      SSM
-      AST
-  other-modules:
-      Paths_ssm
-  hs-source-dirs:
-      edsl2
-  build-depends:
-      base >=4.7 && <5
-    , mtl
-  default-language: Haskell2010
-
-library ssm-edsl-three
-  exposed-modules:
-      SSM
-      AST
-  other-modules:
-      Paths_ssm
-  hs-source-dirs:
-      edsl3
-  build-depends:
-      base >=4.7 && <5
-    , mtl
-  default-language: Haskell2010
-
-library ssm-edsl-four
-  exposed-modules:
-      SSM
-      AST
-  other-modules:
-      Paths_ssm
-  hs-source-dirs:
-      edsl4
-  build-depends:
-      base >=4.7 && <5
-    , mtl
-  default-language: Haskell2010
-
 executable ssm-exe
   main-is: Main.hs
   other-modules:
