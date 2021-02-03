@@ -1,24 +1,149 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE KindSignatures #-}
 module SSM where
 
-import AST
+import AST hiding (Arg, SSMType)
 
 import Control.Monad.Writer
 
+import Data.IORef
 import Data.List.NonEmpty hiding (unzip, zip)
 
 type SSM a = IO a
 
-newtype Ref a = Ref Var
-newtype Exp a = Exp SSMExp
-newtype Argument (cc :: CC) a = Argument (Arg cc)
+class Arg a where
+    arg :: String -> a -> SSM a
+
+instance (Arg a, Arg b) => Arg (a,b) where
+    arg name (x,y) = do
+        x' <- arg name x -- TODO this is wrong though -- what names should they have?
+        y' <- arg name y
+        return (x',y')
+
+class Res b where
+    result :: String -> b -> SSM b
+
+class Box b where
+    box :: Arg a => String -> (a -> b) -> (a -> b)
+
+instance (Arg b, Box c) => Box (b -> c) where
+    box name f = curry (box name (uncurry f))
+
+instance Res b => Box (SSM b) where
+    box name f = \x ->
+        do x' <- arg name x
+           y' <- f x'
+           result name y'
+
+
+
+{- | Instead of talking about variables it makes sense to talk about streams.
+We will ever only want to talk about references to streams. It makes no sense to talk
+about a reference to a literal. -}
+newtype Stream a = Stream SSMExp -- idk, we just refer to them by names? variables
+newtype Ref a    = Ref (IORef a) -- references that are shared
+newtype Exp a    = Exp SSMExp    -- expressions
+
+-- | Types we can use in the EDSL
+class SSMType a where
+    toSSM :: a -> SSMExp
+
+instance SSMType Int where
+    toSSM = undefined
+
+instance SSMType Bool where
+    toSSM = undefined
+
+instance SSMType (Stream a) where
+    toSSM = undefined
+
+-- | Arguments we can apply SSM procedures to
+instance SSMType a => Arg (Exp a) where
+    arg name b = undefined
+
+instance SSMType a => Arg (Ref a) where
+    arg name e = undefined
+
+instance SSMType a => Arg (Stream a) where
+    arg name s = undefined
+
+-- | Possible results of SSM procedures
+instance Res () where
+    result = undefined
+
+-- | Containers that we can assign values to
+class Assignable a b where
+    assign :: a -> b -> SSM ()
+
+instance Assignable (Stream a) (tycon a) where
+    assign = undefined
+
+instance Assignable (Ref (Stream a)) (tycon a) where
+    assign = undefined
 
 int :: Int -> Exp Int
+int i = Exp $ Lit TInt $ LInt TInt i
+
+-- | Dereference a stream
+val :: Ref (Stream a) -> Stream a
+val = undefined
+
+-- | Grab the address of a stream
+adr :: Stream a -> Ref (Stream a)
+adr = undefined
+
+-- | Only way to create a stream (variable)
+var :: String -> Exp a -> SSM (Stream a)
+var = undefined
+
+becomes :: Stream a -> Exp a -> SSM ()
+becomes = undefined
+
+wait :: [Stream a] -> SSM ()
+wait r = undefined
+
+-- | Delayed assignment
+after :: Assignable a b => Exp Int -> a -> b -> SSM ()
+after = undefined
+
+fork :: [SSM ()] -> SSM ()
+fork = undefined
+
+-- The @-operator
+changed :: Stream a -> SSM ()
+changed = undefined
+
+if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()
+if' = undefined
+
+while' :: Exp Bool -> SSM () -> SSM ()
+while' = undefined
+
+-- fibonacci example
+
+mywait :: Ref (Stream Int) -> SSM ()
+mywait = box "mywait" $ \r -> do
+    wait [val r]
+
+mysum :: Ref (Stream Int) -> Ref (Stream Int) -> Ref (Stream Int) -> SSM ()
+mysum = box "mysum" $ \r1 r2 r -> do
+    fork [ mywait r1
+         , mywait r2
+         ]
+    after (int 1) r (undefined :: Exp Int) --(r1 +. r2)
+
+myfib :: Stream Int -> Ref (Stream Int) -> SSM ()
+myfib = box "myfib" $ \n r -> do
+    r1 <- var "r1" (int 0)
+    r2 <- var "r2" (int 0)
+    if' undefined --(n <. (int 2))
+            (after (int 1) r (int 1))
+            (Just (fork [ myfib undefined (adr r1) --(n -. int 1) r1
+                        , myfib undefined (adr r2) --(n -. int 2) r2
+                        , mysum (adr r1) (adr r2) undefined --r
+                        ]))
+
+{-int :: Int -> Exp Int
 int i = Exp $ Lit TInt $ LInt TInt i
 
 -- | Declare a variable
@@ -44,17 +169,9 @@ if' = undefined
 
 while' :: Exp Bool -> SSM () -> SSM ()
 while' = undefined
+-}
 
-arg :: Argument c a -> SSM (Ref a)
-arg = undefined
-
-method :: String -> (a -> b) -> Function (a -> b)
-method = undefined
-
-mainprogram :: String -> SSM () -> Function (SSM ())
-mainprogram = undefined
-
-data Function a where
+{-data Function a where
     Name :: String -> (Argument c a -> b) -> Function (Argument c a -> b)
     App  :: Function (Argument c a -> b) -> Exp a -> Function b
 
@@ -113,6 +230,7 @@ instance BOps Ref Ref where
                              in Exp $ BOp t (Var t r1) (Var t r2) OTimes
     (Ref r1) <. (Ref r2)   = let t = TBool
                              in Exp $ BOp t (Var t r1) (Var t r2) OLT
+-}
 
 -- fibonacci example from his paper
 
@@ -124,10 +242,11 @@ Generally about this approach:
       we now have `LInt TInt 2 :: SSMLit`. This allows us to generate appropriate code
       at code generation.
       Instead of this frontend defined in this file using the AST directly there is now an
-      IR - Exp a, Ref a & Argument c a, which the typed frontend use.
+      IR - Exp a, Ref a & Argument c a, which the typed frontend use. We can now be specific
+      about types when we use the EDSL 
 -}
 
-mywait :: Function (Argument ByReference Int -> SSM ())
+{-mywait :: Function (Argument ByReference Int -> SSM ())
 mywait = method "mywait" $ \r' -> do
     r <- arg r'
     wait [r]
@@ -169,3 +288,4 @@ mymain = mainprogram "mymain" $ do
 
 
 -- runSSM
+-}
