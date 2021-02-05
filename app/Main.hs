@@ -1,6 +1,5 @@
 module Main where
 
-import Lib
 
 main :: IO ()
-main = someFunc
+main = putStrLn "I am not implemented yet"

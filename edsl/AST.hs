@@ -1,78 +1,95 @@
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables#-}
 module AST where
 
-import Control.Monad.Reader
+import Data.IORef
 
-import Data.Proxy
-import Data.List.NonEmpty hiding (unzip, zip)
+-- | Arguments to our functions
+class Arg a where
+    arg :: String -> a -> SSM a
 
-{- | Variables are named values with a phantom type, where the phantom type denotes
-the type of the value held by the variable. -}
-data Var where
-    Variable :: String -> Var
-  deriving Show
+instance (Arg a, Arg b) => Arg (a,b) where
+    arg name (x,y) = do
+        x' <- arg name x -- TODO is this wrong though? What names should the components have? Surely not the same name.
+        y' <- arg name y
+        return (x',y')
+
+class Res b where
+    result :: String -> b -> SSM b
+
+class Box b where
+    box :: Arg a => String -> (a -> b) -> (a -> b)
+
+instance (Arg b, Box c) => Box (b -> c) where
+    box name f = curry (box name (uncurry f))
+
+instance Res b => Box (SSM b) where
+    box name f = \x ->
+        do x' <- arg name x
+           y' <- f x'
+           result name y'
+
+data SSM a where
+    -- | Monadic operations
+    Return  :: a -> SSM a
+    Bind    :: SSM a -> (a -> SSM b) -> SSM b
+
+    -- | Variable/Stream operations
+    NewRef  :: String -> SSMExp -> SSM (String, (IORef SSMExp))
+    SetRef  :: (String, IORef SSMExp) -> SSMExp -> SSM ()
+    GetRef  :: (String, IORef SSMExp) -> SSM SSMExp
+    
+    -- | Control operations
+    If      :: SSMExp -> SSM a -> Maybe (SSM a) -> SSM ()
+    While   :: SSMExp -> SSM a -> SSM ()
+    
+    -- | SSM specific operations
+    After   :: SSMExp -> (String, IORef SSMExp) -> SSMExp -> SSM ()
+    Changed :: (String, IORef SSMExp) -> SSM SSMExp
+    Wait    :: [(String, IORef SSMExp)] -> SSM ()
+    Fork    :: [SSM ()] -> SSM ()
+
+    -- | Procedure construction
+    Procedure :: Arg a => String -> (a -> b) -> SSM (a -> b)
+    Argument :: String -> Either SSMExp (String, IORef SSMExp) -> SSM ()
+    Result    :: Res a => String -> a -> SSM ()
+
+instance Monad SSM where
+    return = Return
+    (>>=)  = Bind
+instance Functor SSM where
+    fmap f ma = do
+        a <- ma
+        return $ f a
+-- Forces sequential composition, while the interface makes no such demand.
+instance Applicative SSM where
+    pure = return
+    fa <*> ma = do
+        f <- fa
+        m <- ma
+        return $ f m
 
 -- | SSM expressions
-data SSMExp where
-    Var :: String -> SSMExp                            -- ^ Variables
-    Lit :: SSMLit -> SSMExp                            -- ^ Literals
-    UOp :: SSMExp -> UnaryOp -> SSMExp             -- ^ Unary operators
-    BOp :: SSMExp -> SSMExp -> BinOp -> SSMExp  -- ^ Binary operators
+data SSMExp = Var String               -- ^ Variables
+            | Lit SSMLit               -- ^ Literals
+            | UOp SSMExp UnaryOp       -- ^ Unary operators
+            | BOp SSMExp SSMExp BinOp  -- ^ Binary operators
   deriving Show
 
 -- | SSM literals
-data SSMLit where
-    LInt  :: Int  -> SSMLit   -- ^ Integer literals
-    LBool :: Bool -> SSMLit  -- ^ Boolean literals
+data SSMLit = LInt Int    -- ^ Integer literals
+            | LBool Bool  -- ^ Boolean literals
   deriving Show
 
 {-- | SSM unary operators. We use phantom types to represent the argument type
 and the result type of the operator. E.g At (a :: Ref b) :: UnaryOp Bool. -}
-data UnaryOp where
-    At :: UnaryOp  -- ^ @-operator
+data UnaryOp = At  -- ^ @-operator
   deriving Show
 
 {-- | SSM binary operators. We use phantom types to represent the two argument types and
 the result type of the operator. E.g OLT 2 3 :: BinOp Int Int Bool -}
-data BinOp where
-    OPlus  :: BinOp  -- ^ addition
-    OMinus :: BinOp  -- ^ subtraction
-    OTimes :: BinOp  -- ^ multiplication
-    OLT    :: BinOp  -- ^ less-than
-    OEQ    :: BinOp
+data BinOp = OPlus   -- ^ addition
+           | OMinus  -- ^ subtraction
+           | OTimes  -- ^ multiplication
+           | OLT     -- ^ less-than
+           | OEQ     -- ^ eq
   deriving Show
-
--- | SSM statements
-data SSMStm where
-    -- ^ Normal assignment
-    Assign :: Var -> SSMExp -> SSMStm
-    -- ^ Conditional execution, e.g if 2 < 3 then a = 3 else a = 5
-    If     :: SSMExp -> [SSMStm] -> Maybe [SSMStm] -> SSMStm
-    -- ^ Looping until an expression becomes false, e.g while True a = a + 1
-    While  :: SSMExp -> [SSMStm] -> SSMStm
-    -- ^ Delayed assignment, e.g after 2 s a = 3
-    After  :: SSMExp -> Var -> SSMExp -> SSMStm
-    -- ^ Wait for one of many variables to be written to, e.g wait a, b, c
-    Wait   :: NonEmpty Var -> SSMStm
-    -- ^ Fork child processes, e.g fork fib(n-1,r1), fib(n-2,r2)
-    -- NOTE: expr b demands that all expressions be of the same type. Need to circle back
-    -- here and figure out the best way to do this. Keep it like this just to keep moving forward.
-    Fork   :: [(Var, [SSMExp])] -> SSMStm
-
-data Argument = Reference SSMExp | Value SSMExp
-
--- | SSM routines
-data Routine where
-    Routine :: String           -- ^ Name of the routine
-            -> [Argument]         -- ^ Arguments to the routine
-            -> [(Var, SSMExp)]  -- ^ Variable declarations and initializations
-            -> [SSMStm]         -- ^ Routine body
-            -> Routine
-
--- | SSM programs. A program consists of zero or more routines and one main routine.
-type Program = ([Routine], Routine)
