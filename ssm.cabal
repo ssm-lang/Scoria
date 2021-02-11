@@ -29,7 +29,6 @@ library
   exposed-modules:
       SSM
       AST
-      AST2
       Interpreter
       PrettyPrinter
   other-modules:

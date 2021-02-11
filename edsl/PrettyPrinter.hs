@@ -19,6 +19,11 @@ showSSM ssma = let rd = evalStateT (toString' ssma) 0
                    w  = execWriter wr
                in unlines w
 
+{-
+NOTE: When generating a 'reference' to prettyprint the actual IORef is left as undefined.
+This works because to prettyprint it is not necessary to inspect it, only the variable name.
+-}
+
 toString' :: SSM a -> PP ()
 toString' ssm = case ssm of
     (Return x)        -> return ()
