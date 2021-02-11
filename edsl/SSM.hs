@@ -40,61 +40,29 @@ e1 ==. e2 = BOp e1 e2 OEQ
 int :: Int -> Exp Int
 int i = Lit $ LInt i
 
--- | Dereference a stream
---deref :: Ref a -> SSM (Exp a)
---deref = GetRef
-
 deref :: Ref a -> SSM (Exp a)
 deref r = GetRef r return
 
--- | Only way to create a stream (variable)
---var :: String -> Exp a -> SSM (Ref a)
---var = NewRef
-
 var :: String -> Exp a -> SSM (Ref a)
 var n e = NewRef n e return
-
--- | Wait for one of many variables to be written to
---wait :: [Ref a] -> SSM ()
---wait = Wait
 
 wait :: [Ref a] -> SSM ()
 wait r = Wait r return
 
 -- | Delayed assignment
---after :: Exp Int -> Ref a -> Exp a -> SSM ()
---after = After
-
--- | Delayed assignment
 after :: Exp Int -> Ref a -> Exp a -> SSM ()
 after e r v = After e r v return
 
--- | Create child processes
---fork :: [SSM ()] -> SSM ()
---fork = Fork
-
 fork :: [SSM ()] -> SSM ()
 fork procs = Fork procs return
-
--- The @-operator
---changed :: Ref a -> SSM (Exp Bool)
---changed = Changed
 
 -- The @-operator
 changed :: Ref a -> SSM (Exp Bool)
 changed r = Changed r return
 
 -- | Conditional executing with a dangling else
---if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()
---if' = If
-
--- | Conditional executing with a dangling else
 if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()
 if' c thn els = If c thn els return
-
--- | Repeat computation until condition becomes true
---while' :: Exp Bool -> SSM () -> SSM ()
---while' = While
 
 while' :: Exp Bool -> SSM () -> SSM ()
 while' c bdy = While c bdy return
