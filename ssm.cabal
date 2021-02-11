@@ -31,6 +31,8 @@ library
       AST
       Interpreter
       PrettyPrinter
+      Client
+      BoxTest
   other-modules:
       Paths_ssm
   hs-source-dirs:

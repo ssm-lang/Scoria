@@ -28,6 +28,34 @@ instance Res b => Box (SSM b) where
         x' <- arg name x
         y' <- f x'
         result name y'
+{-
+
+n :: Ref Int -> Ref Int -> SSM ()
+n = box "n" $ \r1 r2 -> do
+        body
+
+n someref1 someref2
+
+===
+
+Procedure "n" f (\() ->
+Argument "n" someref1 (\() ->
+Argument "n" someref2 (\() ->
+-- body
+Result "n" r (\() ->
+return ()))))
+
+
+Tag "myfib" Proc
+Tag "x" Arg
+Tag "y" Arg
+Procedure "n" f (\() ->
+Argument "n" someref1 (\() ->
+Argument "n" someref2 (\() ->
+-- body
+Result "n" r (\() ->
+return ()))))
+-}
 
 data SSM a where
     -- | Monadic operations
@@ -52,6 +80,10 @@ data SSM a where
     Procedure :: Arg a => String -> (a -> b) -> (() -> SSM c) -> SSM c
     Argument  :: String -> Either SSMExp (String, IORef SSMExp) -> (() -> SSM b) -> SSM b
     Result    :: (Show a, Res a) => String -> a -> (() -> SSM b) -> SSM b
+--    Tag :: String -> (() -> SSM b) -> SSM b
+
+
+
 
 instance Monad SSM where
     return = Return
