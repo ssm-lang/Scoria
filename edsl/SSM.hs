@@ -8,19 +8,19 @@ import Data.Maybe
 
 
 
-type Ref a = (String, IORef SSMExp) -- references that are shared
+type Ref a = (String, IORef SSMExp) -- references that are shared, (variable name, ref to value)
 type Exp a = SSMExp                 -- expressions
 
 -- | Arguments we can apply SSM procedures to
 instance Arg (Exp a) where
-    arg name b = Argument name (Left b) >> return b
+    arg name b = Argument name (Left b) return >> return b
 
 instance {-# OVERLAPPING #-} Arg (Ref a) where
-    arg name e = Argument name (Right e) >> return e
+    arg name e = Argument name (Right e) return >> return e
 
 -- | Possible results of SSM procedures (they can't return anything)
 instance Res () where
-    result name () = Result name () >> return ()
+    result name () = Result name () return >> return ()
 
 (+.) :: Exp a -> Exp a -> Exp a
 e1 +. e2  = BOp e1 e2 OPlus
@@ -41,36 +41,63 @@ int :: Int -> Exp Int
 int i = Lit $ LInt i
 
 -- | Dereference a stream
+--deref :: Ref a -> SSM (Exp a)
+--deref = GetRef
+
 deref :: Ref a -> SSM (Exp a)
-deref = GetRef
+deref r = GetRef r return
 
 -- | Only way to create a stream (variable)
+--var :: String -> Exp a -> SSM (Ref a)
+--var = NewRef
+
 var :: String -> Exp a -> SSM (Ref a)
-var = NewRef
+var n e = NewRef n e return
 
 -- | Wait for one of many variables to be written to
+--wait :: [Ref a] -> SSM ()
+--wait = Wait
+
 wait :: [Ref a] -> SSM ()
-wait = Wait
+wait r = Wait r return
+
+-- | Delayed assignment
+--after :: Exp Int -> Ref a -> Exp a -> SSM ()
+--after = After
 
 -- | Delayed assignment
 after :: Exp Int -> Ref a -> Exp a -> SSM ()
-after = After
+after e r v = After e r v return
 
 -- | Create child processes
+--fork :: [SSM ()] -> SSM ()
+--fork = Fork
+
 fork :: [SSM ()] -> SSM ()
-fork = Fork
+fork procs = Fork procs return
+
+-- The @-operator
+--changed :: Ref a -> SSM (Exp Bool)
+--changed = Changed
 
 -- The @-operator
 changed :: Ref a -> SSM (Exp Bool)
-changed = Changed
+changed r = Changed r return
+
+-- | Conditional executing with a dangling else
+--if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()
+--if' = If
 
 -- | Conditional executing with a dangling else
 if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()
-if' = If
+if' c thn els = If c thn els return
 
 -- | Repeat computation until condition becomes true
+--while' :: Exp Bool -> SSM () -> SSM ()
+--while' = While
+
 while' :: Exp Bool -> SSM () -> SSM ()
-while' = While
+while' c bdy = While c bdy return
 
 -- fibonacci example
 
@@ -99,4 +126,10 @@ myfib = box "myfib" $ \n r -> do
                         ]))
 
 mymain :: SSM ()
-mymain = var "r" (int 0) >>= \r -> myfib (int 13) r
+mymain = var "r" (int 0) >>= \r -> fork [myfib (int 13) r]
+
+test :: Exp Int -> SSM ()
+test = box "test" $ \v ->
+    if' (v <. (int 2))
+      (fork [test v])
+      (Just (fork [test v]))
