@@ -96,13 +96,12 @@ instance Show SSMLit where
     show (LInt i)  = show i
     show (LBool b) = show b
 
-{-- | SSM unary operators. We use phantom types to represent the argument type
-and the result type of the operator. E.g At (a :: Ref b) :: UnaryOp Bool. -}
-data UnaryOp = At  -- ^ @-operator
+{-- | SSM unary operators -}
+data UnaryOp = Neg  -- ^ negation
   deriving (Eq)
 
 instance Show UnaryOp where
-    show At = "@"
+    show Neg = "neg"
 
 {-- | SSM binary operators. We use phantom types to represent the two argument types and
 the result type of the operator. E.g OLT 2 3 :: BinOp Int Int Bool -}
@@ -174,6 +173,9 @@ e1 <. e2  = BOp e1 e2 OLT
 
 (==.) :: Exp a -> Exp a -> Exp Bool
 e1 ==. e2 = BOp e1 e2 OEQ
+
+neg :: Exp a -> Exp a
+neg e = UOp e Neg
 
 int :: Int -> Exp Int
 int i = Lit $ LInt i
@@ -364,12 +366,40 @@ data St = St
 
 type Interp a = StateT St IO a
 
+interpret :: SSM () -> [(String, SSMExp)] -> IO ()
+interpret ssm args = do
+    putStrLn "beginning interpretation --"
+    -- Create references for the program arguments and create the state
+    args' <- mkArgs args
+    let p = Proc 0 1024 0 Nothing Map.empty Map.empty Nothing ssm
+    let state = st (Map.fromList args') p
+    putStrLn "done setting up program arguments --"
+
+    -- Run the actual program
+    putStrLn "running the program --"
+    runStateT mainloop state
+    
+    -- Print the state of the references after program termination
+    putStrLn "program terminated -- input arguments were:"
+    forM_ args' $ \(n,r) -> do
+        v <- readIORef r
+        putStrLn $ n ++ ": " ++ show v
+  where
+      st :: Map.Map String (IORef SSMExp) -> Proc -> St
+      st args p = St 0 args [] [p] [] []
+
+      mkArgs :: [(String, SSMExp)] -> IO [(String, IORef SSMExp)]
+      mkArgs args = mapM (\(n,v) -> newIORef v >>= (\r -> return (n, r))) args
+
+{- | Mainloop of a program. If there is work left to do it will increment the current
+time, perform the outstanding events for this time and then run the scheduler. -}
 mainloop :: Interp ()
 mainloop = do
     st <- get
     if null (events st) && null (readyQueue st)
-        then return () -- should do something else here to fetch the result, the computation is done
-        else do modify $ \st -> st { now = now st + 1
+        then return ()
+        else do liftIO $ putStrLn $ "TIME: " ++ show (now st + 1)
+                modify $ \st -> st { now = now st + 1
                                    , written = []
                                    }
                 performEvents
@@ -385,8 +415,38 @@ runProcesses = do
         Just p  -> runProcess p >> runProcesses
         Nothing -> return ()
 
+-- this is very non exhaustive, fix later
 eval :: Proc -> SSMExp -> Interp SSMExp
-eval p e = undefined
+eval p e = do
+    case e of
+        Var n -> case Map.lookup n (variables p) of
+            Just r -> do v <- liftIO $ readIORef r
+                         eval p v
+            Nothing -> error $ "interpreter error - variable " ++ n ++ " not found in current process"
+        Lit l -> return e
+        UOp e Neg -> do
+            e' <- eval p e
+            let Lit (LInt i) = e'
+            return $ Lit $ LInt (-i)
+        BOp e1 e2 op -> do
+            se1 <- eval p e1
+            se2 <- eval p e2
+            case op of
+                OPlus  -> let (Lit (LInt i1)) = se1
+                              (Lit (LInt i2)) = se2
+                        in return $ Lit $ LInt $ i1 + i2
+                OMinus -> let (Lit (LInt i1)) = se1
+                              (Lit (LInt i2)) = se2
+                        in return $ Lit $ LInt $ i1 - i2
+                OTimes -> let (Lit (LInt i1)) = se1
+                              (Lit (LInt i2)) = se2
+                        in return $ Lit $ LInt $ i1 * i2
+                OLT    -> let (Lit (LInt i1)) = se1
+                              (Lit (LInt i2)) = se2
+                        in return $ Lit $ LBool $ i1 < i2
+                OEQ    -> let (Lit (LInt i1)) = se1
+                              (Lit (LInt i2)) = se2
+                        in return $ Lit $ LBool $ i1 == i2
 
 runProcess :: Proc -> Interp ()
 runProcess p = case continuation p of
@@ -397,7 +457,7 @@ runProcess p = case continuation p of
                           , continuation = k n
                           }
     SetRef r e k -> do
-        writeRef r e
+        writeRef p r e
         runProcess $ p { continuation = k ()}
     GetRef r k -> do
         ior <- lookupRef r p
@@ -448,11 +508,17 @@ runProcess p = case continuation p of
         par         <- liftIO $ newIORef p'
         forM_ (zip procs priodeps) $ \(cont, (prio, dep)) -> do
             enqueue $ Proc prio dep 0 (Just par) Map.empty Map.empty Nothing cont
-    Procedure n f k   -> runProcess $ p { continuation = k ()}
+    Procedure n f k   -> do
+        liftIO $ putStrLn $ "entering procedure: " ++ n
+        runProcess $ p { continuation = k ()}
     Argument n m a k  -> do
         case a of
             Left e  -> do
-                ref <- liftIO $ newIORef e
+                v <- case parent p of
+                    Just par -> do p' <- liftIO $ readIORef par
+                                   eval p' e
+                    Nothing  -> return e
+                ref <- liftIO $ newIORef v
                 runProcess $ p { variables = Map.insert m ref (variables p)
                                , continuation = k ()
                                }
@@ -486,20 +552,21 @@ runProcess p = case continuation p of
 
 
   where
-      lookupRef :: Reference -> Proc -> Interp (IORef SSMExp)
-      lookupRef r p = case Map.lookup r (references p) of
-          Just ref -> return ref
-          Nothing  -> error $ "interpreter error - can not find reference " ++ r
-
-      writeRef :: Reference -> SSMExp -> Interp ()
-      writeRef r e = do
+      writeRef :: Proc -> Reference -> SSMExp -> Interp ()
+      writeRef p r e = do
           case Map.lookup r (references p) of
-              Just ref -> do liftIO $ writeIORef ref e
+              Just ref -> do v <- eval p e
+                             liftIO $ writeIORef ref v
                              modify $ \st -> st { written = ref : written st }
               Nothing  -> error $ "interpreter error - not not find reference " ++ r
 
       wait :: Proc -> Interp ()
       wait p = modify $ \st -> st { waiting = p : waiting st}
+
+lookupRef :: Reference -> Proc -> Interp (IORef SSMExp)
+lookupRef r p = case Map.lookup r (references p) of
+    Just ref -> return ref
+    Nothing  -> error $ "interpreter error - can not find reference " ++ r
 
 {- | Perform all the events scheduled for this isntance, enqueueing those processes that
 were waiting for one of these events to happen. -}
@@ -548,7 +615,7 @@ dequeue :: Interp (Maybe Proc)
 dequeue = do
     st <- get
     case readyQueue st of
-        [] -> error "throw some nice error here I suppose"
+        [] -> return Nothing --error "interpreter error -- ready queue empty"
         (x:xs) -> do put $ st { readyQueue = xs}
                      return (Just x)
 
