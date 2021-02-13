@@ -8,8 +8,8 @@ import Data.Maybe
 
 
 
-type Ref a = (String, IORef SSMExp) -- references that are shared, (variable name, ref to value)
-type Exp a = SSMExp                 -- expressions
+type Ref a = String -- references that are shared, variable name
+type Exp a = SSMExp -- expressions
 
 -- | Arguments we can apply SSM procedures to
 instance Arg (Exp a) where

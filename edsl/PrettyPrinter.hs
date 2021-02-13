@@ -28,13 +28,12 @@ toString' :: SSM a -> PP ()
 toString' ssm = case ssm of
     (Return x)        -> return ()
     (NewRef n e k)    -> do
-        r@(n,_) <- getRefString
         emit $ n ++ " = NewRef " ++ show e
-        toString' (k r)
-    (SetRef (r,_) e k)    -> do
+        toString' (k n)
+    (SetRef r e k)    -> do
         emit $ "SetRef " ++ r ++ " = " ++ show e
         toString' (k ())
-    (GetRef (r,_) k)      -> do
+    (GetRef r k)      -> do
         v <- getExpString
         emit $ show v ++ " = GetRef " ++ r
         toString' (k v)
@@ -54,15 +53,15 @@ toString' ssm = case ssm of
         emit $ "While " ++ show c
         indent $ toString' bdy
         toString' (k ())
-    (After e (r,_) v k)   -> do
+    (After e r v k)   -> do
         emit $ "After " ++ show e ++ " " ++ r ++ " = " ++ show v
         toString' (k ())
-    (Changed (r,_) k)     -> do
+    (Changed r k)     -> do
         b <- getExpString
         emit $ show b ++ " = @" ++ r
         toString' (k b) 
     (Wait vars k)     -> do
-        emit $ "Wait [" ++ intercalate ", " (map fst vars) ++ "]"
+        emit $ "Wait [" ++ intercalate ", " vars ++ "]"
         toString' (k ())
     (Fork procs k)    -> do
         emit $ "Fork [" ++ intercalate "," (map printProcedureCall procs) ++ "]"
@@ -73,7 +72,7 @@ toString' ssm = case ssm of
     (Argument n (Left e) k)  -> do
         emit $ "Argument " ++ show e
         toString' (k ())
-    (Argument n (Right (r,_)) k)  -> do
+    (Argument n (Right r) k)  -> do
         emit $ "Argument &" ++ r
         toString' (k ())
     (Result n r k)    -> do
@@ -87,19 +86,19 @@ toString' ssm = case ssm of
           return $ Var $ "v" ++ show i
 
       -- undefined for now
-      getRefString :: PP (String, IORef SSMExp)
+      getRefString :: PP String
       getRefString = do
           i <- get
           put $ i + 1
-          return $ ("v" ++ show i, undefined)
+          return $ ("v" ++ show i)
 
       printProcedureCall :: SSM () -> String
       printProcedureCall (Procedure n _ k) = n ++ "(" ++ intercalate ", " args ++ ")"
         where
             getArgs :: SSM () -> [String]
-            getArgs (Argument _ (Left e) k)      = (show e) : getArgs (k ())
-            getArgs (Argument _ (Right (n,_)) k) = n : getArgs (k ())
-            getArgs _                            = []
+            getArgs (Argument _ (Left e) k)  = (show e) : getArgs (k ())
+            getArgs (Argument _ (Right n) k) = n : getArgs (k ())
+            getArgs _                        = []
 
             args :: [String]
             args = getArgs (k ())

@@ -57,28 +57,37 @@ Result "n" r (\() ->
 return ()))))
 -}
 
+type Reference = String
+
 data SSM a where
     -- | Monadic operations
     Return  :: a -> SSM a
 
     -- | Variable/Stream operations
-    NewRef :: String -> SSMExp -> ((String, IORef SSMExp) -> SSM b) -> SSM b
-    SetRef :: (String, IORef SSMExp) -> SSMExp -> (() -> SSM b) -> SSM b
-    GetRef :: (String, IORef SSMExp) -> (SSMExp -> SSM b) -> SSM b
-    
+--    NewRef :: String -> SSMExp -> ((String, IORef SSMExp) -> SSM b) -> SSM b
+    NewRef :: String -> SSMExp -> (Reference -> SSM b) -> SSM b
+--    SetRef :: (String, IORef SSMExp) -> SSMExp -> (() -> SSM b) -> SSM b
+    SetRef :: Reference -> SSMExp -> (() -> SSM b) -> SSM b
+--    GetRef :: (String, IORef SSMExp) -> (SSMExp -> SSM b) -> SSM b
+    GetRef :: Reference -> (SSMExp -> SSM b) -> SSM b
+
     -- | Control operations
     If     :: Show a => SSMExp -> SSM a -> Maybe (SSM a) -> (() -> SSM b) -> SSM b
     While  :: Show a => SSMExp -> SSM a -> (() -> SSM b) -> SSM b
     
     -- | SSM specific operations
-    After  :: SSMExp -> (String, IORef SSMExp) -> SSMExp -> (() -> SSM b) -> SSM b
-    Changed :: (String, IORef SSMExp) -> (SSMExp -> SSM b) -> SSM b
-    Wait   :: [(String, IORef SSMExp)] -> (() -> SSM b) -> SSM b
+--    After  :: SSMExp -> (String, IORef SSMExp) -> SSMExp -> (() -> SSM b) -> SSM b
+    After  :: SSMExp -> Reference -> SSMExp -> (() -> SSM b) -> SSM b
+--    Changed :: (String, IORef SSMExp) -> (SSMExp -> SSM b) -> SSM b
+    Changed :: Reference -> (SSMExp -> SSM b) -> SSM b
+--    Wait   :: [(String, IORef SSMExp)] -> (() -> SSM b) -> SSM b
+    Wait   :: [Reference] -> (() -> SSM b) -> SSM b
     Fork   :: [SSM ()] -> (() -> SSM b) -> SSM b
 
     -- | Procedure construction
     Procedure :: Arg a => String -> (a -> b) -> (() -> SSM c) -> SSM c
-    Argument  :: String -> Either SSMExp (String, IORef SSMExp) -> (() -> SSM b) -> SSM b
+--    Argument  :: String -> Either SSMExp (String, IORef SSMExp) -> (() -> SSM b) -> SSM b
+    Argument  :: String -> Either SSMExp Reference -> (() -> SSM b) -> SSM b
     Result    :: (Show a, Res a) => String -> a -> (() -> SSM b) -> SSM b
 --    Tag :: String -> (() -> SSM b) -> SSM b
 

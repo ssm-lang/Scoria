@@ -10,28 +10,34 @@ import Control.Monad.Writer
 import Data.List
 import Data.IORef
 
+import GHC.Float
+
+import qualified Data.Map as Map
+
+type Reference = String
+
 data SSM a where
     -- | Monadic operations
     Return  :: a -> SSM a
 
     -- | Variable/Stream operations
-    NewRef :: String -> SSMExp -> ((String, IORef SSMExp) -> SSM b) -> SSM b
-    SetRef :: (String, IORef SSMExp) -> SSMExp -> (() -> SSM b) -> SSM b
-    GetRef :: (String, IORef SSMExp) -> (SSMExp -> SSM b) -> SSM b
+    NewRef :: String -> SSMExp -> (Reference -> SSM b) -> SSM b
+    SetRef :: Reference -> SSMExp -> (() -> SSM b) -> SSM b
+    GetRef :: Reference -> (SSMExp -> SSM b) -> SSM b
     
     -- | Control operations
-    If     :: Show a => SSMExp -> SSM a -> Maybe (SSM a) -> (() -> SSM b) -> SSM b
-    While  :: Show a => SSMExp -> SSM a -> (() -> SSM b) -> SSM b
+    If     :: SSMExp -> SSM () -> Maybe (SSM ()) -> (() -> SSM b) -> SSM b
+    While  :: SSMExp -> SSM () -> (() -> SSM b) -> SSM b
     
     -- | SSM specific operations
-    After  :: SSMExp -> (String, IORef SSMExp) -> SSMExp -> (() -> SSM b) -> SSM b
-    Changed :: (String, IORef SSMExp) -> (SSMExp -> SSM b) -> SSM b
-    Wait   :: [(String, IORef SSMExp)] -> (() -> SSM b) -> SSM b
+    After  :: SSMExp -> Reference -> SSMExp -> (() -> SSM b) -> SSM b
+    Changed :: Reference -> (SSMExp -> SSM b) -> SSM b
+    Wait   :: [Reference] -> (() -> SSM b) -> SSM b
     Fork   :: [SSM ()] -> (() -> SSM b) -> SSM b
 
     -- | Procedure construction
     Procedure :: Arg a => String -> (a -> b) -> (() -> SSM c) -> SSM c
-    Argument  :: String -> String -> Either SSMExp (String, IORef SSMExp) -> (() -> SSM b) -> SSM b
+    Argument  :: String -> String -> Either SSMExp Reference -> (() -> SSM b) -> SSM b
     Result    :: (Show a, Res a) => String -> a -> (() -> SSM b) -> SSM b
 --    Tag :: String -> (() -> SSM b) -> SSM b
 
@@ -140,7 +146,7 @@ instance Res b => Box (SSM b) where
         y'     <- f x'
         result name y'
 
-type Ref a = (String, IORef SSMExp) -- references that are shared, (variable name, ref to value)
+type Ref a = Reference -- references that are shared, (variable name, ref to value)
 type Exp a = SSMExp                 -- expressions
 
 -- | Arguments we can apply SSM procedures to
@@ -148,7 +154,7 @@ instance Arg (Exp a) where
     arg name (x:xs) b = Argument name x (Left b) return >> return (Var x, xs)
 
 instance {-# OVERLAPPING #-} Arg (Ref a) where
-    arg name (x:xs) e = Argument name x (Right e) return >> return (e, xs)
+    arg name (x:xs) e = Argument name x (Right e) return >> return (x, xs)
 
 -- | Possible results of SSM procedures (they can't return anything)
 instance Res () where
@@ -222,7 +228,7 @@ myfib :: Exp Int -> Ref Int -> SSM ()
 myfib = box "myfib" ["n", "r"] $ \n r -> do
     r1 <- var "r1" (int 0)
     r2 <- var "r2" (int 0)
-    if' (n <. (int 2))
+    if' (n <. int 2)
             (after (int 1) r (int 1))
             (Just (fork [ myfib (n -. int 1) r1
                         , myfib (n -. int 2) r2
@@ -234,7 +240,7 @@ mymain = var "r" (int 0) >>= \r -> fork [myfib (int 13) r]
 
 test :: Exp Int -> SSM ()
 test = box "test" ["v"] $ \v ->
-    if' (v <. (int 2))
+    if' (v <. int 2)
       (fork [test v])
       (Just (fork [test v]))
 
@@ -248,50 +254,44 @@ showSSM ssma = let rd = evalStateT (toString' ssma) 0
                    w  = execWriter wr
                in unlines w
 
-{-
-NOTE: When generating a 'reference' to prettyprint the actual IORef is left as undefined.
-This works because to prettyprint it is not necessary to inspect it, only the variable name.
--}
-
 toString' :: SSM a -> PP ()
 toString' ssm = case ssm of
     (Return x)        -> return ()
     (NewRef n e k)    -> do
-        r@(n,_) <- getRefString
         emit $ n ++ " = NewRef " ++ show e
-        toString' (k r)
-    (SetRef (r,_) e k)    -> do
+        toString' (k n)
+    (SetRef r e k)    -> do
         emit $ "SetRef " ++ r ++ " = " ++ show e
         toString' (k ())
-    (GetRef (r,_) k)      -> do
+    (GetRef r k)      -> do
         v <- getExpString
         emit $ show v ++ " = GetRef " ++ r
         toString' (k v)
     (If c thn (Just els) k)  -> do
         emit $ "If " ++ show c
-        emit $ "Then"
+        emit   "Then"
         indent $ toString' thn
-        emit $ "Else"
+        emit   "Else"
         indent $ toString' els
         toString' (k ())
     (If c thn Nothing k)  -> do
         emit $ "If " ++ show c
-        emit $ "Then"
+        emit   "Then"
         indent $ toString' thn
         toString' (k ())
     (While c bdy k)   -> do
         emit $ "While " ++ show c
         indent $ toString' bdy
         toString' (k ())
-    (After e (r,_) v k)   -> do
+    (After e r v k)   -> do
         emit $ "After " ++ show e ++ " " ++ r ++ " = " ++ show v
         toString' (k ())
-    (Changed (r,_) k)     -> do
+    (Changed r k)     -> do
         b <- getExpString
         emit $ show b ++ " = @" ++ r
         toString' (k b) 
     (Wait vars k)     -> do
-        emit $ "Wait [" ++ intercalate ", " (map fst vars) ++ "]"
+        emit $ "Wait [" ++ intercalate ", " vars ++ "]"
         toString' (k ())
     (Fork procs k)    -> do
         emit $ "Fork [" ++ intercalate "," (map printProcedureCall procs) ++ "]"
@@ -302,7 +302,7 @@ toString' ssm = case ssm of
     (Argument n name (Left e) k)  -> do
         emit $ "Argument " ++ name
         toString' (k ())
-    (Argument n name (Right (r,_)) k)  -> do
+    (Argument n name (Right r) k)  -> do
         emit $ "Argument &" ++ name
         toString' (k ())
     (Result n r k)    -> do
@@ -315,20 +315,13 @@ toString' ssm = case ssm of
           put $ i + 1
           return $ Var $ "v" ++ show i
 
-      -- undefined for now
-      getRefString :: PP (String, IORef SSMExp)
-      getRefString = do
-          i <- get
-          put $ i + 1
-          return $ ("v" ++ show i, undefined)
-
       printProcedureCall :: SSM () -> String
       printProcedureCall (Procedure n _ k) = n ++ "(" ++ intercalate ", " args ++ ")"
         where
             getArgs :: SSM () -> [String]
-            getArgs (Argument _ _ (Left e) k)      = (show e) : getArgs (k ())
-            getArgs (Argument _ _ (Right (n,_)) k) = n : getArgs (k ())
-            getArgs _                              = []
+            getArgs (Argument _ _ (Left e) k)  = show e : getArgs (k ())
+            getArgs (Argument _ _ (Right n) k) = n      : getArgs (k ())
+            getArgs _                          = []
 
             args :: [String]
             args = getArgs (k ())
@@ -341,7 +334,230 @@ toString' ssm = case ssm of
           ind <- ask
           tell [replicate ind ' ' ++ str]
 
-      result :: String -> PP String
-      result str = do
-          ind <- ask
-          return $ replicate ind ' ' ++ str
+-- interpreter
+
+data Event = Event
+    { at  :: Int           -- ^ The time when this event occurs
+    , ref :: IORef SSMExp  -- ^ The reference variable that gets the new value
+    , val :: SSMExp        -- ^ The value this reference will assume at time at
+    }
+
+data Proc = Proc
+    { priority        :: Int                            -- ^ priority of the process
+    , depth           :: Int                            -- ^ The depth, which helps give priorities to children
+    , runningChildren :: Int                            -- ^ Number of non-terminated child processes
+    , parent          :: Maybe (IORef Proc)             -- ^ Parent of this process, Nothing in the case of main
+    , references      :: Map.Map String (IORef SSMExp)  -- ^ Reference variables and their values
+    , variables       :: Map.Map String (IORef SSMExp)  -- ^ Local variables and their values
+    , waitingOn       :: Maybe [IORef SSMExp]           -- ^ Variables this process is waiting for, if any
+    , continuation    :: SSM ()                         -- ^ The work left to do for this process
+    }
+
+data St = St
+    { now        :: Int                           -- ^ Current time
+    , arguments  :: Map.Map String (IORef SSMExp) -- ^ Arguments to main
+    , events     :: [Event]                       -- ^ Outstanding events
+    , readyQueue :: [Proc]                        -- ^ Processes ready to run, should be a priority queue
+    , waiting    :: [Proc]                        -- ^ Processes that are waiting on variables
+    , written    :: [IORef SSMExp]                -- ^ References that were written in this instance
+    }
+
+type Interp a = StateT St IO a
+
+mainloop :: Interp ()
+mainloop = do
+    st <- get
+    if null (events st) && null (readyQueue st)
+        then return () -- should do something else here to fetch the result, the computation is done
+        else do modify $ \st -> st { now = now st + 1
+                                   , written = []
+                                   }
+                performEvents
+                runProcesses
+
+{- | Dequeues the process with lowest priority and runs it until the ready queue
+becomes empty. It is worth mentioning and running a process might enqueue additional
+processes on the ready queue. -}
+runProcesses :: Interp ()
+runProcesses = do
+    mp <- dequeue
+    case mp of
+        Just p  -> runProcess p >> runProcesses
+        Nothing -> return ()
+
+eval :: Proc -> SSMExp -> Interp SSMExp
+eval p e = undefined
+
+runProcess :: Proc -> Interp ()
+runProcess p = case continuation p of
+    Return x          -> return ()
+    NewRef n e k      -> do
+        r <- liftIO $ newIORef e
+        runProcess $ p { references   = Map.insert n r (references p)
+                          , continuation = k n
+                          }
+    SetRef r e k -> do
+        writeRef r e
+        runProcess $ p { continuation = k ()}
+    GetRef r k -> do
+        ior <- lookupRef r p
+        e <- liftIO $ readIORef ior
+        runProcess $ p { continuation = k e}
+    If c thn (Just els) k -> do
+        b <- eval p c
+        case b of
+          Lit (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
+          Lit (LBool False) -> runProcess $ p { continuation = els >> k ()}
+    If c thn Nothing k -> do
+        b <- eval p c
+        case b of
+          Lit (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
+          Lit (LBool False) -> runProcess $ p { continuation = k ()}
+    While c bdy k -> do
+        b <- eval p c
+        case b of
+          Lit (LBool True)  -> runProcess $ p { continuation = bdy >> continuation p}
+          Lit (LBool False) -> runProcess $ p { continuation = k ()}
+    After e r v k -> do
+        i <- eval p e
+        case i of
+          Lit (LInt num) -> do
+              ref <- lookupRef r p
+              t   <- gets now
+              modify $ \st -> st { events = Event (t + num) ref v : events st }
+              runProcess $ p { continuation = k ()}
+          _ -> error $ "interpreter error - not a number " ++ show i
+    Changed r k       -> do
+        st <- get
+        ref <- lookupRef r p
+        if ref `elem` written st
+            then runProcess $ p { continuation = k (Lit (LBool True))}
+            else runProcess $ p { continuation = k (Lit (LBool False))}
+    Wait vars k       -> do
+        refs <- mapM (`lookupRef` p) vars
+        wait $ p { waitingOn = Just refs
+                 , continuation = k ()
+                 }
+    Fork procs k      -> do
+        let numchild = length procs
+        let d'       = depth p - integerLogBase 2 (toInteger $ depth p)
+        let priodeps = [ (priority p + p'*(2^d'), d') | p' <- [0 .. numchild-1]]
+        let p'       = p { runningChildren = numchild
+                         , continuation = k ()
+                         }
+        par         <- liftIO $ newIORef p'
+        forM_ (zip procs priodeps) $ \(cont, (prio, dep)) -> do
+            enqueue $ Proc prio dep 0 (Just par) Map.empty Map.empty Nothing cont
+    Procedure n f k   -> runProcess $ p { continuation = k ()}
+    Argument n m a k  -> do
+        case a of
+            Left e  -> do
+                ref <- liftIO $ newIORef e
+                runProcess $ p { variables = Map.insert m ref (variables p)
+                               , continuation = k ()
+                               }
+            Right r -> case parent p of
+                Just par -> do
+                    p'  <- liftIO $ readIORef par
+                    tmp <- lookupRef r p'
+                    v   <- liftIO $ readIORef tmp
+                    ref <- liftIO $ newIORef v
+                    runProcess $ p { references = Map.insert m ref (references p)
+                                   , continuation = k ()}
+                Nothing  -> do
+                    st <- get
+                    case Map.lookup r (arguments st) of
+                        Just tmp -> do
+                            v   <- liftIO $ readIORef tmp
+                            ref <- liftIO $ newIORef v
+                            runProcess $ p { references = Map.insert m ref (references p)
+                                           , continuation = k ()
+                                           }
+                        Nothing  -> error $ "interpreter error - unknown reference " ++ r
+    Result n r k -> do
+        case parent p of
+            Just par -> do
+                p' <- liftIO $ readIORef par
+                if runningChildren p' == 1
+                    then enqueue $ p' { runningChildren = 0}
+                    else liftIO $ writeIORef par $ p' { runningChildren = runningChildren p' - 1}
+            Nothing  -> return ()
+        runProcess $ p { continuation = k ()} -- this will probably just be one more return
+
+
+  where
+      lookupRef :: Reference -> Proc -> Interp (IORef SSMExp)
+      lookupRef r p = case Map.lookup r (references p) of
+          Just ref -> return ref
+          Nothing  -> error $ "interpreter error - can not find reference " ++ r
+
+      writeRef :: Reference -> SSMExp -> Interp ()
+      writeRef r e = do
+          case Map.lookup r (references p) of
+              Just ref -> do liftIO $ writeIORef ref e
+                             modify $ \st -> st { written = ref : written st }
+              Nothing  -> error $ "interpreter error - not not find reference " ++ r
+
+      wait :: Proc -> Interp ()
+      wait p = modify $ \st -> st { waiting = p : waiting st}
+
+{- | Perform all the events scheduled for this isntance, enqueueing those processes that
+were waiting for one of these events to happen. -}
+performEvents :: Interp ()
+performEvents = do
+    es <- currentEvents
+    mapM_ performEvent es
+  where
+      -- | Fetch the events at this instant in time, if any
+      currentEvents :: Interp [Event]
+      currentEvents = do
+          st <- get
+          let (current, future) = partition (\e -> at e == now st) (events st)
+          put $ st { events = future}
+          return current
+
+      {- | Perform the update of a scheduled event and enqueue processes that were waiting for
+      this event to happen. -}
+      performEvent :: Event -> Interp ()
+      performEvent e = do
+          liftIO $ writeIORef (ref e) (val e)
+          modify $ \st -> st { written = ref e : written st}
+          processes <- waitingProcesses
+          mapM_ enqueueWaiting processes
+        where
+            -- | Enqueue a process after making sure it is not waiting on any reference anymore
+            enqueueWaiting :: Proc -> Interp ()
+            enqueueWaiting p = do
+                enqueue $ p { waitingOn = Nothing}
+
+            -- | Processes that are waiting for this event
+            waitingProcesses :: Interp [Proc]
+            waitingProcesses = do
+                st <- get
+                let (w, nw) = partition pred (waiting st)
+                put $ st { waiting = nw}
+                return w
+                where
+                    pred :: Proc -> Bool
+                    pred p = case waitingOn p of
+                        Just vars -> ref e `elem` vars
+                        Nothing   -> False -- should really be an error
+
+-- | Fetch the process with the lowest priority from the ready queue
+dequeue :: Interp (Maybe Proc)
+dequeue = do
+    st <- get
+    case readyQueue st of
+        [] -> error "throw some nice error here I suppose"
+        (x:xs) -> do put $ st { readyQueue = xs}
+                     return (Just x)
+
+-- | Enqueue a process in the ready queue, ordered by its priority
+enqueue :: Proc -> Interp ()
+enqueue p = modify $ \st -> st { readyQueue = insert p (readyQueue st)}
+  where
+      insert :: Proc -> [Proc] -> [Proc]
+      insert p [] = [p]
+      insert p1 (p2:ps) = if priority p1 < priority p2
+                            then p1 : p2 : ps
+                            else p2 : insert p1 ps
