@@ -42,8 +42,6 @@ data SSM a where
 --    Tag :: String -> (() -> SSM b) -> SSM b
 
 
-
-
 instance Monad SSM where
     return = Return
 
@@ -210,6 +208,11 @@ while' c bdy = While c bdy return
 mywait :: Ref Int -> SSM ()
 mywait = box "mywait" ["r"] $ \r -> do
     wait [r]
+
+{- when we use Haskell as a host language we can define nice helper functions
+like these without having to define a complete separate procedure. -}
+waitall :: [Ref a] -> SSM ()
+waitall refs = fork $ map mywait refs
 
 {-mysum r1 r2 r = do
     fork (mywait r1) (mywait r2)
@@ -404,6 +407,7 @@ mainloop = do
                                    }
                 performEvents
                 runProcesses
+                mainloop
 
 {- | Dequeues the process with lowest priority and runs it until the ready queue
 becomes empty. It is worth mentioning and running a process might enqueue additional
@@ -452,53 +456,64 @@ runProcess :: Proc -> Interp ()
 runProcess p = case continuation p of
     Return x          -> return ()
     NewRef n e k      -> do
+        --liftIO $ putStrLn $ "newref"
         r <- liftIO $ newIORef e
         runProcess $ p { references   = Map.insert n r (references p)
                           , continuation = k n
                           }
     SetRef r e k -> do
+        --liftIO $ putStrLn $ "setref"
         writeRef p r e
         runProcess $ p { continuation = k ()}
     GetRef r k -> do
+        --liftIO $ putStrLn $ "getref"
         ior <- lookupRef r p
         e <- liftIO $ readIORef ior
         runProcess $ p { continuation = k e}
     If c thn (Just els) k -> do
+        --liftIO $ putStrLn $ "if"
         b <- eval p c
         case b of
           Lit (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
           Lit (LBool False) -> runProcess $ p { continuation = els >> k ()}
     If c thn Nothing k -> do
+        --liftIO $ putStrLn $ "if"
         b <- eval p c
         case b of
           Lit (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
           Lit (LBool False) -> runProcess $ p { continuation = k ()}
     While c bdy k -> do
+        --liftIO $ putStrLn $ "while"
         b <- eval p c
         case b of
           Lit (LBool True)  -> runProcess $ p { continuation = bdy >> continuation p}
           Lit (LBool False) -> runProcess $ p { continuation = k ()}
     After e r v k -> do
+        --liftIO $ putStrLn $ "after"
         i <- eval p e
         case i of
           Lit (LInt num) -> do
               ref <- lookupRef r p
               t   <- gets now
-              modify $ \st -> st { events = Event (t + num) ref v : events st }
+              v' <- eval p v
+              modify $ \st -> st { events = Event (t + num) ref v' : events st }
               runProcess $ p { continuation = k ()}
           _ -> error $ "interpreter error - not a number " ++ show i
     Changed r k       -> do
+        --liftIO $ putStrLn $ "changed"
         st <- get
         ref <- lookupRef r p
         if ref `elem` written st
             then runProcess $ p { continuation = k (Lit (LBool True))}
             else runProcess $ p { continuation = k (Lit (LBool False))}
     Wait vars k       -> do
+        --liftIO $ putStrLn $ "wait"
         refs <- mapM (`lookupRef` p) vars
         wait $ p { waitingOn = Just refs
                  , continuation = k ()
                  }
     Fork procs k      -> do
+        --liftIO $ putStrLn $ "fork"
         let numchild = length procs
         let d'       = depth p - integerLogBase 2 (toInteger $ depth p)
         let priodeps = [ (priority p + p'*(2^d'), d') | p' <- [0 .. numchild-1]]
@@ -509,9 +524,10 @@ runProcess p = case continuation p of
         forM_ (zip procs priodeps) $ \(cont, (prio, dep)) -> do
             enqueue $ Proc prio dep 0 (Just par) Map.empty Map.empty Nothing cont
     Procedure n f k   -> do
-        liftIO $ putStrLn $ "entering procedure: " ++ n
+        --liftIO $ putStrLn $ "procedure"
         runProcess $ p { continuation = k ()}
     Argument n m a k  -> do
+        --liftIO $ putStrLn $ "argument"
         case a of
             Left e  -> do
                 v <- case parent p of
@@ -525,22 +541,19 @@ runProcess p = case continuation p of
             Right r -> case parent p of
                 Just par -> do
                     p'  <- liftIO $ readIORef par
-                    tmp <- lookupRef r p'
-                    v   <- liftIO $ readIORef tmp
-                    ref <- liftIO $ newIORef v
+                    ref <- lookupRef r p'
                     runProcess $ p { references = Map.insert m ref (references p)
                                    , continuation = k ()}
                 Nothing  -> do
                     st <- get
                     case Map.lookup r (arguments st) of
-                        Just tmp -> do
-                            v   <- liftIO $ readIORef tmp
-                            ref <- liftIO $ newIORef v
+                        Just ref -> do
                             runProcess $ p { references = Map.insert m ref (references p)
                                            , continuation = k ()
                                            }
                         Nothing  -> error $ "interpreter error - unknown reference " ++ r
     Result n r k -> do
+        --liftIO $ putStrLn $ "result"
         case parent p of
             Just par -> do
                 p' <- liftIO $ readIORef par
@@ -549,8 +562,6 @@ runProcess p = case continuation p of
                     else liftIO $ writeIORef par $ p' { runningChildren = runningChildren p' - 1}
             Nothing  -> return ()
         runProcess $ p { continuation = k ()} -- this will probably just be one more return
-
-
   where
       writeRef :: Proc -> Reference -> SSMExp -> Interp ()
       writeRef p r e = do
