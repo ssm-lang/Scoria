@@ -383,7 +383,7 @@ interpret ssm args = do
     runStateT mainloop state
     
     -- Print the state of the references after program termination
-    putStrLn "program terminated -- input arguments were:"
+    putStrLn "program terminated -- state of input arguments are:"
     forM_ args' $ \(n,r) -> do
         v <- readIORef r
         putStrLn $ n ++ ": " ++ show v
