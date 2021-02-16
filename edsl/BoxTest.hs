@@ -325,82 +325,82 @@ printProcedure ssm@(Procedure n _ _) = do
         else do modify $ \(i,na,o) -> (i, n:na, o)
                 f <- censor (const []) $ snd <$> listen (local (const 0) (toString' ssm))
                 modify $ \(i,na,o) -> (i,na,o ++ [unlines f])
-
-toString' :: SSM a -> PP ()
-toString' ssm = case ssm of
-    (Return x)        -> return ()
-    (NewRef n e k)    -> do
-        emit $ n ++ " = NewRef " ++ show e
-        toString' (k n)
-    (SetRef r e k)    -> do
-        emit $ "SetRef " ++ r ++ " = " ++ show e
-        toString' (k ())
-    (SetLocal e v k)  -> do
-        emit $ "SetLocal " ++ show e ++ " = " ++ show v
-        toString' (k ())
-    (GetRef r k)      -> do
-        v <- getExpString
-        emit $ show v ++ " = GetRef " ++ r
-        toString' (k v)
-    (If c thn (Just els) k)  -> do
-        emit $ "If " ++ show c
-        emit   "Then"
-        indent $ toString' thn
-        emit   "Else"
-        indent $ toString' els
-        toString' (k ())
-    (If c thn Nothing k)  -> do
-        emit $ "If " ++ show c
-        emit   "Then"
-        indent $ toString' thn
-        toString' (k ())
-    (While c bdy k)   -> do
-        emit $ "While " ++ show c
-        indent $ toString' bdy
-        toString' (k ())
-    (After e r v k)   -> do
-        emit $ "After " ++ show e ++ " " ++ r ++ " = " ++ show v
-        toString' (k ())
-    (Changed r k)     -> do
-        b <- getExpString
-        emit $ show b ++ " = @" ++ r
-        toString' (k b) 
-    (Wait vars k)     -> do
-        emit $ "Wait [" ++ intercalate ", " vars ++ "]"
-        toString' (k ())
-    (Fork procs k)    -> do
-        i <- ask
-        {- the following two lines create the separator to use between the forked calls.
-           This is used to make a fork rather than rendering like this
-             fork [f a b, f a b, f a b]
-           render like this
-             fork [
-                    f a b
-                  , f a b
-                  , f a b
-                  ]
-           which is a little easier to read. Also might look more like the haskell code (at least
-           the way I like to write it).
-        -}
-        let indent = replicate (i + length "fork ") ' '
-        let sep = '\n' : indent
-        let calls = map printProcedureCall procs
-        emit $ "Fork [ " ++ sep ++ "  " ++ intercalate (sep ++ ", ") calls ++ sep ++ "]"
-        mapM_ printProcedure procs
-        toString' (k ())
-    (Procedure n _ k) -> do
-        emit $ "Procedure " ++ n
-        toString' (k ())
-    (Argument n name (Left e) k)  -> do
-        emit $ "Argument " ++ name
-        toString' (k ())
-    (Argument n name (Right r) k)  -> do
-        emit $ "Argument &" ++ name
-        toString' (k ())
-    (Result n r k)    -> do
-        emit $ "Result " ++ show r
-        toString' (k ())
   where
+      toString' :: SSM a -> PP ()
+      toString' ssm = case ssm of
+          (Return x)        -> return ()
+          (NewRef n e k)    -> do
+              emit $ n ++ " = NewRef " ++ show e
+              toString' (k n)
+          (SetRef r e k)    -> do
+              emit $ "SetRef " ++ r ++ " = " ++ show e
+              toString' (k ())
+          (SetLocal e v k)  -> do
+              emit $ "SetLocal " ++ show e ++ " = " ++ show v
+              toString' (k ())
+          (GetRef r k)      -> do
+              v <- getExpString
+              emit $ show v ++ " = GetRef " ++ r
+              toString' (k v)
+          (If c thn (Just els) k)  -> do
+              emit $ "If " ++ show c
+              emit   "Then"
+              indent $ toString' thn
+              emit   "Else"
+              indent $ toString' els
+              toString' (k ())
+          (If c thn Nothing k)  -> do
+              emit $ "If " ++ show c
+              emit   "Then"
+              indent $ toString' thn
+              toString' (k ())
+          (While c bdy k)   -> do
+              emit $ "While " ++ show c
+              indent $ toString' bdy
+              toString' (k ())
+          (After e r v k)   -> do
+              emit $ "After " ++ show e ++ " " ++ r ++ " = " ++ show v
+              toString' (k ())
+          (Changed r k)     -> do
+              b <- getExpString
+              emit $ show b ++ " = @" ++ r
+              toString' (k b) 
+          (Wait vars k)     -> do
+              emit $ "Wait [" ++ intercalate ", " vars ++ "]"
+              toString' (k ())
+          (Fork procs k)    -> do
+              i <- ask
+              {- the following two lines create the separator to use between the forked calls.
+              This is used to make a fork rather than rendering like this
+                  fork [f a b, f a b, f a b]
+              render like this
+                  fork [
+                         f a b
+                       , f a b
+                       , f a b
+                       ]
+              which is a little easier to read. Also might look more like the haskell code (at least
+              the way I like to write it).
+              -}
+              let indent = replicate (i + length "fork ") ' '
+              let sep = '\n' : indent
+              let calls = map printProcedureCall procs
+              emit $ "Fork [ " ++ sep ++ "  " ++ intercalate (sep ++ ", ") calls ++ sep ++ "]"
+              mapM_ printProcedure procs
+              toString' (k ())
+          (Procedure n _ k) -> do
+              emit $ "Procedure " ++ n
+              toString' (k ())
+          (Argument n name (Left e) k)  -> do
+              emit $ "Argument " ++ name
+              toString' (k ())
+          (Argument n name (Right r) k)  -> do
+              emit $ "Argument &" ++ name
+              toString' (k ())
+          (Result n r k)    -> do
+              emit $ "Result " ++ show r
+              toString' (k ())
+        
       getExpString :: PP SSMExp
       getExpString = do
           (i,_,_) <- get
@@ -409,14 +409,14 @@ toString' ssm = case ssm of
 
       printProcedureCall :: SSM () -> String
       printProcedureCall (Procedure n _ k) = n ++ "(" ++ intercalate ", " args ++ ")"
-        where
-            getArgs :: SSM () -> [String]
-            getArgs (Argument _ _ (Left e) k)  = show e : getArgs (k ())
-            getArgs (Argument _ _ (Right n) k) = n      : getArgs (k ())
-            getArgs _                          = []
+          where
+              getArgs :: SSM () -> [String]
+              getArgs (Argument _ _ (Left e) k)  = show e : getArgs (k ())
+              getArgs (Argument _ _ (Right n) k) = n      : getArgs (k ())
+              getArgs _                          = []
 
-            args :: [String]
-            args = getArgs (k ())
+              args :: [String]
+              args = getArgs (k ())
 
       indent :: PP () -> PP ()
       indent pp = local (+2) pp
