@@ -24,6 +24,7 @@ data SSM a where
     NewRef :: String -> SSMExp -> (Reference -> SSM b) -> SSM b
     SetRef :: Reference -> SSMExp -> (() -> SSM b) -> SSM b
     GetRef :: Reference -> (SSMExp -> SSM b) -> SSM b
+    SetLocal :: SSMExp -> SSMExp -> (() -> SSM b) -> SSM b
     
     -- | Control operations
     If     :: SSMExp -> SSM () -> Maybe (SSM ()) -> (() -> SSM b) -> SSM b
@@ -48,6 +49,7 @@ instance Monad SSM where
     Return x          >>= fa = fa x
     NewRef n e k      >>= fa = NewRef n e      (\x -> k x >>= fa)
     SetRef r e k      >>= fa = SetRef r e      (\x -> k x >>= fa)
+    SetLocal e v k    >>= fa = SetLocal e v    (\x -> k x >>= fa)
     GetRef r k        >>= fa = GetRef r        (\x -> k x >>= fa)
     If c thn els k    >>= fa = If c thn els    (\x -> k x >>= fa)
     While c bdy k     >>= fa = While c bdy     (\x -> k x >>= fa)
@@ -157,6 +159,16 @@ instance {-# OVERLAPPING #-} Arg (Ref a) where
 instance Res () where
     result name () = Result name () return >> return ()
 
+class Assignable a where
+    assign :: a -> SSMExp -> SSM ()
+
+instance Assignable (Exp a) where
+    assign (Var s) e = SetLocal (Var s) e return
+    assign e _       = error $ "can not assign a value to expression: " ++ show e
+
+instance Assignable (Ref a) where
+    assign r e = SetRef r e return
+
 (+.) :: Exp a -> Exp a -> Exp a
 e1 +. e2  = BOp e1 e2 OPlus
 
@@ -205,10 +217,6 @@ if' c thn els = If c thn els return
 while' :: Exp Bool -> SSM () -> SSM ()
 while' c bdy = While c bdy return
 
-mywait :: Ref Int -> SSM ()
-mywait = box "mywait" ["r"] $ \r -> do
-    wait [r]
-
 {- when we use Haskell as a host language we can define nice helper functions
 like these without having to define a complete separate procedure. -}
 waitall :: [Ref a] -> SSM ()
@@ -219,6 +227,10 @@ waitall refs = fork $ map mywait refs
     v1 <- deref r1
     v2 <- deref r2
     after 1 r (r1 + r2)-}
+
+mywait :: Ref Int -> SSM ()
+mywait = box "mywait" ["r"] $ \r -> do
+    wait [r]
 
 mysum :: Ref Int -> Ref Int -> Ref Int -> SSM ()
 mysum = box "mysum" ["r1", "r2", "r"] $ \r1 r2 r -> do
@@ -240,14 +252,50 @@ myfib = box "myfib" ["n", "r"] $ \n r -> do
                         , mysum r1 r2 r
                         ]))
 
-mymain :: SSM ()
-mymain = var "r" (int 0) >>= \r -> fork [myfib (int 13) r]
+test :: Ref Int -> SSM ()
+test = box "test" ["r"] $ \r -> do
+    after (int 5) r (int 5)
+    fork [child r]
+  where
+      child :: Ref Int -> SSM ()
+      child = box "child" ["r"] $ \r -> do
+          wait [r]
+          v <- deref r
+          after (int 5) r (v +. int 5)
 
-test :: Exp Int -> SSM ()
-test = box "test" ["v"] $ \v ->
-    if' (v <. int 2)
-      (fork [test v])
-      (Just (fork [test v]))
+test2 :: Ref Int -> SSM ()
+test2 = box "test2" ["r"] $ \r -> do
+    after (int 5) r (int 5)
+    fork [child r]
+  where
+      child :: Ref Int -> SSM ()
+      child = box "child" ["r"] $ \r -> do
+          --wait [r] -- uncommenting this line changes the result accordingly
+          b <- changed r
+          if' b (do v <- deref r
+                    after (int 5) r (v +. int 5))
+                (Just (do v <- deref r
+                          after (int 5) r (v +. int 20)))
+          v <- deref r
+          after (int 5) r (v +. int 5)
+
+test3 :: Ref Int -> SSM ()
+test3 = box "test3" ["r"] $ \r -> do
+    v <- deref r
+    while' (v <. int 10) $ do -- TODO: can not do this yet
+      wait [r]
+      fork [child r, child r, child r]
+  where
+      child :: Ref Int -> SSM ()
+      child = box "child" ["r"] $ \r -> do
+          v <- deref r
+          after (int 2) r (v +. int 1)
+
+test4 :: Exp Int -> Ref Int -> SSM ()
+test4 = box "test4" ["n", "r"] $ \n r -> do
+    while' (n <. int 10) $ do
+        n `assign` (n +. int 1)
+    r `assign` n
 
 type PP a = StateT Int                 -- counter to generate fresh names
               (ReaderT Int             -- current level of indentation
@@ -267,6 +315,9 @@ toString' ssm = case ssm of
         toString' (k n)
     (SetRef r e k)    -> do
         emit $ "SetRef " ++ r ++ " = " ++ show e
+        toString' (k ())
+    (SetLocal e v k)  -> do
+        emit $ "SetLocal " ++ show e ++ " = " ++ show v
         toString' (k ())
     (GetRef r k)      -> do
         v <- getExpString
@@ -389,7 +440,7 @@ interpret ssm args = do
         putStrLn $ n ++ ": " ++ show v
   where
       st :: Map.Map String (IORef SSMExp) -> Proc -> St
-      st args p = St 0 args [] [p] [] []
+      st args p = St (-1) args [] [p] [] []
 
       mkArgs :: [(String, SSMExp)] -> IO [(String, IORef SSMExp)]
       mkArgs args = mapM (\(n,v) -> newIORef v >>= (\r -> return (n, r))) args
@@ -465,6 +516,11 @@ runProcess p = case continuation p of
         --liftIO $ putStrLn $ "setref"
         writeRef p r e
         runProcess $ p { continuation = k ()}
+    SetLocal (Var r) v k -> do
+        --liftIO $ putStrLn "setlocal"
+        writeRef p r v
+        runProcess $ p { continuation = k ()}
+    SetLocal e v k -> error $ "interpreter error - can not assign value to expression: " ++ show e
     GetRef r k -> do
         --liftIO $ putStrLn $ "getref"
         ior <- lookupRef r p
@@ -569,7 +625,12 @@ runProcess p = case continuation p of
               Just ref -> do v <- eval p e
                              liftIO $ writeIORef ref v
                              modify $ \st -> st { written = ref : written st }
-              Nothing  -> error $ "interpreter error - not not find reference " ++ r
+              Nothing  -> case Map.lookup r (variables p) of
+                  Just ref -> do v <- eval p e
+                                 liftIO $ writeIORef ref v
+                                 modify $ \st -> st { written = ref : written st }
+                  Nothing  -> error $ "interpreter error - not not find reference " ++ r
+
 
       wait :: Proc -> Interp ()
       wait p = modify $ \st -> st { waiting = p : waiting st}
