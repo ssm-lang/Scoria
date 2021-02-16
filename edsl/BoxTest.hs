@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 module BoxTest where
 
 import Control.Monad.State
@@ -21,9 +22,9 @@ data SSM a where
     Return  :: a -> SSM a
 
     -- | Variable/Stream operations
-    NewRef :: String -> SSMExp -> (Reference -> SSM b) -> SSM b
-    SetRef :: Reference -> SSMExp -> (() -> SSM b) -> SSM b
-    GetRef :: Reference -> (SSMExp -> SSM b) -> SSM b
+    NewRef   :: String -> SSMExp -> (Reference -> SSM b) -> SSM b
+    SetRef   :: Reference -> SSMExp -> (() -> SSM b) -> SSM b
+    GetRef   :: Reference -> (SSMExp -> SSM b) -> SSM b
     SetLocal :: SSMExp -> SSMExp -> (() -> SSM b) -> SSM b
     
     -- | Control operations
@@ -222,6 +223,11 @@ like these without having to define a complete separate procedure. -}
 waitall :: [Ref a] -> SSM ()
 waitall refs = fork $ map mywait refs
 
+{- An operator like this would be nice, if we want to use a reference in the
+expression that computes the boolean. -}
+while'' :: SSM (Exp Bool) -> SSM () -> SSM ()
+while'' sc sbdy = undefined
+
 {-mysum r1 r2 r = do
     fork (mywait r1) (mywait r2)
     v1 <- deref r1
@@ -297,15 +303,29 @@ test4 = box "test4" ["n", "r"] $ \n r -> do
         n `assign` (n +. int 1)
     r `assign` n
 
-type PP a = StateT Int                 -- counter to generate fresh names
-              (ReaderT Int             -- current level of indentation
-                  (Writer [String])) a -- output
 
-showSSM :: Show a => SSM a -> String
-showSSM ssma = let rd = evalStateT (toString' ssma) 0
-                   wr = runReaderT rd 0
-                   w  = execWriter wr
-               in unlines w
+type PPSt = ( Int       -- counter to generate fresh names
+            , [String]  -- names of already generated functions
+            , [String]  -- generated functions
+            )
+type PP a = StateT PPSt
+              (ReaderT Int                   -- current level of indentation
+                  (WriterT [String] IO)) a   -- output
+
+showSSM :: Show a => SSM a -> IO String
+showSSM ssma = do let rd = execStateT (printProcedure ssma) (0, [], [])
+                  let wr = runReaderT rd 0
+                  ((_,_,funs),_)  <- runWriterT wr
+                  return $ unlines funs
+
+printProcedure :: SSM a -> PP ()
+printProcedure ssm@(Procedure n _ _) = do
+    (_,wr,_) <- get
+    if n `elem` wr
+        then return ()
+        else do modify $ \(i,na,o) -> (i, n:na, o)
+                f <- censor (const []) $ snd <$> listen (local (const 0) (toString' ssm))
+                modify $ \(i,na,o) -> (i,na,o ++ [unlines f])
 
 toString' :: SSM a -> PP ()
 toString' ssm = case ssm of
@@ -350,7 +370,13 @@ toString' ssm = case ssm of
         emit $ "Wait [" ++ intercalate ", " vars ++ "]"
         toString' (k ())
     (Fork procs k)    -> do
-        emit $ "Fork [" ++ intercalate "," (map printProcedureCall procs) ++ "]"
+        i <- ask
+        -- the following two lines create the separator to use between the forked calls
+        let indent = replicate (i + length "fork ") ' '
+        let sep = '\n' : indent
+        let calls = map printProcedureCall procs
+        emit $ "Fork [ " ++ sep ++ "  " ++ intercalate (sep ++ ", ") calls ++ sep ++ "]"
+        mapM_ printProcedure procs
         toString' (k ())
     (Procedure n _ k) -> do
         emit $ "Procedure " ++ n
@@ -367,8 +393,8 @@ toString' ssm = case ssm of
   where
       getExpString :: PP SSMExp
       getExpString = do
-          i <- get
-          put $ i + 1
+          (i,_,_) <- get
+          modify $ \(i,n,w) -> (i+1,n,w)
           return $ Var $ "v" ++ show i
 
       printProcedureCall :: SSM () -> String
@@ -383,7 +409,7 @@ toString' ssm = case ssm of
             args = getArgs (k ())
 
       indent :: PP () -> PP ()
-      indent pp = local (+4) pp
+      indent pp = local (+2) pp
 
       emit :: String -> PP ()
       emit str = do
