@@ -161,14 +161,14 @@ instance Res () where
     result name () = Result name () return >> return ()
 
 class Assignable a where
-    assign :: a -> SSMExp -> SSM ()
+    (<~) :: a -> SSMExp -> SSM ()
 
 instance Assignable (Exp a) where
-    assign (Var s) e = SetLocal (Var s) e return
-    assign e _       = error $ "can not assign a value to expression: " ++ show e
+    (Var s) <~ e = SetLocal (Var s) e return
+    e <~ _       = error $ "can not assign a value to expression: " ++ show e
 
 instance Assignable (Ref a) where
-    assign r e = SetRef r e return
+    r <~ e = SetRef r e return
 
 (+.) :: Exp a -> Exp a -> Exp a
 e1 +. e2  = BOp e1 e2 OPlus
@@ -225,8 +225,8 @@ waitall refs = fork $ map mywait refs
 
 {- An operator like this would be nice, if we want to use a reference in the
 expression that computes the boolean. -}
-while'' :: SSM (Exp Bool) -> SSM () -> SSM ()
-while'' sc sbdy = undefined
+whileSSM :: SSM (Exp Bool) -> SSM () -> SSM ()
+whileSSM sc sbdy = undefined
 
 {-mysum r1 r2 r = do
     fork (mywait r1) (mywait r2)
@@ -288,7 +288,7 @@ test2 = box "test2" ["r"] $ \r -> do
 test3 :: Ref Int -> SSM ()
 test3 = box "test3" ["r"] $ \r -> do
     v <- deref r
-    while' (v <. int 10) $ do -- TODO: can not do this yet
+    while' (v <. int 10) $ do -- TODO: can not do this yet (wait until r becomes <. 10)
       wait [r]
       fork [child r, child r, child r]
   where
@@ -300,9 +300,8 @@ test3 = box "test3" ["r"] $ \r -> do
 test4 :: Exp Int -> Ref Int -> SSM ()
 test4 = box "test4" ["n", "r"] $ \n r -> do
     while' (n <. int 10) $ do
-        n `assign` (n +. int 1)
-    r `assign` n
-
+        n <~ (n +. int 1)
+    r <~ n
 
 type PPSt = ( Int       -- counter to generate fresh names
             , [String]  -- names of already generated functions
@@ -310,13 +309,13 @@ type PPSt = ( Int       -- counter to generate fresh names
             )
 type PP a = StateT PPSt
               (ReaderT Int                   -- current level of indentation
-                  (WriterT [String] IO)) a   -- output
+                  (Writer [String])) a   -- output
 
-showSSM :: Show a => SSM a -> IO String
-showSSM ssma = do let rd = execStateT (printProcedure ssma) (0, [], [])
-                  let wr = runReaderT rd 0
-                  ((_,_,funs),_)  <- runWriterT wr
-                  return $ unlines funs
+showSSM :: Show a => SSM a -> String
+showSSM ssma = let rd             = execStateT (printProcedure ssma) (0, [], [])
+                   wr             = runReaderT rd 0
+                   ((_,_,funs),_) = runWriter wr
+               in unlines funs
 
 printProcedure :: SSM a -> PP ()
 printProcedure ssm@(Procedure n _ _) = do
