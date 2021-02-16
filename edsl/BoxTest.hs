@@ -370,7 +370,18 @@ toString' ssm = case ssm of
         toString' (k ())
     (Fork procs k)    -> do
         i <- ask
-        -- the following two lines create the separator to use between the forked calls
+        {- the following two lines create the separator to use between the forked calls.
+           This is used to make a fork rather than rendering like this
+             fork [f a b, f a b, f a b]
+           render like this
+             fork [
+                    f a b
+                  , f a b
+                  , f a b
+                  ]
+           which is a little easier to read. Also might look more like the haskell code (at least
+           the way I like to write it).
+        -}
         let indent = replicate (i + length "fork ") ' '
         let sep = '\n' : indent
         let calls = map printProcedureCall procs
