@@ -15,6 +15,11 @@ import GHC.Float
 
 import qualified Data.Map as Map
 
+--import Language.C.Data.Ident
+--import Language.C.Data.Node
+--import qualified Language.C.Syntax as C
+
+
 type Reference = String
 
 data SSM a where
@@ -32,10 +37,10 @@ data SSM a where
     While  :: SSMExp -> SSM () -> (() -> SSM b) -> SSM b
     
     -- | SSM specific operations
-    After  :: SSMExp -> Reference -> SSMExp -> (() -> SSM b) -> SSM b
+    After   :: SSMExp -> Reference -> SSMExp -> (() -> SSM b) -> SSM b
     Changed :: Reference -> (SSMExp -> SSM b) -> SSM b
-    Wait   :: [Reference] -> (() -> SSM b) -> SSM b
-    Fork   :: [SSM ()] -> (() -> SSM b) -> SSM b
+    Wait    :: [Reference] -> (() -> SSM b) -> SSM b
+    Fork    :: [SSM ()] -> (() -> SSM b) -> SSM b
 
     -- | Procedure construction
     Procedure :: Arg a => String -> (a -> b) -> (() -> SSM c) -> SSM c
@@ -153,7 +158,7 @@ type Exp a = SSMExp                 -- expressions
 instance Arg (Exp a) where
     arg name (x:xs) b = Argument name x (Left b) return >> return (Var x, xs)
 
-instance {-# OVERLAPPING #-} Arg (Ref a) where
+instance Arg (Ref a) where
     arg name (x:xs) e = Argument name x (Right e) return >> return (x, xs)
 
 -- | Possible results of SSM procedures (they can't return anything)
@@ -224,7 +229,9 @@ waitall :: [Ref a] -> SSM ()
 waitall refs = fork $ map mywait refs
 
 {- An operator like this would be nice, if we want to use a reference in the
-expression that computes the boolean. -}
+expression that computes the boolean. Will probably need to add a new constructor
+WhileM :: SSM SSMExp -> SSM () -> .... and then use a typeclass to be able to provide
+a single function while that works for both cases. -}
 whileSSM :: SSM (Exp Bool) -> SSM () -> SSM ()
 whileSSM sc sbdy = undefined
 
@@ -461,7 +468,7 @@ interpret ssm args = do
     putStrLn "beginning interpretation --"
     -- Create references for the program arguments and create the state
     args' <- mkArgs args
-    let p = Proc 0 1024 0 Nothing Map.empty Map.empty Nothing ssm
+    let p = Proc 1024 10 0 Nothing Map.empty Map.empty Nothing ssm
     let state = st (Map.fromList args') p
     putStrLn "done setting up program arguments --"
 
@@ -546,8 +553,8 @@ runProcess p = case continuation p of
         --liftIO $ putStrLn $ "newref"
         r <- liftIO $ newIORef e
         runProcess $ p { references   = Map.insert n r (references p)
-                          , continuation = k n
-                          }
+                       , continuation = k n
+                       }
     SetRef r e k -> do
         --liftIO $ putStrLn $ "setref"
         writeRef p r e
@@ -587,7 +594,7 @@ runProcess p = case continuation p of
           Lit (LInt num) -> do
               ref <- lookupRef r p
               t   <- gets now
-              v' <- eval p v
+              v'  <- eval p v
               modify $ \st -> st { events = Event (t + num) ref v' : events st }
               runProcess $ p { continuation = k ()}
           _ -> error $ "interpreter error - not a number " ++ show i
@@ -736,3 +743,144 @@ enqueue p = modify $ \st -> st { readyQueue = insert p (readyQueue st)}
       insert p1 (p2:ps) = if priority p1 < priority p2
                             then p1 : p2 : ps
                             else p2 : insert p1 ps
+
+---------- code generation ----------
+
+type CGen a = StateT Int -- widest wait encountered so far (determines the number of triggers) 
+                (WriterT [String] 
+                  IO) a
+
+runCGen :: SSM () -> IO String
+runCGen ssm = do
+    let rw = evalStateT (genProcedure ssm) 0
+    out <- execWriterT rw
+    return $ unlines out
+
+-- f <- censor (const []) $ snd <$> listen (local (const 0) (compileSSM ssm))
+genProcedure :: SSM () -> CGen ()
+genProcedure ssm = do
+    struct <- censor (const []) $ snd <$> listen (genStruct ssm)
+    enter  <- censor (const []) $ snd <$> listen (genEnter ssm)
+    step   <- censor (const []) $ snd <$> listen (genStep ssm)
+    tell [unlines struct]
+    tell [""]
+    tell [unlines enter]
+    tell [""]
+    tell [unlines step]
+
+genStruct :: SSM () -> CGen ()
+genStruct (Procedure name _ k) = do
+    tell ["typedef struct {"]
+    indent "/* Generic procedure fields */"
+    indent "void (*step)(rar_t *); // Pointer to step function"
+    indent "uint16_t pc;           // Saved control state"
+    indent "rar_t *caller;         // Caller's activation record"
+    indent "uint16_t children;     // Number of running children"
+    indent "uint32_t priority;     // Order in the ready queue"
+    indent "uint8_t depth;         // Index of LSB of our priority"
+    indent "bool scheduled;        // True when in the ready queue"
+    indent "/* procedure specific fields */"
+    specifics $ k ()
+    triggers
+    tell ["} rar_" ++ name ++ "_t;"]
+  where
+      indent :: String -> CGen ()
+      indent str = tell [replicate 4 ' ' ++ str]
+
+      specifics :: SSM () -> CGen ()
+      specifics ssm = case ssm of
+          (Return x)        -> return ()
+          (NewRef n e k)    -> do indent $ "cv_int_t " ++ n ++ ";"
+                                  specifics (k n)
+          (SetRef r e k)    -> specifics (k ())
+          (SetLocal e v k)  -> specifics (k ())
+          (GetRef r k)      -> specifics (k (Lit (LBool True)))
+          (If c thn (Just els) k) -> specifics (thn >> els >> k ())
+          (If c thn Nothing k)  -> specifics (thn >> k ())
+          (While c bdy k)   -> specifics (bdy >> k ())
+          (After e r v k)   -> specifics (k ())
+          (Changed r k)     -> specifics (k (Lit (LBool True))) -- dummy bool
+          (Wait vars k)     -> do modify $ \st -> max st (length vars)
+                                  specifics (k ())
+          (Fork procs k)    -> specifics (k ())
+          (Procedure n _ k) -> specifics (k ())
+          (Argument n name (Left e) k)  -> do indent $ "cv_int_t " ++ name ++ ";"
+                                              specifics (k ())
+          (Argument n name (Right r) k) -> do indent $ "cv_int_t *" ++ name ++ ";"
+                                              specifics (k ())
+          (Result n r k)    -> specifics (k ())
+    
+      triggers :: CGen ()
+      triggers = do
+          st <- get
+          mapM_ (\i -> indent ("trigger_t trig" ++ show i ++ ";")) [1..st]
+
+
+genEnter :: SSM () -> CGen ()
+genEnter ssm@(Procedure n _ _) = do
+    let level = 19 + length n
+    tell ["rar_" ++ n ++ "_t *enter_" ++ n ++ "( rar_t* caller"]
+    indent level ", uint32_t priority"
+    indent level ", uint8_t depth"
+    censor closeParen $ mapM_ (\(t,name) -> indent level (", " ++ t ++ name)) $ getArgs ssm
+    indent 0 "{"
+    indent 4 $ "rar_" ++ n ++ "_t *rar = (rar_" ++ n ++ "_t *)"
+    indent 8 $ "enter(sizeof(rar_" ++ n ++ "_t), step_" ++ n ++ ", caller, priority, depth);"
+    mapM_ (\(_,name) -> indent 4 ("rar->" ++ name ++ " = " ++ name ++ ";")) $ getArgs ssm
+    get >>= \i -> mapM_ initTrigger [1..i]
+    indent 0 "}"
+  where
+    getArgs :: SSM () -> [(String, String)]
+    getArgs ssm = case ssm of
+        (Procedure n _ k)             -> getArgs $ k ()
+        (Argument n name (Left e) k)  -> ("cv_int_t ", name)   : getArgs (k ())
+        (Argument n name (Right r) k) -> ("cv_int_t *", name) : getArgs (k ())
+        _                             -> []
+    
+    initTrigger :: Int -> CGen ()
+    initTrigger i = indent 4 $ "rar->trig" ++ show i ++ ".rar = (rar_t *) rar;"
+
+    indent :: Int -> String -> CGen ()
+    indent level str = tell [replicate level ' ' ++ str]
+
+    closeParen :: [String] -> [String]
+    closeParen []     = []
+    closeParen [x]    = [x ++ ")"]
+    closeParen (x:xs) = x : closeParen xs
+
+genStep :: SSM () -> CGen ()
+genStep ssm@(Procedure n _ _) = do
+    tell ["void step_" ++ n ++ "(rar_t *gen_rar)"]
+    tell ["{"]
+    indent 4 $ "rar_" ++ n ++ "_t *rar = (rar_" ++ n ++ "_t *) gen_rar;"
+    indent 4   "switch(rar->pc) {"
+    indent 4   "}"
+    indent 4 $ "leave((rar_t *) rar, sizeof(rar_" ++ n ++ "_t)); // Terminate"
+    tell ["}"]
+  where
+      indent :: Int -> String -> CGen ()
+      indent i str = tell [replicate i ' ' ++ str]
+
+      cases :: SSM () -> [SSM ()]
+      cases ssm = undefined
+        where
+            instant :: SSM () -> (SSM (), SSM ())
+            instant ssm = undefined
+
+examp :: Ref Int -> SSM ()
+examp = box "examp" ["a"] $ \a -> do
+    loc <- var "loc" (int 0)
+    wait [a]
+    loc <~ int 42
+    after (int 10) a (int 43)
+    loc' <- deref loc
+    fork [foo (int 42) loc']
+    fork [foo (int 40) loc', bar (int 42)]
+  where
+      foo :: Exp Int -> Exp Int -> SSM ()
+      foo = box "foo" ["a1","a2"] $ \a1 a2 -> do
+          return ()
+    
+      bar :: Exp Int -> SSM ()
+      bar = box "bar" ["a"] $ \a -> do
+          return ()

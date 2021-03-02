@@ -41,7 +41,7 @@ library
       base >=4.7 && <5
     , mtl
     , containers
-    , integer-gmp
+    , language-c-quote
   default-language: Haskell2010
 
 executable ssm-exe
