@@ -1,6 +1,8 @@
+{-# OPTIONS_GHC -fplugin BinderAnn.Monadic #-}
 module Fib where
 
-import Core
+import BinderAnn.Monadic
+
 import Frontend
 
 mywait :: Ref Int -> SSM ()

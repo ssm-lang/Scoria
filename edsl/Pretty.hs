@@ -65,8 +65,10 @@ printProcedure ssm@(Procedure n _ _) = do
           (After e r v k)   -> do
               emit $ "After " ++ show e ++ " " ++ r ++ " = " ++ show v
               toString' (k ())
-          (Changed r k)     -> do
-              b <- getExpString
+          (Changed r s k)     -> do
+              b <- case s of
+                    (Just (_,n)) -> return (Var n)
+                    Nothing      -> getExpString
               emit $ show b ++ " = @" ++ r
               toString' (k b) 
           (Wait vars k)     -> do

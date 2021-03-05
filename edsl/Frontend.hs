@@ -20,6 +20,7 @@ module Frontend
      , if'
      , while'
      , SSM -- reexport so we don't need to import Core and get all the constructors
+     , Box(..)
 ) where
 
 import Core
@@ -87,7 +88,7 @@ fork procs = Fork procs return
 
 -- The @-operator
 changed :: Ref a -> SSM (Exp Bool)
-changed r = Changed r return
+changed r = Changed r Nothing return
 
 -- | Conditional executing with a dangling else
 if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()

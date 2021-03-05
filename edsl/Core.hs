@@ -1,5 +1,9 @@
 {-# LANGUAGE GADTs#-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Core where
+
+import BinderAnn.Monadic
 
 type Reference = String
 
@@ -19,7 +23,7 @@ data SSM a where
     
     -- | SSM specific operations
     After   :: SSMExp -> Reference -> SSMExp -> (() -> SSM b) -> SSM b
-    Changed :: Reference -> (SSMExp -> SSM b) -> SSM b
+    Changed :: Reference -> Maybe ((Int, Int), String) -> (SSMExp -> SSM b) -> SSM b
     Wait    :: [Reference] -> (() -> SSM b) -> SSM b
     Fork    :: [SSM ()] -> (() -> SSM b) -> SSM b
 
@@ -29,6 +33,10 @@ data SSM a where
     Result    :: (Show a, Res a) => String -> a -> (() -> SSM b) -> SSM b
 --    Tag :: String -> (() -> SSM b) -> SSM b
 
+instance AnnotatedM SSM a where
+    annotateM (Changed r _ k) info = let (Info (Just name) (Just (_, x, y))) = info
+                                     in Changed r (Just ((x,y), name)) k
+    annotateM ma _                 = ma
 
 instance Monad SSM where
     return = Return
@@ -41,7 +49,7 @@ instance Monad SSM where
     If c thn els k    >>= fa = If c thn els    (\x -> k x >>= fa)
     While c bdy k     >>= fa = While c bdy     (\x -> k x >>= fa)
     After e r v k     >>= fa = After e r v     (\x -> k x >>= fa)
-    Changed r k       >>= fa = Changed r       (\x -> k x >>= fa)
+    Changed r s k     >>= fa = Changed r s     (\x -> k x >>= fa)
     Wait vars k       >>= fa = Wait vars       (\x -> k x >>= fa)
     Fork procs k      >>= fa = Fork procs      (\x -> k x >>= fa)
     Procedure n f k   >>= fa = Procedure n f   (\x -> k x >>= fa)

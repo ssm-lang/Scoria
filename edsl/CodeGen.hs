@@ -64,7 +64,7 @@ genStruct (Procedure name _ k) = do
           (If c thn Nothing k)  -> specifics (thn >> k ())
           (While c bdy k)   -> specifics (bdy >> k ())
           (After e r v k)   -> specifics (k ())
-          (Changed r k)     -> specifics (k (Lit (LBool True))) -- dummy bool
+          (Changed r s k)   -> specifics (k (Lit (LBool True))) -- dummy bool
           (Wait vars k)     -> do modify $ \st -> st { widestWait = max (widestWait st) (length vars)}
                                   specifics (k ())
           (Fork procs k)    -> specifics (k ())
@@ -171,7 +171,7 @@ genStep ssm@(Procedure n _ _) = do
           (After e r v k)         -> do
               indent level $ "later_int(rar->" ++ r ++ ", now + " ++ compileLit e ++ ", " ++ compileLit v ++ ");"
               instant level $ k ()
-          (Changed r k)           -> do
+          (Changed r s k)           -> do
               b <- fresh
               indent level $ "bool " ++ b ++ " = event_on((cv_t *) rar->" ++ r ++ ");"
               instant level $ k (Var b)

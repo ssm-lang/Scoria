@@ -171,7 +171,7 @@ runProcess p = case continuation p of
               modify $ \st -> st { events = Event (t + num) ref v' : events st }
               runProcess $ p { continuation = k ()}
           _ -> error $ "interpreter error - not a number " ++ show i
-    Changed r k       -> do
+    Changed r s k     -> do
         --liftIO $ putStrLn $ "changed"
         st <- get
         ref <- lookupRef r p
