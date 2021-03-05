@@ -17,7 +17,7 @@
 #
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
-resolver: lts-17.0
+resolver: lts-13.20
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -35,13 +35,18 @@ packages:
 # forks / in-progress versions pinned to a git hash. For example:
 #
 extra-deps:
- - imperative-edsl-0.8@sha256:d8c18d72df90d172e661d1f385ec7db5ec04c2a68b10b1a3c03da52bc4d731c7,3377
- - git: https://github.com/mainland/mainland-pretty
-   commit: f8fa1283fbffbe3fecad3ea853aad7c7958e18bc
- - git: https://github.com/Rewbert/syntactic
-   commit: bb6110190bcde22400bca27d6b6969e3e53c9222
- - operational-alacarte-0.3.1@sha256:bfd2d519333356d1f892bc0a0c017d1955f5cd4264aacd43af6e471d7477c12a,2394
- - tree-view-0.5@sha256:85fbc67b53c1ef47f020a69051e6a29b27481698fe802cd2ed8ab0108aa69a38,1231
+ - git: https://github.com/OctopiChalmers/BinderAnn
+   commit: b3e696c3142b3ba731cd7f6f47286160261a2feb
+ 
+ #- imperative-edsl-0.8@sha256:d8c18d72df90d172e661d1f385ec7db5ec04c2a68b10b1a3c03da52bc4d731c7,3377
+ #- git: https://github.com/mainland/mainland-pretty
+ #  commit: f8fa1283fbffbe3fecad3ea853aad7c7958e18bc
+ #- git: https://github.com/Rewbert/syntactic
+ #  commit: bb6110190bcde22400bca27d6b6969e3e53c9222
+ #- operational-alacarte-0.3.1@sha256:bfd2d519333356d1f892bc0a0c017d1955f5cd4264aacd43af6e471d7477c12a,2394
+ #- tree-view-0.5@sha256:85fbc67b53c1ef47f020a69051e6a29b27481698fe802cd2ed8ab0108aa69a38,1231
+#- BinderAnn-0.1.0.0@sha256:c3b1c3fa2b55414228beb0bd8662cd0be0a85b88b30ae6c3b1498d3be53b6a33,1947
+
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
