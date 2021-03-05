@@ -28,10 +28,17 @@ source-repository head
 library
   exposed-modules:
       BoxTest
+      Core
+      CodeGen
+      Interpreter
+      Frontend
+      Pretty
+      Fib
   other-modules:
       Paths_ssm
   hs-source-dirs:
       edsl
+      example
   build-depends:
       base >=4.7 && <5
     , mtl
