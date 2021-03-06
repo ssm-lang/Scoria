@@ -35,6 +35,7 @@ library
       Pretty
       Fib
       Foo
+      Examp
   other-modules:
       Paths_ssm
   hs-source-dirs:

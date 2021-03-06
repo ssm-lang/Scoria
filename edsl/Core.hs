@@ -6,15 +6,16 @@ module Core where
 import BinderAnn.Monadic
 
 type Reference = String
+type Name = Maybe ((Int, Int), String)
 
 data SSM a where
     -- | Monadic operations
     Return  :: a -> SSM a
 
     -- | Variable/Stream operations
-    NewRef   :: String -> SSMExp -> (Reference -> SSM b) -> SSM b
+    NewRef   :: Name -> SSMExp -> (Reference -> SSM b) -> SSM b
     SetRef   :: Reference -> SSMExp -> (() -> SSM b) -> SSM b
-    GetRef   :: Reference -> (SSMExp -> SSM b) -> SSM b
+    GetRef   :: Reference -> Name -> (SSMExp -> SSM b) -> SSM b
     SetLocal :: SSMExp -> SSMExp -> (() -> SSM b) -> SSM b
     
     -- | Control operations
@@ -23,7 +24,7 @@ data SSM a where
     
     -- | SSM specific operations
     After   :: SSMExp -> Reference -> SSMExp -> (() -> SSM b) -> SSM b
-    Changed :: Reference -> Maybe ((Int, Int), String) -> (SSMExp -> SSM b) -> SSM b
+    Changed :: Reference -> Name -> (SSMExp -> SSM b) -> SSM b
     Wait    :: [Reference] -> (() -> SSM b) -> SSM b
     Fork    :: [SSM ()] -> (() -> SSM b) -> SSM b
 
@@ -34,6 +35,10 @@ data SSM a where
 --    Tag :: String -> (() -> SSM b) -> SSM b
 
 instance AnnotatedM SSM a where
+    annotateM (NewRef _ e k) info = let (Info (Just name) (Just (_, x, y))) = info
+                                    in NewRef (Just ((x,y), name)) e k
+    annotateM (GetRef r _ k) info = let (Info (Just name) (Just (_, x, y))) = info
+                                    in GetRef r (Just ((x,y), name)) k
     annotateM (Changed r _ k) info = let (Info (Just name) (Just (_, x, y))) = info
                                      in Changed r (Just ((x,y), name)) k
     annotateM ma _                 = ma
@@ -45,7 +50,7 @@ instance Monad SSM where
     NewRef n e k      >>= fa = NewRef n e      (\x -> k x >>= fa)
     SetRef r e k      >>= fa = SetRef r e      (\x -> k x >>= fa)
     SetLocal e v k    >>= fa = SetLocal e v    (\x -> k x >>= fa)
-    GetRef r k        >>= fa = GetRef r        (\x -> k x >>= fa)
+    GetRef r s k      >>= fa = GetRef r s      (\x -> k x >>= fa)
     If c thn els k    >>= fa = If c thn els    (\x -> k x >>= fa)
     While c bdy k     >>= fa = While c bdy     (\x -> k x >>= fa)
     After e r v k     >>= fa = After e r v     (\x -> k x >>= fa)

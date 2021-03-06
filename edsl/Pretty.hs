@@ -34,16 +34,23 @@ printProcedure ssm@(Procedure n _ _) = do
       toString' ssm = case ssm of
           (Return x)        -> return ()
           (NewRef n e k)    -> do
-              emit $ n ++ " = NewRef " ++ show e
-              toString' (k n)
+              name <- case n of
+                  Just (_,n') -> return n'
+                  Nothing     -> do (i,w,b) <- get
+                                    put (i+1,w,b)
+                                    return $ "v" ++ show i
+              emit $ name ++ " = NewRef " ++ show e
+              toString' (k name)
           (SetRef r e k)    -> do
               emit $ "SetRef " ++ r ++ " = " ++ show e
               toString' (k ())
           (SetLocal e v k)  -> do
               emit $ "SetLocal " ++ show e ++ " = " ++ show v
               toString' (k ())
-          (GetRef r k)      -> do
-              v <- getExpString
+          (GetRef r s k)      -> do
+              v <- case s of
+                  Just (_, n) -> return (Var n)
+                  Nothing     -> getExpString
               emit $ show v ++ " = GetRef " ++ r
               toString' (k v)
           (If c thn (Just els) k)  -> do

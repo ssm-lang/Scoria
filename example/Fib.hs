@@ -20,8 +20,8 @@ mysum = box "mysum" ["r1", "r2", "r"] $ \r1 r2 r -> do
 
 myfib :: Exp Int -> Ref Int -> SSM ()
 myfib = box "myfib" ["n", "r"] $ \n r -> do
-    r1 <- var "r1" (int 0)
-    r2 <- var "r2" (int 0)
+    r1 <- var (int 0)
+    r2 <- var (int 0)
     if' (n <. int 2)
             (after (int 1) r (int 1))
             (Just (fork [ myfib (n -. int 1) r1

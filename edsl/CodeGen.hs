@@ -55,11 +55,11 @@ genStruct (Procedure name _ k) = do
       specifics :: SSM () -> CGen ()
       specifics ssm = case ssm of
           (Return x)        -> return ()
-          (NewRef n e k)    -> do indent $ "cv_int_t " ++ n ++ ";"
-                                  specifics (k n)
+          (NewRef (Just (_,n)) e k) -> do indent $ "cv_int_t " ++ n ++ ";"
+                                          specifics (k n)
           (SetRef r e k)    -> specifics (k ())
           (SetLocal e v k)  -> specifics (k ())
-          (GetRef r k)      -> specifics (k (Lit (LBool True)))
+          (GetRef r s k)    -> specifics (k (Lit (LBool True)))
           (If c thn (Just els) k) -> specifics (thn >> els >> k ())
           (If c thn Nothing k)  -> specifics (thn >> k ())
           (While c bdy k)   -> specifics (bdy >> k ())
@@ -138,7 +138,7 @@ genStep ssm@(Procedure n _ _) = do
       instant :: Int -> SSM () -> CGen ()
       instant level ssm = case ssm of
           (Return x)              -> return ()
-          (NewRef n e k)          -> do
+          (NewRef (Just (_,n)) e k) -> do
               indent level $ "initialize_int(&rar->" ++ n ++ ", " ++ compileLit e ++ ");"
               instant level $ k n
           (SetRef r e k)          -> do
@@ -147,7 +147,7 @@ genStep ssm@(Procedure n _ _) = do
           (SetLocal (Var e) v k)        -> do
               indent level $ "assign_int(&rar->" ++ e ++ ", rar->priority, " ++ compileLit v ++ ");"
               instant level $ k ()
-          (GetRef r k)            -> do
+          (GetRef r s k)            -> do
               n <- fresh
               indent level $ "int " ++ n ++ " = *(rar->" ++ r ++ "->value);"
               instant level $ k (Var ("rar->" ++ n))

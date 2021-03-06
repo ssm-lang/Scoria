@@ -122,7 +122,7 @@ eval p e = do
 runProcess :: Proc -> Interp ()
 runProcess p = case continuation p of
     Return x          -> return ()
-    NewRef n e k      -> do
+    NewRef (Just (_,n)) e k      -> do
         --liftIO $ putStrLn $ "newref"
         r <- liftIO $ newIORef e
         runProcess $ p { references   = Map.insert n r (references p)
@@ -137,7 +137,7 @@ runProcess p = case continuation p of
         writeRef p r v
         runProcess $ p { continuation = k ()}
     SetLocal e v k -> error $ "interpreter error - can not assign value to expression: " ++ show e
-    GetRef r k -> do
+    GetRef r s k -> do
         --liftIO $ putStrLn $ "getref"
         ior <- lookupRef r p
         e <- liftIO $ readIORef ior

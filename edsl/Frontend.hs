@@ -71,10 +71,10 @@ int :: Int -> Exp Int
 int i = Lit $ LInt i
 
 deref :: Ref a -> SSM (Exp a)
-deref r = GetRef r return
+deref r = GetRef r Nothing return
 
-var :: String -> Exp a -> SSM (Ref a)
-var n e = NewRef n e return
+var :: Exp a -> SSM (Ref a)
+var e = NewRef Nothing e return
 
 wait :: [Ref a] -> SSM ()
 wait r = Wait r return
