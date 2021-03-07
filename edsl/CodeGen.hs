@@ -8,8 +8,9 @@ import Data.List
 import Core
 
 data CGenSt = CGenSt { widestWait  :: Int
-                     , nextCase :: Int
-                     , nameGen :: Int
+                     , nextCase    :: Int
+                     , localVars   :: [String]
+                     , nameGen     :: Int
                      }
 type CGen a = StateT CGenSt -- widest wait encountered so far (determines the number of triggers) 
                 (WriterT [String] 
@@ -17,7 +18,7 @@ type CGen a = StateT CGenSt -- widest wait encountered so far (determines the nu
 
 runCGen :: SSM () -> IO String
 runCGen ssm = do
-    let rw = evalStateT (genProcedure ssm) (CGenSt 0 0 0)
+    let rw = evalStateT (genProcedure ssm) (CGenSt 0 0 [] 0)
     out <- execWriterT rw
     return $ unlines out
 
@@ -59,12 +60,16 @@ genStruct (Procedure name _ k) = do
                                           specifics (k n)
           (SetRef r e k)    -> specifics (k ())
           (SetLocal e v k)  -> specifics (k ())
-          (GetRef r s k)    -> specifics (k (Lit (LBool True)))
+          (GetRef r (Just (_,n)) k) -> do --indent $ "cv_int_t *" ++ n ++ ";"
+                                          modify $ \st -> st { localVars = localVars st ++ [n]}
+                                          specifics (k (Var n))
           (If c thn (Just els) k) -> specifics (thn >> els >> k ())
-          (If c thn Nothing k)  -> specifics (thn >> k ())
+          (If c thn Nothing k)    -> specifics (thn >> k ())
           (While c bdy k)   -> specifics (bdy >> k ())
           (After e r v k)   -> specifics (k ())
-          (Changed r s k)   -> specifics (k (Lit (LBool True))) -- dummy bool
+          (Changed r (Just (_,n)) k) -> do --indent $ "cv_int_t *" ++ n ++ ";"
+                                           modify $ \st -> st { localVars = localVars st ++ [n]}
+                                           specifics (k (Var n))
           (Wait vars k)     -> do modify $ \st -> st { widestWait = max (widestWait st) (length vars)}
                                   specifics (k ())
           (Fork procs k)    -> specifics (k ())
@@ -94,6 +99,8 @@ genEnter ssm@(Procedure n _ _) = do
     mapM_ (\(_,name) -> indent 4 ("rar->" ++ name ++ " = " ++ name ++ ";")) $ getArgs ssm
     i <- gets widestWait
     mapM_ initTrigger [1..i]
+    --vars <- gets localVars
+    --mapM_ initLocal vars
     indent 0 "}"
   where
     getArgs :: SSM () -> [(String, String)]
@@ -105,6 +112,9 @@ genEnter ssm@(Procedure n _ _) = do
     
     initTrigger :: Int -> CGen ()
     initTrigger i = indent 4 $ "rar->trig" ++ show i ++ ".rar = (rar_t *) rar;"
+
+    --initLocal :: String -> CGen ()
+    --initLocal var = indent 4 $ "rar->" ++ var ++ " = (cv_int_t *) malloc(sizeof(cv_int_t));"
 
     indent :: Int -> String -> CGen ()
     indent level str = tell [replicate level ' ' ++ str]
@@ -139,59 +149,72 @@ genStep ssm@(Procedure n _ _) = do
       instant level ssm = case ssm of
           (Return x)              -> return ()
           (NewRef (Just (_,n)) e k) -> do
-              indent level $ "initialize_int(&rar->" ++ n ++ ", " ++ compileLit e ++ ");"
+              a <- compileLit e
+              indent level $ "initialize_int(&rar->" ++ n ++ ", " ++ a ++ ");"
               instant level $ k n
           (SetRef r e k)          -> do
-              indent level $ "assign_int(&rar->" ++ r ++ ", rar->priority, " ++ compileLit e ++ ");"
+              a <- compileLit e
+              indent level $ "assign_int(&rar->" ++ r ++ ", rar->priority, " ++ a ++ ");"
               instant level $ k ()
           (SetLocal (Var e) v k)        -> do
-              indent level $ "assign_int(&rar->" ++ e ++ ", rar->priority, " ++ compileLit v ++ ");"
+              a <- compileLit v
+              indent level $ "assign_int(&rar->" ++ e ++ ", rar->priority, " ++ a ++ ");"
               instant level $ k ()
-          (GetRef r s k)            -> do
-              n <- fresh
-              indent level $ "int " ++ n ++ " = *(rar->" ++ r ++ "->value);"
-              instant level $ k (Var ("rar->" ++ n))
+          (GetRef r (Just (_,n)) k) -> do
+              indent level $ "int " ++ n ++ " = rar->" ++ r ++ "-> value;"
+--              indent level $ "assign_int(&rar->" ++ n ++ ", rar->priority, rar->" ++ r ++ "->value;"
+              instant level $ k (Var n)
+          (GetRef r _ k) -> do
+              error "not supporting immediate read from a reference yet"
           (If c thn (Just els) k) -> do
-              indent level $ "if( " ++ compileLit c ++ " ) {"
+              a <- compileLit c
+              indent level $ "if( " ++ a ++ " ) {"
               instant (level + 4) thn
               indent level "} else {"
               instant (level + 4) els
               indent level "}"
               instant level $ k ()
           (If c thn Nothing k)    -> do
-              indent level $ "if( " ++ compileLit c ++ " ) {"
+              a <- compileLit c
+              indent level $ "if( " ++ a ++ " ) {"
               instant (level + 4) thn
               indent level "}"
               instant level $ k ()
           (While c bdy k)         -> do
-              indent level $ "while ( " ++ compileLit c ++ " ) {"
+              a <- compileLit c
+              indent level $ "while ( " ++ a ++ " ) {"
               instant (level + 4) bdy
               indent level "}"
               instant level $ k ()
           (After e r v k)         -> do
-              indent level $ "later_int(rar->" ++ r ++ ", now + " ++ compileLit e ++ ", " ++ compileLit v ++ ");"
+              e' <- compileLit e
+              v' <- compileLit v
+              indent level $ "later_int(rar->" ++ r ++ ", now + " ++ e' ++ ", " ++ v' ++ ");"
               instant level $ k ()
-          (Changed r s k)           -> do
-              b <- fresh
-              indent level $ "bool " ++ b ++ " = event_on((cv_t *) rar->" ++ r ++ ");"
-              instant level $ k (Var b)
+          (Changed r (Just (_,n)) k)           -> do
+              indent level $ "bool " ++ n ++ " = event_on((ct_t *) rar->" ++ r ++ ");"
+--              indent level $ "assign_int(&rar->" ++ n ++ ", rar->priority, event_on((cv_t *) rar->" ++ r ++ ");"
+              instant level $ k (Var n)
           (Wait vars k)           -> do
               forM_ (zip vars [1..]) $ \(v,i) -> do
                   indent level $ "sensitize((cv_t*) rar->" ++ v ++ ", &rar->trig" ++ show i ++ ");"
                   pc' <- gets nextCase
                   indent level $ "rar->pc = " ++ show pc' ++ ";"
                   indent level   "return;"
-                  newCase (level-4)
-                  -- desensitize the triggers here
-                  instant level $ k ()
+              newCase (level-4)
+              forM_ (zip vars [1..]) $ \(v,i) -> do
+                  indent level $ "desensitize(&rar->trig" ++ show i ++ ");"
+              instant level $ k ()
           (Fork procs k)          -> do
+              -- type error right now if you pass in local variables as arguments.
+              -- they need to be of type cv_int, but are currently only int.
               if length procs > 1
                 then do
                     let new_depth_corr = integerLogBase 2 (toInteger (length procs))
                     indent level $ "uint8_t  new_depth    = rar->depth - " ++ show new_depth_corr ++ ";"
                     indent level   "uint32_t pinc         = 1 << new_depth;"
                     indent level   "uint32_t new_priority = rar->priority;"
-                    let forks  = map (compileFork level "fork") procs
+                    forks  <- mapM (compileFork level "fork") procs
                     let forks' = intersperse ["", "new_priority = += pinc;"] forks
                     mapM_ (mapM_ (indent level)) forks'
                     pc' <- gets nextCase
@@ -199,7 +222,8 @@ genStep ssm@(Procedure n _ _) = do
                 else do
                     pc' <- gets nextCase
                     indent level $ "rar->pc = " ++ show pc' ++ ";"
-                    mapM_ (indent level) $ compileFork level "call" (head procs)
+                    f <- compileFork level "call" (head procs)
+                    mapM_ (indent level) f -- $ compileFork level "call" (head procs)
               indent level "return;"
               newCase (level-4)
               instant level $ k ()
@@ -208,13 +232,39 @@ genStep ssm@(Procedure n _ _) = do
           (Argument _ _ _ k)      -> instant level $ k ()
           (Result _ _ k)          -> instant level $ k ()
 
-      compileLit :: SSMExp -> String
+      compileFork :: Int -> String -> SSM () -> CGen [String]
+      compileFork level method ssm@(Procedure n _ k) = do
+          let constant_args = [ "(rar_t *) rar"
+                              , "new_priority"
+                              , "new_depth"
+                              ]
+          var_args      <- getArgs $ k ()
+          let all_args      = constant_args ++ var_args
+          let prefix        = method ++ "((rar_t *) enter_" ++ n ++ "( "
+          let args          = map (\s -> replicate (length prefix - 1) ' ' ++ ", " ++ s) (tail all_args)
+          return $ (prefix ++ head all_args) : args ++ ["));"]
+        where
+            getArgs :: SSM () -> CGen [String]
+            getArgs (Argument _ x (Left e) k)  = do e' <- compileLit e
+                                                    rest <- getArgs $ k ()
+                                                    return $ e' : rest
+            getArgs (Argument _ x (Right r) k) = do rest <- getArgs (k ())
+                                                    return $ ("rar->" ++ r) : rest
+            getArgs _                          = return []
+
+      compileLit :: SSMExp -> CGen String
       compileLit e = case e of
-          Var s         -> "rar->" ++ s ++ "->value"
-          Lit (LInt i)  -> show i
-          Lit (LBool b) -> if b then "true" else "false"
-          UOp e Neg     -> "(-" ++ compileLit e ++ ")"
-          BOp e1 e2 op  -> "(" ++ compileLit e1 ++ ")" ++ compileOp op ++ "(" ++ compileLit e2 ++ ")"
+          Var s         -> do st <- get
+                              if s `elem` localVars st
+                                then return $ s
+                                else return $ "&rar->" ++ s
+          Lit (LInt i)  -> return $ show i
+          Lit (LBool b) -> if b then return "true" else return "false"
+          UOp e Neg     -> do e' <- compileLit e
+                              return $ "(-" ++ e' ++ ")"
+          BOp e1 e2 op  -> do e1' <- compileLit e1
+                              e2' <- compileLit e2
+                              return $ "(" ++ e1' ++ ")" ++ compileOp op ++ "(" ++ e2' ++ ")"
         where
             compileOp :: BinOp -> String
             compileOp OPlus  = "+"
@@ -222,23 +272,6 @@ genStep ssm@(Procedure n _ _) = do
             compileOp OTimes = "*"
             compileOp OLT    = "<"
             compileOp OEQ    = "=="
-
-      compileFork :: Int -> String -> SSM () -> [String]
-      compileFork level method ssm@(Procedure n _ k) = 
-          let constant_args = [ "(rar_t *) rar"
-                              , "new_priority"
-                              , "new_depth"
-                              ]
-              var_args      = getArgs $ k ()
-              all_args      = constant_args ++ var_args
-              prefix        = method ++ "((rar_t *) enter_" ++ n ++ "( "
-              args          = map (\s -> replicate (length prefix - 1) ' ' ++ ", " ++ s) (tail all_args)
-          in (prefix ++ head all_args) : args ++ ["));"]
-        where
-            getArgs :: SSM () -> [String]
-            getArgs (Argument _ x (Left e) k)  = compileLit e : getArgs (k ())
-            getArgs (Argument _ x (Right r) k) = r            : getArgs (k ())
-            getArgs _                          = []
 
       fresh :: CGen String
       fresh = do

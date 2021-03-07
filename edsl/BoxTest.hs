@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 module BoxTest where
-
+{-
 import Control.Monad.State
 import Control.Monad.Reader
 import Control.Monad.Writer
@@ -1016,3 +1016,4 @@ examp = box "examp" ["a"] $ \a -> do
       bar :: Exp Int -> SSM ()
       bar = box "bar" ["a"] $ \a -> do
           return ()
+-}
