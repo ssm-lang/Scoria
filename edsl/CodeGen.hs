@@ -57,7 +57,7 @@ genStruct (Procedure name _ k) = do
       specifics ssm = case ssm of
           (Return x)        -> return ()
           (NewRef (Just (_,n)) e k) -> do indent $ "cv_int_t " ++ n ++ ";"
-                                          specifics (k (n, Ref undefined))
+                                          specifics (k (n, Ref (expType e)))
           (SetRef r e k)    -> specifics (k ())
           (SetLocal e v k)  -> specifics (k ())
           (GetRef (r, t) (Just (_,n)) k) -> do indent $ "cv_int_t *" ++ n ++ ";"
@@ -157,7 +157,7 @@ genStep ssm@(Procedure n _ _) = do
           (NewRef (Just (_,n)) e k) -> do
               a <- compileLit e
               indent level $ "initialize_int(&rar->" ++ n ++ ", " ++ a ++ ");"
-              instant level $ k (n, Ref undefined)
+              instant level $ k (n, Ref (expType e))
           (SetRef (r,_) e k)          -> do
               a <- compileLit e
               indent level $ "assign_int(&rar->" ++ r ++ ", rar->priority, " ++ a ++ ");"

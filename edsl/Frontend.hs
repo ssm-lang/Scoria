@@ -37,7 +37,7 @@ newtype Exp a = Exp SSMExp                 -- expressions
 
 -- | Arguments we can apply SSM procedures to
 instance Arg (Exp a) where
-    arg name (x:xs) (Exp b) = Argument name x (Left b) return >> return (Exp (Var undefined x), xs)
+    arg name (x:xs) (Exp b) = Argument name x (Left b) return >> return (Exp (Var (expType b) x), xs)
 
 instance Arg (Ref a) where
     arg name (x:xs) (Ptr (e,t)) = Argument name x (Right (e,t)) return >> return (Ptr (x, t), xs)
