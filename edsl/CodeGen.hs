@@ -57,19 +57,19 @@ genStruct (Procedure name _ k) = do
       specifics ssm = case ssm of
           (Return x)        -> return ()
           (NewRef (Just (_,n)) e k) -> do indent $ "cv_int_t " ++ n ++ ";"
-                                          specifics (k n)
+                                          specifics (k (n, Ref undefined))
           (SetRef r e k)    -> specifics (k ())
           (SetLocal e v k)  -> specifics (k ())
-          (GetRef r (Just (_,n)) k) -> do --indent $ "cv_int_t *" ++ n ++ ";"
-                                          modify $ \st -> st { localVars = localVars st ++ [n]}
-                                          specifics (k (Var n))
+          (GetRef (r, t) (Just (_,n)) k) -> do indent $ "cv_int_t *" ++ n ++ ";"
+                                               modify $ \st -> st { localVars = localVars st ++ [n]}
+                                               specifics (k (Var (dereference t) n))
           (If c thn (Just els) k) -> specifics (thn >> els >> k ())
           (If c thn Nothing k)    -> specifics (thn >> k ())
           (While c bdy k)   -> specifics (bdy >> k ())
           (After e r v k)   -> specifics (k ())
-          (Changed r (Just (_,n)) k) -> do --indent $ "cv_int_t *" ++ n ++ ";"
+          (Changed r (Just (_,n)) k) -> do indent $ "cv_int_t *" ++ n ++ ";"
                                            modify $ \st -> st { localVars = localVars st ++ [n]}
-                                           specifics (k (Var n))
+                                           specifics (k (Var TBool n))
           (Wait vars k)     -> do modify $ \st -> st { widestWait = max (widestWait st) (length vars)}
                                   specifics (k ())
           (Fork procs k)    -> specifics (k ())
@@ -99,8 +99,8 @@ genEnter ssm@(Procedure n _ _) = do
     mapM_ (\(_,name) -> indent 4 ("rar->" ++ name ++ " = " ++ name ++ ";")) $ getArgs ssm
     i <- gets widestWait
     mapM_ initTrigger [1..i]
-    --vars <- gets localVars
-    --mapM_ initLocal vars
+    vars <- gets localVars
+    mapM_ initLocal vars
     indent 0 "}"
   where
     getArgs :: SSM () -> [(String, String)]
@@ -113,8 +113,8 @@ genEnter ssm@(Procedure n _ _) = do
     initTrigger :: Int -> CGen ()
     initTrigger i = indent 4 $ "rar->trig" ++ show i ++ ".rar = (rar_t *) rar;"
 
-    --initLocal :: String -> CGen ()
-    --initLocal var = indent 4 $ "rar->" ++ var ++ " = (cv_int_t *) malloc(sizeof(cv_int_t));"
+    initLocal :: String -> CGen ()
+    initLocal var = indent 4 $ "rar->" ++ var ++ " = (cv_int_t *) malloc(sizeof(cv_int_t));"
 
     indent :: Int -> String -> CGen ()
     indent level str = tell [replicate level ' ' ++ str]
@@ -133,6 +133,7 @@ genStep ssm@(Procedure n _ _) = do
     newCase 4
     instant 8 ssm
     indent 4   "; }"
+    freeLocals
     indent 4 $ "leave((rar_t *) rar, sizeof(rar_" ++ n ++ "_t)); // Terminate"
     tell ["}"]
   where
@@ -145,25 +146,30 @@ genStep ssm@(Procedure n _ _) = do
           modify $ \st -> st {nextCase = nextCase st + 1}
           indent level $ "case " ++ show numcase ++ ":"
 
+      freeLocals :: CGen ()
+      freeLocals = do
+          vars <- gets localVars
+          mapM_ (\s -> indent 4 ("free(rar->" ++ s ++ ");")) vars
+
       instant :: Int -> SSM () -> CGen ()
       instant level ssm = case ssm of
           (Return x)              -> return ()
           (NewRef (Just (_,n)) e k) -> do
               a <- compileLit e
               indent level $ "initialize_int(&rar->" ++ n ++ ", " ++ a ++ ");"
-              instant level $ k n
-          (SetRef r e k)          -> do
+              instant level $ k (n, Ref undefined)
+          (SetRef (r,_) e k)          -> do
               a <- compileLit e
               indent level $ "assign_int(&rar->" ++ r ++ ", rar->priority, " ++ a ++ ");"
               instant level $ k ()
-          (SetLocal (Var e) v k)        -> do
+          (SetLocal (Var _ e) v k)        -> do
               a <- compileLit v
               indent level $ "assign_int(&rar->" ++ e ++ ", rar->priority, " ++ a ++ ");"
               instant level $ k ()
-          (GetRef r (Just (_,n)) k) -> do
-              indent level $ "int " ++ n ++ " = rar->" ++ r ++ "-> value;"
---              indent level $ "assign_int(&rar->" ++ n ++ ", rar->priority, rar->" ++ r ++ "->value;"
-              instant level $ k (Var n)
+          (GetRef (r, t) (Just (_,n)) k) -> do
+              --indent level $ "int " ++ n ++ " = rar->" ++ r ++ "-> value;"
+              indent level $ "assign_int(&rar->" ++ n ++ ", rar->priority, rar->" ++ r ++ "->value);"
+              instant level $ k (Var (dereference t) n)
           (GetRef r _ k) -> do
               error "not supporting immediate read from a reference yet"
           (If c thn (Just els) k) -> do
@@ -186,17 +192,17 @@ genStep ssm@(Procedure n _ _) = do
               instant (level + 4) bdy
               indent level "}"
               instant level $ k ()
-          (After e r v k)         -> do
+          (After e (r,_) v k)         -> do
               e' <- compileLit e
               v' <- compileLit v
               indent level $ "later_int(rar->" ++ r ++ ", now + " ++ e' ++ ", " ++ v' ++ ");"
               instant level $ k ()
-          (Changed r (Just (_,n)) k)           -> do
-              indent level $ "bool " ++ n ++ " = event_on((ct_t *) rar->" ++ r ++ ");"
---              indent level $ "assign_int(&rar->" ++ n ++ ", rar->priority, event_on((cv_t *) rar->" ++ r ++ ");"
-              instant level $ k (Var n)
+          (Changed (r,_) (Just (_,n)) k)           -> do
+              --indent level $ "bool " ++ n ++ " = event_on((ct_t *) rar->" ++ r ++ ");"
+              indent level $ "assign_int(&rar->" ++ n ++ ", rar->priority, event_on((cv_t *) rar->" ++ r ++ ");"
+              instant level $ k (Var TBool n)
           (Wait vars k)           -> do
-              forM_ (zip vars [1..]) $ \(v,i) -> do
+              forM_ (zip vars [1..]) $ \((v,_),i) -> do
                   indent level $ "sensitize((cv_t*) rar->" ++ v ++ ", &rar->trig" ++ show i ++ ");"
                   pc' <- gets nextCase
                   indent level $ "rar->pc = " ++ show pc' ++ ";"
@@ -248,23 +254,20 @@ genStep ssm@(Procedure n _ _) = do
             getArgs (Argument _ x (Left e) k)  = do e' <- compileLit e
                                                     rest <- getArgs $ k ()
                                                     return $ e' : rest
-            getArgs (Argument _ x (Right r) k) = do rest <- getArgs (k ())
-                                                    return $ ("rar->" ++ r) : rest
+            getArgs (Argument _ x (Right (r,_)) k) = do rest <- getArgs (k ())
+                                                        return $ ("rar->" ++ r) : rest
             getArgs _                          = return []
 
       compileLit :: SSMExp -> CGen String
       compileLit e = case e of
-          Var s         -> do st <- get
-                              if s `elem` localVars st
-                                then return $ s
-                                else return $ "&rar->" ++ s
-          Lit (LInt i)  -> return $ show i
-          Lit (LBool b) -> if b then return "true" else return "false"
-          UOp e Neg     -> do e' <- compileLit e
-                              return $ "(-" ++ e' ++ ")"
-          BOp e1 e2 op  -> do e1' <- compileLit e1
-                              e2' <- compileLit e2
-                              return $ "(" ++ e1' ++ ")" ++ compileOp op ++ "(" ++ e2' ++ ")"
+          Var _ s         -> return $ "&rar->" ++ s
+          Lit _ (LInt i)  -> return $ show i
+          Lit _ (LBool b) -> if b then return "true" else return "false"
+          UOp _ e Neg     -> do e' <- compileLit e
+                                return $ "(-" ++ e' ++ ")"
+          BOp _ e1 e2 op  -> do e1' <- compileLit e1
+                                e2' <- compileLit e2
+                                return $ "(" ++ e1' ++ ")" ++ compileOp op ++ "(" ++ e2' ++ ")"
         where
             compileOp :: BinOp -> String
             compileOp OPlus  = "+"

@@ -5,7 +5,7 @@ module Core where
 
 import BinderAnn.Monadic
 
-type Reference = String
+type Reference = (String, Type)
 type Name = Maybe ((Int, Int), String)
 
 data SSM a where
@@ -74,18 +74,48 @@ instance Applicative SSM where
         m <- ma
         return $ f m
 
+data Type = TInt
+          | TBool
+          | Ref Type
+  deriving (Eq, Show)
+
+class SSMType a where
+    typeOf :: proxy a -> Type
+
+instance SSMType Int where
+    typeOf _ = TInt
+
+instance SSMType Bool where
+    typeOf _ = TBool
+
+--class Typeable a where
+--    typeOf :: a -> Type
+
+--instance Typeable SSMExp where
+expType (Var t _)     = t
+expType (Lit t _)     = t
+expType (UOp t _ _)   = t
+expType (BOp t _ _ _) = t
+
+dereference :: Type -> Type
+dereference (Ref t) = t
+dereference t       = error $ "not a reference type: can not dereference " ++ show t
+
+mkReference :: Type -> Type
+mkReference t = Ref t
+
 -- | SSM expressions
-data SSMExp = Var String               -- ^ Variables
-            | Lit SSMLit               -- ^ Literals
-            | UOp SSMExp UnaryOp       -- ^ Unary operators
-            | BOp SSMExp SSMExp BinOp  -- ^ Binary operators
+data SSMExp = Var Type String               -- ^ Variables
+            | Lit Type SSMLit               -- ^ Literals
+            | UOp Type SSMExp UnaryOp       -- ^ Unary operators
+            | BOp Type SSMExp SSMExp BinOp  -- ^ Binary operators
   deriving (Eq)
 
 instance Show SSMExp where
-    show (Var n)        = n
-    show (Lit l)        = show l
-    show (UOp e op)     = show op ++ " " ++ show e
-    show (BOp e1 e2 op) = show e1 ++ " " ++ show op ++ " " ++ show e2 -- does not take precedence into account
+    show (Var _ n)        = n
+    show (Lit _ l)        = show l
+    show (UOp _ e op)     = show op ++ " " ++ show e
+    show (BOp _ e1 e2 op) = show e1 ++ " " ++ show op ++ " " ++ show e2 -- does not take precedence into account
 
 -- | SSM literals
 data SSMLit = LInt Int    -- ^ Integer literals

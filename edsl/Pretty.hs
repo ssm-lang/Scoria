@@ -40,17 +40,17 @@ printProcedure ssm@(Procedure n _ _) = do
                                     put (i+1,w,b)
                                     return $ "v" ++ show i
               emit $ name ++ " = NewRef " ++ show e
-              toString' (k name)
-          (SetRef r e k)    -> do
+              toString' (k (name, mkReference (expType e)))
+          (SetRef (r,_) e k)    -> do
               emit $ "SetRef " ++ r ++ " = " ++ show e
               toString' (k ())
           (SetLocal e v k)  -> do
               emit $ "SetLocal " ++ show e ++ " = " ++ show v
               toString' (k ())
-          (GetRef r s k)      -> do
+          (GetRef (r,t) s k)      -> do
               v <- case s of
-                  Just (_, n) -> return (Var n)
-                  Nothing     -> getExpString
+                  Just (_, n) -> return (Var (dereference t) n)
+                  Nothing     -> getExpString (dereference t)
               emit $ show v ++ " = GetRef " ++ r
               toString' (k v)
           (If c thn (Just els) k)  -> do
@@ -69,17 +69,17 @@ printProcedure ssm@(Procedure n _ _) = do
               emit $ "While " ++ show c
               indent $ toString' bdy
               toString' (k ())
-          (After e r v k)   -> do
+          (After e (r,_) v k)   -> do
               emit $ "After " ++ show e ++ " " ++ r ++ " = " ++ show v
               toString' (k ())
-          (Changed r s k)     -> do
+          (Changed (r,_) s k)     -> do
               b <- case s of
-                    (Just (_,n)) -> return (Var n)
-                    Nothing      -> getExpString
+                    (Just (_,n)) -> return (Var TBool n)
+                    Nothing      -> getExpString TBool
               emit $ show b ++ " = @" ++ r
               toString' (k b) 
           (Wait vars k)     -> do
-              emit $ "Wait [" ++ intercalate ", " vars ++ "]"
+              emit $ "Wait [" ++ intercalate ", " (map fst vars) ++ "]"
               toString' (k ())
           (Fork procs k)    -> do
               i <- ask
@@ -114,19 +114,19 @@ printProcedure ssm@(Procedure n _ _) = do
               emit $ "Result " ++ show r
               toString' (k ())
         
-      getExpString :: PP SSMExp
-      getExpString = do
+      getExpString :: Type -> PP SSMExp
+      getExpString t = do
           (i,_,_) <- get
           modify $ \(i,n,w) -> (i+1,n,w)
-          return $ Var $ "v" ++ show i
+          return $ Var t $ "v" ++ show i -- dummy tint for now
 
       printProcedureCall :: SSM () -> String
       printProcedureCall (Procedure n _ k) = n ++ "(" ++ intercalate ", " args ++ ")"
           where
               getArgs :: SSM () -> [String]
-              getArgs (Argument _ _ (Left e) k)  = show e : getArgs (k ())
-              getArgs (Argument _ _ (Right n) k) = n      : getArgs (k ())
-              getArgs _                          = []
+              getArgs (Argument _ _ (Left e) k)      = show e : getArgs (k ())
+              getArgs (Argument _ _ (Right (n,_)) k) = n      : getArgs (k ())
+              getArgs _                              = []
 
               args :: [String]
               args = getArgs (k ())

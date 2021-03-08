@@ -90,34 +90,34 @@ runProcesses = do
 eval :: Proc -> SSMExp -> Interp SSMExp
 eval p e = do
     case e of
-        Var n -> case Map.lookup n (variables p) of
+        Var _ n -> case Map.lookup n (variables p) of
             Just r -> do v <- liftIO $ readIORef r
                          eval p v
             Nothing -> error $ "interpreter error - variable " ++ n ++ " not found in current process"
-        Lit l -> return e
-        UOp e Neg -> do
+        Lit _ l -> return e
+        UOp _ e Neg -> do
             e' <- eval p e
-            let Lit (LInt i) = e'
-            return $ Lit $ LInt (-i)
-        BOp e1 e2 op -> do
+            let Lit _ (LInt i) = e'
+            return $ Lit TInt $ LInt (-i)
+        BOp _ e1 e2 op -> do
             se1 <- eval p e1
             se2 <- eval p e2
             case op of
-                OPlus  -> let (Lit (LInt i1)) = se1
-                              (Lit (LInt i2)) = se2
-                        in return $ Lit $ LInt $ i1 + i2
-                OMinus -> let (Lit (LInt i1)) = se1
-                              (Lit (LInt i2)) = se2
-                        in return $ Lit $ LInt $ i1 - i2
-                OTimes -> let (Lit (LInt i1)) = se1
-                              (Lit (LInt i2)) = se2
-                        in return $ Lit $ LInt $ i1 * i2
-                OLT    -> let (Lit (LInt i1)) = se1
-                              (Lit (LInt i2)) = se2
-                        in return $ Lit $ LBool $ i1 < i2
-                OEQ    -> let (Lit (LInt i1)) = se1
-                              (Lit (LInt i2)) = se2
-                        in return $ Lit $ LBool $ i1 == i2
+                OPlus  -> let (Lit t (LInt i1)) = se1
+                              (Lit _ (LInt i2)) = se2
+                        in return $ Lit t $ LInt $ i1 + i2
+                OMinus -> let (Lit t (LInt i1)) = se1
+                              (Lit _ (LInt i2)) = se2
+                        in return $ Lit t $ LInt $ i1 - i2
+                OTimes -> let (Lit t (LInt i1)) = se1
+                              (Lit _ (LInt i2)) = se2
+                        in return $ Lit t $ LInt $ i1 * i2
+                OLT    -> let (Lit t (LInt i1)) = se1
+                              (Lit _ (LInt i2)) = se2
+                        in return $ Lit t $ LBool $ i1 < i2
+                OEQ    -> let (Lit t (LInt i1)) = se1
+                              (Lit _ (LInt i2)) = se2
+                        in return $ Lit t $ LBool $ i1 == i2
 
 runProcess :: Proc -> Interp ()
 runProcess p = case continuation p of
@@ -126,15 +126,15 @@ runProcess p = case continuation p of
         --liftIO $ putStrLn $ "newref"
         r <- liftIO $ newIORef e
         runProcess $ p { references   = Map.insert n r (references p)
-                       , continuation = k n
+                       , continuation = k (n, mkReference (expType e))
                        }
     SetRef r e k -> do
         --liftIO $ putStrLn $ "setref"
         writeRef p r e
         runProcess $ p { continuation = k ()}
-    SetLocal (Var r) v k -> do
+    SetLocal (Var t r) v k -> do
         --liftIO $ putStrLn "setlocal"
-        writeRef p r v
+        writeRef p (r,t) v
         runProcess $ p { continuation = k ()}
     SetLocal e v k -> error $ "interpreter error - can not assign value to expression: " ++ show e
     GetRef r s k -> do
@@ -146,25 +146,25 @@ runProcess p = case continuation p of
         --liftIO $ putStrLn $ "if"
         b <- eval p c
         case b of
-          Lit (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
-          Lit (LBool False) -> runProcess $ p { continuation = els >> k ()}
+          Lit _ (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
+          Lit _ (LBool False) -> runProcess $ p { continuation = els >> k ()}
     If c thn Nothing k -> do
         --liftIO $ putStrLn $ "if"
         b <- eval p c
         case b of
-          Lit (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
-          Lit (LBool False) -> runProcess $ p { continuation = k ()}
+          Lit _ (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
+          Lit _ (LBool False) -> runProcess $ p { continuation = k ()}
     While c bdy k -> do
         --liftIO $ putStrLn $ "while"
         b <- eval p c
         case b of
-          Lit (LBool True)  -> runProcess $ p { continuation = bdy >> continuation p}
-          Lit (LBool False) -> runProcess $ p { continuation = k ()}
+          Lit _ (LBool True)  -> runProcess $ p { continuation = bdy >> continuation p}
+          Lit _ (LBool False) -> runProcess $ p { continuation = k ()}
     After e r v k -> do
         --liftIO $ putStrLn $ "after"
         i <- eval p e
         case i of
-          Lit (LInt num) -> do
+          Lit _ (LInt num) -> do
               ref <- lookupRef r p
               t   <- gets now
               v'  <- eval p v
@@ -176,8 +176,8 @@ runProcess p = case continuation p of
         st <- get
         ref <- lookupRef r p
         if ref `elem` written st
-            then runProcess $ p { continuation = k (Lit (LBool True))}
-            else runProcess $ p { continuation = k (Lit (LBool False))}
+            then runProcess $ p { continuation = k (Lit TBool (LBool True))}
+            else runProcess $ p { continuation = k (Lit TBool (LBool False))}
     Wait vars k       -> do
         --liftIO $ putStrLn $ "wait"
         refs <- mapM (`lookupRef` p) vars
@@ -218,12 +218,12 @@ runProcess p = case continuation p of
                                    , continuation = k ()}
                 Nothing  -> do
                     st <- get
-                    case Map.lookup r (arguments st) of
+                    case Map.lookup (fst r) (arguments st) of
                         Just ref -> do
                             runProcess $ p { references = Map.insert m ref (references p)
                                            , continuation = k ()
                                            }
-                        Nothing  -> error $ "interpreter error - unknown reference " ++ r
+                        Nothing  -> error $ "interpreter error - unknown reference " ++ (fst r)
     Result n r k -> do
         --liftIO $ putStrLn $ "result"
         case parent p of
@@ -236,7 +236,7 @@ runProcess p = case continuation p of
         runProcess $ p { continuation = k ()} -- this will probably just be one more return
   where
       writeRef :: Proc -> Reference -> SSMExp -> Interp ()
-      writeRef p r e = do
+      writeRef p (r,_) e = do
           case Map.lookup r (references p) of
               Just ref -> do v <- eval p e
                              liftIO $ writeIORef ref v
@@ -252,7 +252,7 @@ runProcess p = case continuation p of
       wait p = modify $ \st -> st { waiting = p : waiting st}
 
 lookupRef :: Reference -> Proc -> Interp (IORef SSMExp)
-lookupRef r p = case Map.lookup r (references p) of
+lookupRef (r,_) p = case Map.lookup r (references p) of
     Just ref -> return ref
     Nothing  -> error $ "interpreter error - can not find reference " ++ r
 
