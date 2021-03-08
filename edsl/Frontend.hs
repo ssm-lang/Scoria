@@ -14,6 +14,8 @@ module Frontend
      , (<~)
      , neg
      , int
+     , true'
+     , false'
      , deref
      , var
      , wait
@@ -46,12 +48,6 @@ instance Arg (Ref a) where
 instance Res () where
     result name () = Result name () return >> return ()
 
---instance SSMType a => Typeable (Exp a) where
---    typeOf _ = fetchType (Proxy @a)
-
---instance SSMType a => Typeable (Ref a) where
---    typeOf _ = undefined
-
 class Assignable a b where
     (<~) :: a -> b -> SSM ()
 
@@ -82,6 +78,12 @@ neg e@(Exp e') = Exp $ UOp (typeOf e) e' Neg
 
 int :: Int -> Exp Int
 int i = Exp $ Lit TInt $ LInt i
+
+true' :: Exp Bool
+true' = Exp $ Lit TBool $ LBool True
+
+false' :: Exp Bool
+false' = Exp $ Lit TBool $ LBool False
 
 deref :: Ref a -> SSM (Exp a)
 deref (Ptr r) = Exp <$> GetRef r Nothing return

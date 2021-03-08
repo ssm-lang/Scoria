@@ -88,9 +88,6 @@ instance SSMType Int where
 instance SSMType Bool where
     typeOf _ = TBool
 
---class Typeable a where
---    typeOf :: a -> Type
-
 --instance Typeable SSMExp where
 expType (Var t _)     = t
 expType (Lit t _)     = t
@@ -103,6 +100,10 @@ dereference t       = error $ "not a reference type: can not dereference " ++ sh
 
 mkReference :: Type -> Type
 mkReference t = Ref t
+
+isReference :: Type -> Bool
+isReference (Ref _) = True
+isReference _       = False
 
 -- | SSM expressions
 data SSMExp = Var Type String               -- ^ Variables

@@ -9,7 +9,7 @@ import Core
 
 data CGenSt = CGenSt { widestWait  :: Int
                      , nextCase    :: Int
-                     , localVars   :: [String]
+                     , localVars   :: [(String, Type)]
                      , nameGen     :: Int
                      }
 type CGen a = StateT CGenSt -- widest wait encountered so far (determines the number of triggers) 
@@ -22,7 +22,6 @@ runCGen ssm = do
     out <- execWriterT rw
     return $ unlines out
 
--- f <- censor (const []) $ snd <$> listen (local (const 0) (compileSSM ssm))
 genProcedure :: SSM () -> CGen ()
 genProcedure ssm = do
     struct <- censor (const []) $ snd <$> listen (genStruct ssm)
@@ -56,27 +55,30 @@ genStruct (Procedure name _ k) = do
       specifics :: SSM () -> CGen ()
       specifics ssm = case ssm of
           (Return x)        -> return ()
-          (NewRef (Just (_,n)) e k) -> do indent $ "cv_int_t " ++ n ++ ";"
-                                          specifics (k (n, Ref (expType e)))
+          (NewRef (Just (_,n)) e k) -> do let t = Ref $ expType e
+                                          indent $ compileType t ++ n ++ ";"
+                                          modify $ \st -> st { localVars = localVars st ++ [(n, t)]}
+                                          specifics (k (n, t))
           (SetRef r e k)    -> specifics (k ())
           (SetLocal e v k)  -> specifics (k ())
-          (GetRef (r, t) (Just (_,n)) k) -> do indent $ "cv_int_t *" ++ n ++ ";"
-                                               modify $ \st -> st { localVars = localVars st ++ [n]}
-                                               specifics (k (Var (dereference t) n))
+          (GetRef (r, t) (Just (_,n)) k) -> do let t' = dereference t
+                                               indent $ compileType t' ++ " " ++ n ++ ";"
+                                               modify $ \st -> st { localVars = localVars st ++ [(n,t')]}
+                                               specifics (k (Var t' n))
           (If c thn (Just els) k) -> specifics (thn >> els >> k ())
           (If c thn Nothing k)    -> specifics (thn >> k ())
           (While c bdy k)   -> specifics (bdy >> k ())
           (After e r v k)   -> specifics (k ())
-          (Changed r (Just (_,n)) k) -> do indent $ "cv_int_t *" ++ n ++ ";"
-                                           modify $ \st -> st { localVars = localVars st ++ [n]}
+          (Changed r (Just (_,n)) k) -> do indent $ compileType TBool ++ " " ++ n ++ ";"
+                                           modify $ \st -> st { localVars = localVars st ++ [(n, TBool)]}
                                            specifics (k (Var TBool n))
           (Wait vars k)     -> do modify $ \st -> st { widestWait = max (widestWait st) (length vars)}
                                   specifics (k ())
           (Fork procs k)    -> specifics (k ())
           (Procedure n _ k) -> specifics (k ())
-          (Argument n name (Left e) k)  -> do indent $ "cv_int_t " ++ name ++ ";"
+          (Argument n name (Left e) k)  -> do indent $ compileType (expType e) ++ " " ++ name ++ ";"
                                               specifics (k ())
-          (Argument n name (Right r) k) -> do indent $ "cv_int_t *" ++ name ++ ";"
+          (Argument n name (Right r) k) -> do indent $ compileType (snd r) ++ name ++ ";"
                                               specifics (k ())
           (Result n r k)    -> specifics (k ())
     
@@ -106,15 +108,18 @@ genEnter ssm@(Procedure n _ _) = do
     getArgs :: SSM () -> [(String, String)]
     getArgs ssm = case ssm of
         (Procedure n _ k)             -> getArgs $ k ()
-        (Argument n name (Left e) k)  -> ("cv_int_t ", name)   : getArgs (k ())
-        (Argument n name (Right r) k) -> ("cv_int_t *", name) : getArgs (k ())
+        (Argument n name (Left e) k)  -> (compileType (expType e) ++ " ", name) : getArgs (k ())
+        (Argument n name (Right r) k) -> (compileType (snd r), name)            : getArgs (k ())
         _                             -> []
     
     initTrigger :: Int -> CGen ()
     initTrigger i = indent 4 $ "rar->trig" ++ show i ++ ".rar = (rar_t *) rar;"
 
-    initLocal :: String -> CGen ()
-    initLocal var = indent 4 $ "rar->" ++ var ++ " = (cv_int_t *) malloc(sizeof(cv_int_t));"
+    initLocal :: (String, Type) -> CGen ()
+    initLocal (var,t) = if isReference t
+        then indent 4 $ concat ["rar->", var, " = (", compileType t, ") malloc(sizeof("
+                               , compileType (dereference t), "));"]
+        else return ()
 
     indent :: Int -> String -> CGen ()
     indent level str = tell [replicate level ' ' ++ str]
@@ -149,26 +154,33 @@ genStep ssm@(Procedure n _ _) = do
       freeLocals :: CGen ()
       freeLocals = do
           vars <- gets localVars
-          mapM_ (\s -> indent 4 ("free(rar->" ++ s ++ ");")) vars
+          forM_ vars $ \(v,t) ->
+              if isReference t
+                  then indent 4 $ "free(rar->" ++ v ++ ");"
+                  else return ()
+--          mapM_ (\s -> indent 4 ("free(rar->" ++ fst s ++ ");")) vars
 
       instant :: Int -> SSM () -> CGen ()
       instant level ssm = case ssm of
-          (Return x)              -> return ()
+          (Return x)                -> return ()
           (NewRef (Just (_,n)) e k) -> do
+              let t = simpleType (expType e)
               a <- compileLit e
-              indent level $ "initialize_int(&rar->" ++ n ++ ", " ++ a ++ ");"
+              indent level $ concat ["initialize_", t, "(rar->", n, ", ", a, ");"]
               instant level $ k (n, Ref (expType e))
           (SetRef (r,_) e k)          -> do
+              let t = simpleType (expType e)
               a <- compileLit e
-              indent level $ "assign_int(&rar->" ++ r ++ ", rar->priority, " ++ a ++ ");"
+              indent level $ concat ["assign_", t, "(rar->", r, ", rar->priority, ", a, ");"]
               instant level $ k ()
-          (SetLocal (Var _ e) v k)        -> do
+          (SetLocal (Var t e) v k)        -> do
+              let t' = simpleType t
               a <- compileLit v
-              indent level $ "assign_int(&rar->" ++ e ++ ", rar->priority, " ++ a ++ ");"
+              indent level $ concat ["assign_", t', "(&rar->", e, ", rar->priority, ", a, ");"]
               instant level $ k ()
           (GetRef (r, t) (Just (_,n)) k) -> do
-              --indent level $ "int " ++ n ++ " = rar->" ++ r ++ "-> value;"
-              indent level $ "assign_int(&rar->" ++ n ++ ", rar->priority, rar->" ++ r ++ "->value);"
+              let t' = simpleType (dereference t)
+              indent level $ concat ["assign_", t', "(&rar->", n, ", rar->priority, rar->", r, "->value);"]
               instant level $ k (Var (dereference t) n)
           (GetRef r _ k) -> do
               error "not supporting immediate read from a reference yet"
@@ -192,14 +204,16 @@ genStep ssm@(Procedure n _ _) = do
               instant (level + 4) bdy
               indent level "}"
               instant level $ k ()
-          (After e (r,_) v k)         -> do
+          (After e (r,t) v k)         -> do
+              let t' = simpleType (dereference t)
               e' <- compileLit e
               v' <- compileLit v
-              indent level $ "later_int(rar->" ++ r ++ ", now + " ++ e' ++ ", " ++ v' ++ ");"
+              indent level $ concat ["later_", t', "(rar->", r, ", now + ", e', ", ", v', ");"]
               instant level $ k ()
-          (Changed (r,_) (Just (_,n)) k)           -> do
+          (Changed (r,t) (Just (_,n)) k)           -> do
               --indent level $ "bool " ++ n ++ " = event_on((ct_t *) rar->" ++ r ++ ");"
-              indent level $ "assign_int(&rar->" ++ n ++ ", rar->priority, event_on((cv_t *) rar->" ++ r ++ ");"
+              let t' = simpleType (dereference t)
+              indent level $ concat ["assign_", t', "(&rar->", n, ", rar->priority, event_on((cv_t *) rar->", r, ");"]
               instant level $ k (Var TBool n)
           (Wait vars k)           -> do
               forM_ (zip vars [1..]) $ \((v,_),i) -> do
@@ -281,3 +295,13 @@ genStep ssm@(Procedure n _ _) = do
           c <- gets nameGen
           modify $ \st -> st { nameGen = nameGen st + 1}
           return $ "v" ++ show c
+
+compileType :: Type -> String
+compileType TInt    = "cv_int_t"
+compileType TBool   = "cv_bool_t"
+compileType (Ref t) = compileType t ++ " *"
+
+simpleType :: Type -> String
+simpleType TInt  = "int"
+simpleType TBool = "bool"
+simpleType t     = error $ "not a simple type: " ++ show t
