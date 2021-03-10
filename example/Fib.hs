@@ -2,7 +2,6 @@
 module Fib where
 
 import BinderAnn.Monadic
-
 import Frontend
 
 mywait :: Ref Int -> SSM ()

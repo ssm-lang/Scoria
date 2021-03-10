@@ -36,6 +36,8 @@ library
       Fib
       Foo
       Examp
+      Examp2
+      C
   other-modules:
       Paths_ssm
   hs-source-dirs:
@@ -47,6 +49,7 @@ library
     , containers
     , language-c-quote
     , BinderAnn
+    , prettyprinter
   default-language: Haskell2010
 
 executable ssm-exe
