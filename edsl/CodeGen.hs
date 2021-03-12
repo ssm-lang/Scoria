@@ -4,6 +4,7 @@ import Control.Monad.State
 import Control.Monad.Writer
 import GHC.Float
 import Data.List
+import Data.Maybe
 
 import Core
 
@@ -18,7 +19,7 @@ data IR = Function String [String]
 
         -- Struct management
         | TypedefStruct            
-        | FieldDec Type String
+        | FieldDec Type String (Maybe String) -- Last string is a comment
         | CloseTypeDef String
     
         | If2 SSMExp String -- if !exp goto label
@@ -63,7 +64,7 @@ type TR a = StateT TRState (Writer [IR]) a
 compile :: SSM () -> String
 compile ssm = let wr     = evalStateT generateProcedures (TRState 0 0 0 [] [] [ssm])
                   (a, _) = runWriter wr
-              in unlines a
+              in unlines $ ["#include \"peng-platform.h\"", "#include <stdio.h>"] ++ a
 
 -- | Return a list of all triples (struct, enter, step)
 generateProcedures :: TR [String]
@@ -179,34 +180,38 @@ genIRStruct ssm@(Procedure n _ _) = do
       go ssm = case ssm of
         (Return x)                     -> return ()
         -- Local references will exist in the struct, so we declare one.
-        (NewRef (Just (_,n)) e k)      -> do let ref = (n, mkReference (expType e))
-                                             tell [FieldDec (mkReference (expType e)) n]
-                                             go $ k ref
-        (SetRef r e k)                 -> go $ k ()
-        (SetLocal e v k)               -> go $ k ()
+        (NewRef (Just ((f,x,y),n)) e k) -> do let ref = (n, mkReference (expType e))
+                                              let comment = " // Declared at line " ++ show x ++ ", column " ++ show y ++ " in file " ++ file f
+                                              tell [FieldDec (mkReference (expType e)) n (Just comment)]
+                                              go $ k ref
+        (SetRef r e k)                  -> go $ k ()
+        (SetLocal e v k)                -> go $ k ()
         {- The result of reading a reference will reside in a local variable that exists in
         the struct, so we declare one. -}
-        (GetRef (r, t) (Just (_,n)) k) -> do let var = Var (dereference t) n
-                                             tell [FieldDec (dereference t) n]
-                                             go $ k var
+        (GetRef (r, t) (Just ((f,x,y),n)) k) -> do let var = Var (dereference t) n
+                                                   let comment = " // Declared at line " ++ show x ++ ", column " ++ show y ++ " in file " ++ file f
+                                                   tell [FieldDec (dereference t) n (Just comment)]
+                                                   go $ k var
+
         (If c thn (Just els) k)        -> go $ thn >> els >> k ()
         (If c thn Nothing k)           -> go $ thn >> k ()
         (While c bdy k)                -> go $ bdy >> k ()
         (After e r v k)                -> go $ k ()
         {- The result of checking if a variable was written in this instant will reside in
         a variable in the struct, so we declare one. -}
-        (Changed r (Just (_,n)) k)     -> do let var = Var TBool n
-                                             tell [FieldDec TBool n]
-                                             go $ k var
+        (Changed r (Just ((f,x,y),n)) k) -> do let var = Var TBool n
+                                               let comment = " // Declared at line " ++ show x ++ ", column " ++ show y ++ " in file " ++ file f
+                                               tell [FieldDec TBool n (Just comment)]
+                                               go $ k var
         -- To know how many triggers to generate we need to know the size of the widest wait
         (Wait vars k)                  -> do modify $ \st -> st { numwaits = max (numwaits st) (length vars)}
                                              go $ k ()
         (Fork procs k)                 -> go $ k ()
         (Procedure n _ k)              -> go $ k ()
         -- We look at the arguments to this procedure and generate field declarations for them
-        (Argument _ n (Left e) k)      -> do tell [FieldDec (expType e) n]
+        (Argument _ n (Left e) k)      -> do tell [FieldDec (expType e) n (Just " // Procedure argument")]
                                              go $ k ()
-        (Argument _ n (Right (r,t)) k) -> do tell [FieldDec t n]
+        (Argument _ n (Right (r,t)) k) -> do tell [FieldDec t n (Just " // Procedure argument")]
                                              go $ k ()
         (Result n r k)                 -> go $ k ()
 
@@ -215,6 +220,9 @@ genIRStruct ssm@(Procedure n _ _) = do
       triggers = do
           num <- gets numwaits
           mapM_ (\i -> tell [Literal 4 ("trigger_t trig" ++ show i)]) [1..num]
+    
+      file :: String -> String
+      file str = reverse $ takeWhile (/= '/') (reverse str)
 
 -- | Generate the enter function for a procedure
 genIREnter :: SSM () -> TR ()
@@ -433,8 +441,8 @@ genCFromIR (x:xs)           = case x of
 
     TypedefStruct         -> do indent 0 "typedef struct {"
                                 genCFromIR xs
-    FieldDec ftyp fname   -> do let ct = cvtyp ftyp
-                                indent 4 $ concat [ct, fname, ";"]
+    FieldDec ftyp fname c -> do let ct = cvtyp ftyp
+                                indent 4 $ concat [ct, fname, fromMaybe "" c,";"]
                                 genCFromIR xs
     CloseTypeDef tdefname -> do indent 0 $ "} rar_" ++ tdefname ++ "_t;"
                                 genCFromIR xs
@@ -501,7 +509,7 @@ genCFromIR (x:xs)           = case x of
                          let ct  = cvtyp typ
                          indent 4 $ concat ["rar->", var, " = (", ctp, ") malloc(sizeof(", init ct, "));"]
                          genCFromIR xs
-    Free (var, _)  -> do indent 8 $ concat ["free(", var, ");"]
+    Free (var, _)  -> do indent 8 $ concat ["free(rar->", var, ");"]
                          genCFromIR xs
 
     Blank -> indent 0 "" >> genCFromIR xs

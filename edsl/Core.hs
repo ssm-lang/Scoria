@@ -6,7 +6,7 @@ module Core where
 import BinderAnn.Monadic
 
 type Reference = (String, Type)
-type Name = Maybe ((Int, Int), String)
+type Name = Maybe ((String, Int, Int), String)
 
 data SSM a where
     -- | Monadic operations
@@ -34,12 +34,12 @@ data SSM a where
     Result    :: (Show a, Res a) => String -> a -> (() -> SSM b) -> SSM b
 
 instance AnnotatedM SSM a where
-    annotateM (NewRef _ e k) info = let (Info (Just name) (Just (_, x, y))) = info
-                                    in NewRef (Just ((x,y), name)) e k
-    annotateM (GetRef r _ k) info = let (Info (Just name) (Just (_, x, y))) = info
-                                    in GetRef r (Just ((x,y), name)) k
-    annotateM (Changed r _ k) info = let (Info (Just name) (Just (_, x, y))) = info
-                                     in Changed r (Just ((x,y), name)) k
+    annotateM (NewRef _ e k) info = let (Info (Just name) (Just (f, x, y))) = info
+                                    in NewRef (Just ((f,x,y), name)) e k
+    annotateM (GetRef r _ k) info = let (Info (Just name) (Just (f, x, y))) = info
+                                    in GetRef r (Just ((f,x,y), name)) k
+    annotateM (Changed r _ k) info = let (Info (Just name) (Just (f, x, y))) = info
+                                     in Changed r (Just ((f,x,y), name)) k
     annotateM ma _                 = ma
 
 instance Monad SSM where
