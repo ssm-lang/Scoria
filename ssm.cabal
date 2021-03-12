@@ -37,7 +37,6 @@ library
       Foo
       Examp
       Examp2
-      C
   other-modules:
       Paths_ssm
   hs-source-dirs:
