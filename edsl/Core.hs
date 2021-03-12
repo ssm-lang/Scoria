@@ -32,7 +32,6 @@ data SSM a where
     Procedure :: Arg a => String -> (a -> b) -> (() -> SSM c) -> SSM c
     Argument  :: String -> String -> Either SSMExp Reference -> (() -> SSM b) -> SSM b
     Result    :: (Show a, Res a) => String -> a -> (() -> SSM b) -> SSM b
---    Tag :: String -> (() -> SSM b) -> SSM b
 
 instance AnnotatedM SSM a where
     annotateM (NewRef _ e k) info = let (Info (Just name) (Just (_, x, y))) = info
