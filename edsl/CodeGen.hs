@@ -30,7 +30,6 @@ data IR = Function String [String]
 
         | Call String  [Either Reference SSMExp]
         | Fork2 [(String,  [Either Reference SSMExp])]
-        | Enter String [Either Reference SSMExp]
         | Leave String
 
         | Malloc String Type
@@ -44,13 +43,39 @@ data TRState = TRState { nextLabel :: Int
                        , ncase :: Int
                        , numwaits :: Int
                        , localrefs :: [Reference]
+                       , generated :: [String]
+                       , toGenerate :: [SSM ()]
                        }
 type TR a = StateT TRState (Writer [IR]) a
 
-compile :: SSM() -> String
-compile ssm = let wr = evalStateT (ssmToC ssm) (TRState 0 0 0 [])
+compile :: SSM () -> String
+compile ssm = let wr     = evalStateT generateProcedures (TRState 0 0 0 [] [] [ssm])
                   (a, _) = runWriter wr
               in unlines a
+
+generateProcedures :: TR [String]
+generateProcedures = do
+    st <- gets toGenerate
+    if null st
+        then return []
+        else do
+            resetState
+            gen <- gets generated
+            let (toc, rest) = (head st, tail st)
+            if name toc `elem` gen
+                then do modify $ \st -> st { toGenerate = rest}
+                        generateProcedures
+                else do modify $ \state -> state { toGenerate = tail (toGenerate state)}
+                        tri  <- ssmToC toc
+                        modify $ \state -> state { generated  = name toc : generated state}
+                        rest <- generateProcedures
+                        return $ rest ++ tri
+  where
+      name :: SSM () -> String
+      name (Procedure n _ _) = n
+
+      resetState :: TR ()
+      resetState = modify $ \st -> st { nextLabel = 0, ncase = 0, numwaits = 0, localrefs = []}
 
 ssmToC :: SSM () -> TR [String]
 ssmToC ssm = do
@@ -98,12 +123,12 @@ genIRStruct ssm@(Procedure n _ _) = do
     tell [ TypedefStruct
          , Literal 4 "/* Procedure generic fields */"
          , Literal 4 "void (*step)(rar_t *)"
-         , Literal 4 "uint16_t pc"
-         , Literal 4 "rar_t *caller"
-         , Literal 4 "uint16_t children"
-         , Literal 4 "uint32_t priority"
-         , Literal 4 "uint8_t depth"
-         , Literal 4 "bool scheduled"
+         , Literal 4 "uint16_t  pc"
+         , Literal 4 "rar_t    *caller"
+         , Literal 4 "uint16_t  children"
+         , Literal 4 "uint32_t  priority"
+         , Literal 4 "uint8_t   depth"
+         , Literal 4 "bool      scheduled"
          , Literal 4 "/* Procedure specific fields */"
          ]
     go ssm
@@ -178,22 +203,30 @@ genIREnter ssm = case ssm of
                               , ", caller, priority, depth)"]
         tell [Literal 4 genenter]
         assignParams $ k ()
+        initTriggers
         genIREnter   $ k ()
     (Argument _ _ _ k)             -> genIREnter $ k ()
     (Result n r k)                 -> do tell [Literal 0 "}"]
                                          genIREnter $ k ()
   where
       getParams :: SSM () -> [String]
-      getParams (Argument _ name (Left e) k)      = (cvtype (expType e) ++ name)          : getParams (k ())  
-      getParams (Argument _ name (Right (r,t)) k) = (cvtype (dereference t) ++ " *" ++ r) : getParams (k ())
+      getParams (Argument _ name (Left e) k)      = (prtyp (expType e) ++ " " ++ name)       : getParams (k ())  
+      getParams (Argument _ name (Right (r,t)) k) = (cvtype (dereference t) ++ " *" ++ name) : getParams (k ())
       getParams s                                 = []
 
       assignParams :: SSM () -> TR ()
-      assignParams (Argument _ name (Left e) k)      = do tell [Literal 4 ("rar->" ++ name ++ " = " ++ name)]
-                                                          assignParams $ k ()  
-      assignParams (Argument _ name (Right (r,t)) k) = do tell [Literal 4 ("rar->" ++ name ++ " = " ++ name)]
-                                                          assignParams $ k ()
+      assignParams (Argument _ name (Left e) k)      = do
+          tell [Literal 4 (concat ["initialise_", prtyp (expType e), "(&rar->", name, ", ", name, ")"])]
+          assignParams $ k ()  
+      assignParams (Argument _ name (Right (r,t)) k) = do
+          tell [Literal 4 ("rar->" ++ name ++ " = " ++ name)]
+          assignParams $ k ()
       assignParams s = return ()
+
+      initTriggers :: TR ()
+      initTriggers = do
+          nw <- gets numwaits
+          mapM_ (\i -> tell [Literal 4 ("rar->trig" ++ show i ++ ".rar = (rar_t *) rar")]) [1..nw]
 
       cvtype :: Type -> String
       cvtype t = "cv_" ++ prtyp t ++ "_t"
@@ -238,18 +271,17 @@ genIRStep ssm = case ssm of
                                          tell [EventOn r var]
                                          genIRStep $ k var
     (Wait vars k)                  -> do tell [Sensitize (zip vars [1..])]
---                                         mapM_ (\(v,i) -> tell [Sensitize v i]) (zip vars [1..])
                                          mapM_ (\(_,i) -> tell [Desensitize i]) (zip vars [1..])
                                          genIRStep $ k ()
     (Fork procs k)                 -> do forks <- mapM compileFork procs
                                          if length forks == 1
                                              then tell $ map (uncurry Call) forks
                                              else tell [Fork2 forks]
+                                         forkProcs procs
                                          genIRStep $ k ()
     (Procedure n _ k)              -> do let (_, rest) = getParams $ k ()
                                          tell [Function ("void step_" ++ n) ["rar_t *gen_rar"]]
                                          tell [Literal 4 $ concat ["rar_", n, "_t *rar = (rar_", n, "_t *) gen_rar"]]
-                                         --tell $ Literal
                                          genIRStep rest
     (Result n r k)                 -> do tell [Blank]
                                          lrefs <- gets localrefs
@@ -282,6 +314,14 @@ genIRStep ssm = case ssm of
             getArgs (Argument _ name (Right r) k) = Left  r : getArgs (k ())
             getArgs s                             = []
     
+      forkProcs :: [SSM ()] -> TR ()
+      forkProcs xs = do
+          forM_ xs $ \ssm@(Procedure n _ _) -> do
+              gen <- gets generated
+              if n `elem` gen
+                  then return ()
+                  else modify $ \st -> st { toGenerate = ssm : toGenerate st}
+
       freshLabel :: TR String
       freshLabel = do
           st <- get
@@ -329,7 +369,7 @@ genCFromIR (x:xs) = case x of
                                var    = compVar (Left ref)
                                time   = compLit delay
                                newval = compLit val
-                           in do indent 12 $ concat ["later_", st, "(", var, ", ", time, ", ", newval, ");"]
+                           in do indent 12 $ concat ["later_", st, "(", var, ", now + ", time, ", ", newval, ");"]
                                  genCFromIR xs
     EventOn ref var     -> let st = simpleType (Right var)
                                ref' = compVar (Left ref)
@@ -349,8 +389,13 @@ genCFromIR (x:xs) = case x of
     Call fun args    -> let args' = map compArg args
                         in do indent 12 $ concat (["call((rar_t *) enter_", fun, "((rar_t *) rar, rar->priority, rar->depth, "] ++ intersperse ", " args' ++ ["));"])
                               genCFromIR xs
-    Fork2 procs      -> genCFromIR xs
-    Enter fun params -> genCFromIR xs
+    Fork2 procs      -> do let new_depth = integerLogBase 2 (toInteger (length procs))
+                           indent 12 $ "uint8_t new_depth = rar->depth - " ++ show new_depth ++ ";"
+                           indent 12   "uint32_t pinc = 1 << new_depth;"
+                           indent 12   "uint32_t new_priority = rar->priority;"
+                           let forks = intercalate ["new_priority += pinc;"] $ map compileFork procs
+                           mapM_ (indent 12) forks
+                           genCFromIR xs
     Leave fun        -> do indent 8 $ concat ["leave((rar_t *) rar, sizeof(rar_", fun, "_t));"]
                            indent 4 "}"
                            indent 0 "}"
@@ -368,6 +413,15 @@ genCFromIR (x:xs) = case x of
   where
       indent :: Int -> String -> Writer [String] ()
       indent i str = tell [replicate i ' ' ++ str]
+
+      compileFork :: (String, [Either Reference SSMExp]) -> [String]
+      compileFork (fun, ar) = let f  = "fork((rar_t *) enter_" ++ fun ++ "( "
+                                  lf = length f
+                                  ars = intercalate ('\n' : replicate (length f + 10) ' ' ++ ", ") args
+                                in [f ++ ars ++ "));"]
+        where
+            args :: [String]
+            args = ["(rar_t *) rar", "new_priority", "new_depth"] ++ map compArg ar
 
       compLit :: SSMExp -> String
       compLit e = case e of
