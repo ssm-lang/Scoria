@@ -112,12 +112,13 @@ generateProcedures = do
       ssmToC ssm = do
           genIR ssm
           (struct, enter, step) <- gets code
+          lrefs                 <- gets localrefs
 
           {- Generate C code from the IR instructions that were emitted. The step function needs to
           be converted to a version that returns at blocking points before C can be generated. -}
-          let (struct', _)  = execWriter (genCFromIR struct)
-          let (enter',  p2) = execWriter (genCFromIR enter)
-          let (step',   p3) = execWriter (genCFromIR step)
+          let (struct', _)  = execWriter (genCFromIR struct lrefs)
+          let (enter',  p2) = execWriter (genCFromIR enter lrefs)
+          let (step',   p3) = execWriter (genCFromIR step lrefs)
 
           return [unlines struct', p2, p3, "", unlines enter', unlines step']
 
@@ -146,9 +147,9 @@ genIR ssm = stmts ssm
               let comment = concat [" // Declared at (", show x, ", ", show y, ") in file ", file f]
               modify $ \st -> st {localrefs = localrefs st ++ [ref]}
 
-              appendStruct $ FieldDec reftype n (Just comment)
+              appendStruct $ FieldDec (expType e) n (Just comment)
 
-              appendEnter $ Malloc n (expType e)
+              --appendEnter $ Malloc n (expType e)
 
               appendStep $ Initialize (Left ref)
               appendStep $ Assign (Left ref) (Right e)
@@ -292,8 +293,8 @@ genIR ssm = stmts ssm
               {- step -}
 
               appendStep Blank
-              lrefs <- gets localrefs
-              mapM_ (appendStep . Free) lrefs
+              --lrefs <- gets localrefs
+              --mapM_ (appendStep . Free) lrefs
               appendStep $ Leave n
 
               (struct, enter, step) <- gets code
@@ -395,67 +396,67 @@ genIR ssm = stmts ssm
 
 
 -- | Convert a sequence of IR values into (hopefully) valid C code
-genCFromIR :: [IR] -> Writer ([String], String) ()
-genCFromIR []               = return ()
-genCFromIR (Blank:Blank:xs) = genCFromIR (Blank:xs)
-genCFromIR (x:xs)           = case x of
+genCFromIR :: [IR] -> [Reference] -> Writer ([String], String) ()
+genCFromIR [] _                   = return ()
+genCFromIR (Blank:Blank:xs) lrefs = genCFromIR (Blank:xs) lrefs
+genCFromIR (x:xs) lrefs           = case x of
     Function name args -> do let sig = name ++ "(" ++ intercalate ", " args ++ ")"
                              indent 0 $ sig ++ " {"
 
                              tell ([], sig ++ ";")
-                             genCFromIR xs
+                             genCFromIR xs lrefs
     FieldDec ftyp fname c -> do let ct = svtyp ftyp
                                 indent 4 $ concat [ct, fname, ";", fromMaybe "" c]
-                                genCFromIR xs
+                                genCFromIR xs lrefs
     
     IfFalse notexp label -> do indent 12 $ "if (!(" ++ compLit notexp ++ ")) goto " ++ label ++ ";"
-                               genCFromIR xs
+                               genCFromIR xs lrefs
     Label label      -> do indent 8 $ label ++ ":"
-                           genCFromIR xs
+                           genCFromIR xs lrefs
     Goto label       -> do indent 12 $ "goto " ++ label ++ ";"
-                           genCFromIR xs
+                           genCFromIR xs lrefs
     Switch scrut     -> do indent 4 $ "switch(" ++ scrut ++ ") {"
-                           genCFromIR xs
+                           genCFromIR xs lrefs
     Case num         -> do indent 8 $ "case " ++ show num ++ ":"
-                           genCFromIR xs
+                           genCFromIR xs lrefs
     Ret              -> do indent 12 "return;"
-                           genCFromIR xs
+                           genCFromIR xs lrefs
     ClosingBracket i -> do indent i "}"
-                           genCFromIR xs
+                           genCFromIR xs lrefs
 
     Initialize var      -> let st = simpleType var
                                v  = compVar var
                            in do indent 12 $ concat ["initialize_", st, "(", v, ");"]
-                                 genCFromIR xs
+                                 genCFromIR xs lrefs
     Assign var val      -> let st   = simpleType var
                                var' = compVar var
                                val' = compVal val
                            in do indent 12 $ concat ["assign_", st, "(", var', ", act->priority, ", val', ");"]
-                                 genCFromIR xs
+                                 genCFromIR xs lrefs
     Later ref delay val -> let st     = simpleType (Left ref)
                                var    = compVar (Left ref)
                                time   = compLit delay
                                newval = compLit val
                            in do indent 12 $ concat ["later_", st, "(", var, ", now + ", time, ", ", newval, ");"]
-                                 genCFromIR xs
+                                 genCFromIR xs lrefs
     EventOn ref var     -> let st      = simpleType (Right var)
                                ref'    = compVar (Left ref)
                                var'    = compVar (Right var)
                                eventon = concat ["event_on((sv_t *)", ref', ")"]
                            in do indent 12 $ concat ["assign_", st, "(", var', ", act->priority, ", eventon, ");"]
-                                 genCFromIR xs
+                                 genCFromIR xs lrefs
 
     Sensitize vars   -> do
         forM_ vars $ \(ref,trig) -> do
             let var = compVar (Left ref)
             indent 12 $ concat ["sensitize((sv_t *) ", var, ", &act->trig", show trig, ");"]
-        genCFromIR xs
+        genCFromIR xs lrefs
     Desensitize trig -> do indent 12 $ concat ["desensitize(&act->trig", show trig, ");"]
-                           genCFromIR xs
+                           genCFromIR xs lrefs
 
     Call fun args    -> let args' = map compArg args
                         in do indent 12 $ concat (["call((act_t *) enter_", fun, "((act_t *) act, act->priority, act->depth, "] ++ intersperse ", " args' ++ ["));"])
-                              genCFromIR xs
+                              genCFromIR xs lrefs
     ForkProcedures procs -> do let new_depth = integerLogBase 2 (toInteger (length procs))
                                indent 12   "{"
                                indent 12 $ "uint8_t new_depth = act->depth - " ++ show new_depth ++ ";"
@@ -464,30 +465,30 @@ genCFromIR (x:xs)           = case x of
                                let forks = intercalate ["new_priority += pinc;"] $ map compileFork procs
                                mapM_ (indent 12) forks
                                indent 12   "}"
-                               genCFromIR xs
+                               genCFromIR xs lrefs
     Leave fun        -> do indent 8 $ concat ["leave((act_t *) act, sizeof(act_", fun, "_t));"]
                            indent 4 "}"
                            indent 0 "}"
 
-    Malloc var typ -> do let st  = prtyp typ
+{-    Malloc var typ -> do let st  = prtyp typ
                          let ctp = svtyp (mkReference typ)
                          let ct  = svtyp typ
                          indent 4 $ concat ["act->", var, " = (", ctp, ") malloc(sizeof(", init ct, "));"]
-                         genCFromIR xs
+                         genCFromIR xs lrefs
     Free (var, _)  -> do indent 8 $ concat ["free(act->", var, ");"]
-                         genCFromIR xs
+                         genCFromIR xs lrefs-}
 
-    Blank -> indent 0 "" >> genCFromIR xs
-    Literal i lit -> indent i (lit ++ ";") >> genCFromIR xs
-    LiteralNoSemi i lit -> indent i lit >> genCFromIR xs
+    Blank -> indent 0 "" >> genCFromIR xs lrefs
+    Literal i lit -> indent i (lit ++ ";") >> genCFromIR xs lrefs
+    LiteralNoSemi i lit -> indent i lit >> genCFromIR xs lrefs
   where
       indent :: Int -> String -> Writer ([String], String) ()
       indent i str = tell ([replicate i ' ' ++ str], "")
 
       -- | Compile a Fork statement into the equivalent C statement
       compileFork :: (String, [Either Reference SSMExp]) -> [String]
-      compileFork (fun, ar) = let f  = "fork_routine((act_t *) enter_" ++ fun ++ "( "
-                                  lf = length f
+      compileFork (fun, ar) = let f   = "fork_routine((act_t *) enter_" ++ fun ++ "( "
+                                  lf  = length f
                                   ars = intercalate ('\n' : replicate (length f + 10) ' ' ++ ", ") args
                                 in [f ++ ars ++ "));"]
         where
@@ -513,19 +514,25 @@ genCFromIR (x:xs)           = case x of
 
       -- | Compile either a reference or a variable into the string that fetches it out of the struct
       compVar :: Either Reference SSMExp -> String
-      compVar (Left (r,_))      = "act->"  ++ r
-      compVar (Right (Var _ n)) = "&act->" ++ n
+      compVar (Left ref@(r,_))  = if ref `elem` lrefs
+                                    then "&act->" ++ r
+                                    else "act->"  ++ r
+      compVar (Right (Var t n)) = "&act->" ++ n
       compVar (Right e)         = error $ "not a variable: " ++ show e
 
       -- | Compile either a reference or an expression to their correspending values.
       compVal :: Either Reference SSMExp -> String
-      compVal (Left (r,_))      = "act->" ++ r ++ "->value"
+      compVal (Left ref@(r,_))  = if ref `elem` lrefs
+                                    then "act->" ++ r ++ ".value"
+                                    else "act->" ++ r ++ "->value"
       compVal (Right e)         = compLit e
 
       {- | Compile an argument to a function. We pass references as they are, but for literals
       we fetch them out of the sv-struct. -}
       compArg :: Either Reference SSMExp -> String
-      compArg (Left (r,_))      = "act->" ++ r
+      compArg (Left ref@(r,_))  = if ref `elem` lrefs
+                                    then "&act->" ++ r
+                                    else "act->" ++ r
       compArg (Right (Var _ v)) = "act->" ++ v ++ ".value"
       compArg (Right e)         = compVal (Right e)
 
