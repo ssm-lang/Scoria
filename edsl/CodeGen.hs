@@ -8,41 +8,28 @@ import Data.Maybe
 
 import Core
 
-{-
-TODO:
-  * Now we perform three passes over the program, one for the struct, enter function and step function.
-    This could perhaps be changed to a version that only performs one pass.
--}
-
 -- | One value of this datatype corresponds to one statement/line in the C code
 data IR = Function String [String]
 
         | FieldDec Type String (Maybe String) -- Last string is a comment
-    
+
         | IfFalse SSMExp String -- if !exp goto label
         | Label String      -- label
         | Goto String       -- unconditional jump
         | Switch String     -- switch(-the string-) {
         | Case Int          -- case -the int-:
         | Ret
-        | ClosingBracket Int
 
         -- Methods from the SSM runtime
-        | Initialize (Either Reference SSMExp)                        -- Initialize a variable
+        | Initialize (Either Reference SSMExp)                       -- Initialize a variable
         | Assign (Either Reference SSMExp) (Either Reference SSMExp)  -- Assign to variables in the struct
         | Later Reference SSMExp SSMExp                               -- Delayed assignment
         | EventOn Reference SSMExp                                    -- Has the reference been written
-
         | Sensitize [(Reference, Int)] -- [(reference, triggernumber)]
         | Desensitize Int              -- Stop waiting for a variable
-
         | Call String  [Either Reference SSMExp]       -- (Procedure, arguments)
         | ForkProcedures [(String,  [Either Reference SSMExp])] -- [(Procedure, arguments)]
         | Leave String                                 -- Name of the procedure
-
-        -- Memory management
-        | Malloc String Type -- Variable name and type
-        | Free Reference     -- Variable name
 
         | Blank              -- Blank linkes for readability
         | Literal Int String -- Verbatim code
@@ -149,8 +136,6 @@ genIR ssm = stmts ssm
 
               appendStruct $ FieldDec (expType e) n (Just comment)
 
-              --appendEnter $ Malloc n (expType e)
-
               appendStep $ Initialize (Left ref)
               appendStep $ Assign (Left ref) (Right e)
 
@@ -201,7 +186,17 @@ genIR ssm = stmts ssm
 
               stmts $ k ()
 
-          (While c bdy k) -> undefined -- TODO
+          (While c bdy k) -> do
+              l1 <- freshLabel
+              l2 <- freshLabel
+
+              appendStep $ Label l1
+              appendStep $ IfFalse c l2
+              stmts bdy
+              appendStep $ Goto l1
+              appendStep $ Label l2
+
+              stmts $ k ()
           
           (After e r v k) -> do
               appendStep $ Later r e v
@@ -329,7 +324,7 @@ genIR ssm = stmts ssm
                     getArgs (Argument _ name (Left e) k)  = Right e : getArgs (k ())
                     getArgs (Argument _ name (Right r) k) = Left  r : getArgs (k ())
                     getArgs s                             = []
-            
+
             -- | Fetch the parameters of a procedure, and the rest of the program
             getParams :: SSM () -> [Either Reference SSMExp]
             getParams (Argument _ n (Left e) k)      = Right (Var (expType e) n) : getParams (k ())
@@ -408,7 +403,7 @@ genCFromIR (x:xs) lrefs           = case x of
     FieldDec ftyp fname c -> do let ct = svtyp ftyp
                                 indent 4 $ concat [ct, fname, ";", fromMaybe "" c]
                                 genCFromIR xs lrefs
-    
+
     IfFalse notexp label -> do indent 12 $ "if (!(" ++ compLit notexp ++ ")) goto " ++ label ++ ";"
                                genCFromIR xs lrefs
     Label label      -> do indent 8 $ label ++ ":"
@@ -420,8 +415,6 @@ genCFromIR (x:xs) lrefs           = case x of
     Case num         -> do indent 8 $ "case " ++ show num ++ ":"
                            genCFromIR xs lrefs
     Ret              -> do indent 12 "return;"
-                           genCFromIR xs lrefs
-    ClosingBracket i -> do indent i "}"
                            genCFromIR xs lrefs
 
     Initialize var      -> let st = simpleType var
@@ -470,16 +463,8 @@ genCFromIR (x:xs) lrefs           = case x of
                            indent 4 "}"
                            indent 0 "}"
 
-{-    Malloc var typ -> do let st  = prtyp typ
-                         let ctp = svtyp (mkReference typ)
-                         let ct  = svtyp typ
-                         indent 4 $ concat ["act->", var, " = (", ctp, ") malloc(sizeof(", init ct, "));"]
-                         genCFromIR xs lrefs
-    Free (var, _)  -> do indent 8 $ concat ["free(act->", var, ");"]
-                         genCFromIR xs lrefs-}
-
-    Blank -> indent 0 "" >> genCFromIR xs lrefs
-    Literal i lit -> indent i (lit ++ ";") >> genCFromIR xs lrefs
+    Blank               -> indent 0 "" >> genCFromIR xs lrefs
+    Literal i lit       -> indent i (lit ++ ";") >> genCFromIR xs lrefs
     LiteralNoSemi i lit -> indent i lit >> genCFromIR xs lrefs
   where
       indent :: Int -> String -> Writer ([String], String) ()

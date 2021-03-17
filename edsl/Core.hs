@@ -114,8 +114,8 @@ data SSMExp = Var Type String               -- ^ Variables
 instance Show SSMExp where
     show (Var _ n)        = n
     show (Lit _ l)        = show l
-    show (UOp _ e op)     = show op ++ " " ++ show e
-    show (BOp _ e1 e2 op) = show e1 ++ " " ++ show op ++ " " ++ show e2 -- does not take precedence into account
+    show (UOp _ e op)     = "(" ++ show op ++ " " ++ show e ++ ")"
+    show (BOp _ e1 e2 op) = "(" ++ show e1 ++ " " ++ show op ++ " " ++ show e2 ++ ")"
 
 -- | SSM literals
 data SSMLit = LInt Int    -- ^ Integer literals
