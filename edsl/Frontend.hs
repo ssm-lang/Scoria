@@ -26,6 +26,7 @@ module Frontend
      , while'
      , SSM -- reexport so we don't need to import Core and get all the constructors
      , Box(..)
+     , getname
 ) where
 
 import Core

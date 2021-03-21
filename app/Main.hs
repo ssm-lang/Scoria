@@ -6,4 +6,6 @@ import Core
 import Interpreter
 
 main :: IO ()
-main = interpret (myfib (int 13) (Ptr ("r", mkReference TInt))) [("r", Lit TInt (LInt 0))] --putStrLn "I am not implemented yet"
+main = do
+    output <- interpret' (myfib (int 13) (Ptr ("r", mkReference TInt)))
+    putStrLn $ unlines output

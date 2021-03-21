@@ -1,10 +1,11 @@
-module CodeGen where
+module CodeGen (compile) where
 
 import Control.Monad.State
 import Control.Monad.Writer
 import GHC.Float
 import Data.List
 import Data.Maybe
+import Data.Either
 
 import Core
 
@@ -48,13 +49,17 @@ data TRState = TRState { nextLabel  :: Int         -- ^ Counter to generate fres
 type TR a = State TRState a
 
 -- | Main compiler entrypoint. Will output a C-file as a single string.
-compile :: SSM () -> String
-compile ssm = let methods = evalState generateProcedures (TRState 0 0 0 [] ([], [], []) [] [ssm])
-              in unlines $ [ "#include \"peng-platform.h\""
-                           , "#include \"peng.h\""
-                           , "#include <stdio.h>"
-                           , ""
-                           ] ++ methods
+compile :: Bool -> SSM () -> String
+compile b ssm = let methods  = evalState generateProcedures (TRState 0 0 0 [] ([], [], []) [] [ssm])
+                    testmain = if b then execWriter (generateMain ssm) else [""]
+                in unlines $ [ "#include \"peng-platform.h\""
+                             , "#include \"peng.h\""
+                             --, "#include \"peng-scalar-code.h\""
+                             , "#include <stdio.h>"
+                             --, ""
+                             --, "PENG_SCALAR_CODE(int)"
+                             , ""
+                             ] ++ methods ++ testmain
 
 -- | Return a list of all triples (struct, enter, step)
 generateProcedures :: TR [String]
@@ -526,6 +531,102 @@ genCFromIR (x:xs) lrefs           = case x of
       simpleType (Left (r,t)) = prtyp $ dereference t
       simpleType (Right e)    = prtyp $ expType e
 
+      -- | Print a base type
+      prtyp :: Type -> String
+      prtyp TInt  = "int"
+      prtyp TBool = "bool"
+      prtyp t     = error $ "not a simple type: " ++ show t
+
+      -- | Convert a type to the string representing the sv-type
+      svtyp :: Type -> String
+      svtyp t = if isReference t
+          then concat ["sv_", prtyp (dereference t), "_t *"]
+          else concat ["sv_", prtyp t, "_t "]
+
+generateMain :: SSM () -> Writer [String] ()
+generateMain ssm@(Procedure n _ k) = do
+    top_return
+    indent 0 "void main(void) {"
+    indent 4 "act_t top = { .step = top_return };"
+    createrefs $ refs (k ())
+    forkentrypoint ssm
+    indent 4 "tick();"
+    indent 4 "printf(\"now: %lu eventqueuesize: %d\\n\", now, event_queue_len);"
+    indent 4 "while(1) {"
+    indent 8 "now = next_event_time();"
+    indent 8 "if(now == NO_EVENT_SCHEDULED) {"
+    indent 12 "break;"
+    indent 8 "}"
+    indent 8 "tick();"
+    indent 8 "printf(\"now: %lu eventqueuesize: %d\\n\", now, event_queue_len);"
+    indent 4 "}"
+    printrefs $ refs (k ())
+    indent 0 "}"
+  where
+      indent :: Int -> String -> Writer [String] ()
+      indent i str = tell [replicate i ' ' ++ str]
+
+      refs :: SSM () -> [Reference]
+      refs (Argument _ n (Right r) k) = r : refs (k ())
+      refs (Argument _ n (Left _) k ) = refs $ k ()
+      refs _                          = []
+
+      createrefs :: [Reference] -> Writer [String] ()
+      createrefs refs = do
+          indent 4 "// set up input references"
+          forM_ refs $ \(r,t) -> do
+              let sv = svtyp (dereference t)
+              let pr = prtyp (dereference t)
+              indent 4 $ concat [sv, " ", r, ";"]
+              indent 4 $ concat ["initialize_", pr, "(&", r,");"]
+              indent 4 $ concat [r, ".value = ", baseval t, ";"]
+        where
+            baseval :: Type -> String
+            baseval TInt    = "0"
+            baseval TBool   = "false"
+            baseval (Ref t) = baseval t
+              
+      forkentrypoint :: SSM () -> Writer [String] ()
+      forkentrypoint (Procedure n _ k) = do
+          indent 4 $ concat ["fork_routine((act_t *) enter_"
+                            , n
+                            , "(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT, "
+                            , intercalate ", " (vals (k()))
+                            , "));"]
+        where
+            vals :: SSM () -> [String]
+            vals (Argument _ n (Left e) k)      = compExp e : vals (k ())
+            vals (Argument _ n (Right (r,t)) k) = ("&" ++ r) : vals (k ())
+            vals _                              = []
+
+            compExp :: SSMExp -> String
+            compExp (Var _ _)            = error "can not apply main procedure to expression variables"
+            compExp (Lit _ (LInt i))     = show i
+            compExp (Lit _ (LBool b))    = if b then "true" else "false"
+            compExp (UOp _ e Neg)        = "(-" ++ compExp e ++ ")"
+            compExp (BOp _ e1 e2 OPlus)  = "(" ++ compExp e1 ++ ") + (" ++ compExp e2 ++ ")"
+            compExp (BOp _ e1 e2 OMinus) = "(" ++ compExp e1 ++ ") - (" ++ compExp e2 ++ ")"
+            compExp (BOp _ e1 e2 OTimes) = "(" ++ compExp e1 ++ ") * (" ++ compExp e2 ++ ")"
+            compExp (BOp _ e1 e2 OLT)    = "(" ++ compExp e1 ++ ") < (" ++ compExp e2 ++ ")"
+            compExp (BOp _ e1 e2 OEQ)    = "(" ++ compExp e1 ++ ") == (" ++ compExp e2 ++ ")"
+
+      printrefs :: [Reference] -> Writer [String] ()
+      printrefs xs = do
+          forM_ xs $ \(r,t) -> do
+              indent 4 $ concat ["printf(\"", r, " ", formatter (dereference t), "\\n\", ", r, ".value);"]
+        where
+            formatter :: Type -> String
+            formatter TInt    = "%u"
+            formatter TBool   = "%d"
+            formatter (Ref t) = error "can not print pointer yet"
+
+      top_return :: Writer [String] ()
+      top_return = do
+          indent 0 "void top_return(act_t *act) {"
+          indent 4 "return;"
+          indent 0 "}"
+          indent 0 ""
+    
       -- | Print a base type
       prtyp :: Type -> String
       prtyp TInt  = "int"

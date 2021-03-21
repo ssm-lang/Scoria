@@ -61,6 +61,59 @@ interpret ssm args = do
       mkArgs :: [(String, SSMExp)] -> IO [(String, IORef SSMExp)]
       mkArgs args = mapM (\(n,v) -> newIORef v >>= (\r -> return (n, r))) args
 
+
+interpret' :: SSM () -> IO [String]
+interpret' ssm = do
+    args <- mkArgs ssm
+    let p = Proc 1024 10 0 Nothing Map.empty Map.empty Nothing ssm
+    let state = St 0 (Map.fromList args) [] [p] [] []
+    instants <- evalStateT mainloop' state
+    res <- mapM (\(n,r) -> readIORef r >>= \v -> return (n ++ " " ++ show v)) args
+    return $ instants ++ res
+  where
+      mkArgs :: SSM () -> IO [(String, IORef SSMExp)]
+      mkArgs (Procedure _ _ k)              = mkArgs $ k ()
+      mkArgs (Argument _ n (Left e) k)      = mkArgs $ k ()
+      mkArgs (Argument _ n (Right (r,t)) k) = do
+          ref  <- newIORef (defaultVal (dereference t))
+          rest <- mkArgs $ k ()
+          return $ (n,ref) : rest
+      mkArgs _                              = return []
+
+      defaultVal :: Type -> SSMExp
+      defaultVal TInt  = Lit TInt (LInt 0)
+      defaultVal TBool = Lit TBool (LBool False)
+      defaultVal t     = error $ "not a simple type: " ++ show t
+
+      mainloop' :: Interp [String]
+      mainloop' = do
+          runProcesses
+          st <- get
+          let r = concat ["now: ", show (now st), " eventqueuesize: ", show (length (events st))]
+          res <- go
+          return $ r:res
+        where
+            go :: Interp [String]
+            go = do 
+                next_time <- next_event_time
+                case next_time of
+                    Just next -> do modify $ \st -> st { now = next, written = []}
+                                    performEvents
+                                    runProcesses
+                                    st <- get
+                                    let r = concat ["now: ", show (now st), " eventqueuesize: ", show (length (events st))]
+                                    rest <- go
+                                    return $ r:rest
+                    Nothing   -> return []
+
+            next_event_time :: Interp (Maybe Int)
+            next_event_time = do
+                evs <- gets events
+                if null evs
+                    then return Nothing
+                    else let next = foldl min (at (head evs)) $ tail $ map at evs
+                        in return $ Just next
+
 {- | Mainloop of a program. If there is work left to do it will increment the current
 time, perform the outstanding events for this time and then run the scheduler. -}
 mainloop :: Interp ()
@@ -68,7 +121,8 @@ mainloop = do
     st <- get
     if null (events st) && null (readyQueue st)
         then return ()
-        else do liftIO $ putStrLn $ "TIME: " ++ show (now st + 1)
+        else do liftIO $ putStrLn $ "TIME: " ++ show (now st + 1) ++ " SIZE EVENTQUEUE: " ++
+                                    show (length (events st))
                 modify $ \st -> st { now = now st + 1
                                    , written = []
                                    }

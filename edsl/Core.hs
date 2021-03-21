@@ -73,6 +73,10 @@ instance Applicative SSM where
         m <- ma
         return $ f m
 
+getname :: SSM () -> String
+getname (Procedure n _ _) = n
+getname _                 = error "not a procedure"
+
 data Type = TInt
           | TBool
           | Ref Type
