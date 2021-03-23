@@ -221,6 +221,7 @@ genIR ssm = stmts ssm
               modify $ \st -> st { numwaits = max (numwaits st) (length vars)}
 
               appendStep $ Sensitize $ zip vars [1..]
+              forM_ [1..length vars] $ \i -> appendStep (Desensitize i)
 
               stmts $ k ()
           
