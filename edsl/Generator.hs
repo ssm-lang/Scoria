@@ -59,7 +59,7 @@ instance Arbitrary Program where
            [ (1, return (Return ()))
 
            , (n, do tp <- oneof [return TInt, return TBool]
-                    e  <- sized $ arbExp tp vars
+                    e  <- choose (0,3) >>= arbExp tp vars
                     k  <- promote $ \r -> arbBody tab vars (r:refs) (n-1)
                     return $ NewRef Nothing e k)
 
@@ -75,7 +75,7 @@ instance Arbitrary Program where
                     return $ Fork ssms k)
 
            , (n, do b   <- arbitrary
-                    bs  <- sized $ arbExp TBool vars
+                    bs  <- choose (0,3) >>= arbExp TBool vars
                     thn <- arbBody tab vars refs (n `div` 2)
                     els <- if b
                              {- Here I arbitrarily chose that the else and then branches should
@@ -90,7 +90,7 @@ instance Arbitrary Program where
            -- These are the generators that only works if refs is not an empty list
            (if null refs then [] else
              [ (n, do r <- elements refs
-                      e <- sized $ arbExp (dereference (snd r)) vars
+                      e <- choose (0,3) >>= arbExp (dereference (snd r)) vars
                       k <- arbBody tab vars refs (n-1)
                       return $ SetRef r e (const k))
 
@@ -98,9 +98,9 @@ instance Arbitrary Program where
                       k <- promote $ \(Var t v) -> arbBody tab ((v,t):vars) refs (n-1)
                       return $ GetRef r Nothing k)
 
-             , (n, do delay <- sized $ arbExp TInt vars -- semantics should be able to handle negative delays
+             , (n, do delay <- choose (0,3) >>= arbExp TInt vars -- semantics should be able to handle negative delays
                       r <- elements refs
-                      e <- sized $ arbExp (dereference (snd r)) vars
+                      e <- choose (0,3) >>= arbExp (dereference (snd r)) vars
                       k <- promote $ \() -> arbBody tab vars refs (n-1)
                       return $ After delay r e k)
 
@@ -115,7 +115,7 @@ instance Arbitrary Program where
            -- These are the generators that only works if vars is not an empty list
            (if null vars then [] else
              [ (n, do v <- elements vars
-                      e <- sized $ arbExp (snd v) vars
+                      e <- choose (0,3) >>= arbExp (snd v) vars
                       k <- promote $ \r -> arbBody tab vars refs (n-1)
                       let var = Var (snd v) (fst v)
                       return $ SetLocal var e k)
@@ -136,7 +136,7 @@ instance Arbitrary Program where
                      Ref _ -> do r <- elements refs
                                  k <- promote $ \() -> argsAndBody ts
                                  return $ Argument n x (Right (x,t)) k
-                     _     -> do e <- sized $ arbExp t vars
+                     _     -> do e <- choose (0,3) >>= arbExp t vars
                                  k <- promote $ \() -> argsAndBody ts
                                  return $ Argument n x (Left e) k
 
@@ -161,7 +161,10 @@ arbExp t vars n = case t of
                                           , BOp t e1 e2 OTimes
                                           ])
                         ]
-    TBool -> do e1 <- arbExp t vars (n `div` 2)
-                e2 <- arbExp t vars (n `div` 2)
-                elements [ BOp t e1 e2 OLT
-                        , BOp t e1 e2 OEQ]
+    TBool -> oneof [ do e1 <- arbExp TInt vars (n `div` 2)
+                        e2 <- arbExp TInt vars (n `div` 2)
+                        return $ BOp t e1 e2 OLT
+                   , do typ <- elements [TInt, TBool]
+                        e1 <- arbExp typ vars (n `div` 2)
+                        e2 <- arbExp typ vars (n `div` 2)
+                        return $ BOp typ e1 e2 OEQ]

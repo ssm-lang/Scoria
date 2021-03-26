@@ -32,6 +32,7 @@ data St = St
     , readyQueue :: [Proc]                        -- ^ Processes ready to run, should be a priority queue
     , waiting    :: [Proc]                        -- ^ Processes that are waiting on variables
     , written    :: [IORef SSMExp]                -- ^ References that were written in this instance
+    , counter    :: Int                           -- ^ Counter for fresh name supply
     }
 
 type Interp a = StateT St IO a
@@ -56,7 +57,7 @@ interpret ssm args = do
         putStrLn $ n ++ ": " ++ show v
   where
       st :: Map.Map String (IORef SSMExp) -> Proc -> St
-      st args p = St (-1) args [] [p] [] []
+      st args p = St (-1) args [] [p] [] [] 0
 
       mkArgs :: [(String, SSMExp)] -> IO [(String, IORef SSMExp)]
       mkArgs args = mapM (\(n,v) -> newIORef v >>= (\r -> return (n, r))) args
@@ -66,7 +67,7 @@ interpret' :: SSM () -> IO [String]
 interpret' ssm = do
     args <- mkArgs ssm
     let p = Proc 1024 10 0 Nothing Map.empty Map.empty Nothing ssm
-    let state = St 0 (Map.fromList args) [] [p] [] []
+    let state = St 0 (Map.fromList args) [] [p] [] [] 0
     evalStateT mainloop' state
     --instants <- evalStateT mainloop' state
     --res <- mapM (\(n,r) -> readIORef r >>= \v -> return (n ++ " " ++ show v)) args
@@ -176,11 +177,14 @@ eval p e = do
 runProcess :: Proc -> Interp ()
 runProcess p = case continuation p of
     Return x          -> return ()
-    NewRef (Just (_,n)) e k      -> do
+    NewRef ba e k      -> do
         --liftIO $ putStrLn $ "newref"
+        name <- case ba of
+            Just (_,n) -> return n
+            Nothing    -> fresh
         r <- liftIO $ newIORef e
-        runProcess $ p { references   = Map.insert n r (references p)
-                       , continuation = k (n, mkReference (expType e))
+        runProcess $ p { references   = Map.insert name r (references p)
+                       , continuation = k (name, mkReference (expType e))
                        }
     SetRef r e k -> do
         --liftIO $ putStrLn $ "setref"
@@ -304,6 +308,12 @@ runProcess p = case continuation p of
 
       wait :: Proc -> Interp ()
       wait p = modify $ \st -> st { waiting = p : waiting st}
+
+      fresh :: Interp String
+      fresh = do
+          st <- gets counter
+          modify $ \st -> st { counter = counter st + 1}
+          return $ "v" ++ show st
 
 lookupRef :: Reference -> Proc -> Interp (IORef SSMExp)
 lookupRef (r,_) p = case Map.lookup r (references p) of
