@@ -6,6 +6,8 @@
 module Frontend
      ( Ref(..)
      , Exp(..)
+     , inputIntRef
+     , inputBoolRef
      , (+.)
      , (-.)
      , (*.)
@@ -48,6 +50,12 @@ instance Arg (Ref a) where
 -- | Possible results of SSM procedures (they can't return anything)
 instance Res () where
     result name () = Result name () return >> return ()
+
+inputIntRef :: Ref Int
+inputIntRef = Ptr ("dummyintref", Ref TInt)
+
+inputBoolRef :: Ref Bool
+inputBoolRef = Ptr ("dummyboolref", Ref TBool)
 
 class Assignable a b where
     (<~) :: a -> b -> SSM ()

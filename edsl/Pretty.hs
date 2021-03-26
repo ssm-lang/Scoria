@@ -12,7 +12,7 @@ type PPSt = ( Int       -- counter to generate fresh names
             , [String]  -- generated functions
             )
 type PP a = StateT PPSt
-              (ReaderT Int                   -- current level of indentation
+              (ReaderT Int               -- current level of indentation
                   (Writer [String])) a   -- output
 
 showSSM :: Show a => SSM a -> String
@@ -105,10 +105,10 @@ printProcedure ssm@(Procedure n _ _) = do
               emit $ "Procedure " ++ n
               toString' (k ())
           (Argument n name (Left e) k)  -> do
-              emit $ "Argument " ++ name
+              emit $ "Argument " ++ name ++ " = " ++ show e
               toString' (k ())
           (Argument n name (Right r) k)  -> do
-              emit $ "Argument &" ++ name
+              emit $ "Argument &" ++ name ++ " = " ++ fst r
               toString' (k ())
           (Result n r k)    -> do
               emit $ "Result " ++ show r

@@ -41,7 +41,7 @@ data TRState = TRState { nextLabel  :: Int         -- ^ Counter to generate fres
                        , ncase      :: Int         -- ^ Which number has the next case?
                        , numwaits   :: Int         -- ^ The size of the widest wait
                        , localrefs  :: [Reference] -- ^ Local references declared with var
-                       , code       :: ([IR], [IR], [IR])
+                       , code       :: ([IR], [IR], [IR])  -- ^ Struct, enter, step
                        , generated  :: [String]    -- ^ Which procedures are already generated?
                        , toGenerate :: [SSM ()]    -- ^ Which remain to be generated?
                        }
@@ -221,7 +221,8 @@ genIR ssm = stmts ssm
               modify $ \st -> st { numwaits = max (numwaits st) (length vars)}
 
               appendStep $ Sensitize $ zip vars [1..]
-              forM_ [1..length vars] $ \i -> appendStep (Desensitize i)
+              forM_ [1..length vars] $ \i ->
+                  appendStep (Desensitize i)
 
               stmts $ k ()
           
@@ -568,9 +569,9 @@ generateMain ssm@(Procedure n _ k) = do
       indent i str = tell [replicate i ' ' ++ str]
 
       refs :: SSM () -> [Reference]
-      refs (Argument _ n (Right r) k) = r : refs (k ())
-      refs (Argument _ n (Left _) k ) = refs $ k ()
-      refs _                          = []
+      refs (Argument _ n (Right (_,t)) k) = (n,t) : refs (k ())
+      refs (Argument _ n (Left _) k )     = refs $ k ()
+      refs _                              = []
 
       createrefs :: [Reference] -> Writer [String] ()
       createrefs refs = do
@@ -596,9 +597,9 @@ generateMain ssm@(Procedure n _ k) = do
                             , "));"]
         where
             vals :: SSM () -> [String]
-            vals (Argument _ n (Left e) k)      = compExp e : vals (k ())
-            vals (Argument _ n (Right (r,t)) k) = ("&" ++ r) : vals (k ())
-            vals _                              = []
+            vals (Argument _ n (Left e) k)  = compExp e : vals (k ())
+            vals (Argument _ n (Right _) k) = ("&" ++ n) : vals (k ())
+            vals _                          = []
 
             compExp :: SSMExp -> String
             compExp (Var _ _)            = error "can not apply main procedure to expression variables"

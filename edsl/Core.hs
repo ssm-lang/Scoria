@@ -102,7 +102,7 @@ dereference (Ref t) = t
 dereference t       = error $ "not a reference type: can not dereference " ++ show t
 
 mkReference :: Type -> Type
-mkReference t = Ref t
+mkReference = Ref
 
 isReference :: Type -> Bool
 isReference (Ref _) = True
@@ -118,7 +118,7 @@ data SSMExp = Var Type String               -- ^ Variables
 instance Show SSMExp where
     show (Var _ n)        = n
     show (Lit _ l)        = show l
-    show (UOp _ e op)     = "(" ++ show op ++ " " ++ show e ++ ")"
+    show (UOp _ e op)     = "(- " ++ show e ++ ")"
     show (BOp _ e1 e2 op) = "(" ++ show e1 ++ " " ++ show op ++ " " ++ show e2 ++ ")"
 
 -- | SSM literals
@@ -133,9 +133,6 @@ instance Show SSMLit where
 {-- | SSM unary operators -}
 data UnaryOp = Neg  -- ^ negation
   deriving (Eq)
-
-instance Show UnaryOp where
-    show Neg = "neg"
 
 {-- | SSM binary operators. We use phantom types to represent the two argument types and
 the result type of the operator. E.g OLT 2 3 :: BinOp Int Int Bool -}

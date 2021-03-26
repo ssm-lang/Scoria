@@ -277,7 +277,7 @@ runProcess p = case continuation p of
                             runProcess $ p { references = Map.insert m ref (references p)
                                            , continuation = k ()
                                            }
-                        Nothing  -> error $ "interpreter error - unknown reference " ++ (fst r)
+                        Nothing  -> error $ "interpreter error - unknown reference " ++ fst r
     Result n r k -> do
         --liftIO $ putStrLn $ "result"
         case parent p of
