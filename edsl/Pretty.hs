@@ -22,7 +22,7 @@ showSSM ssma = let rd             = execStateT (printProcedure ssma) (0, [], [])
                in unlines funs
 
 printProcedure :: SSM a -> PP ()
-printProcedure ssm@(Procedure n _ _) = do
+printProcedure ssm@(Procedure n _) = do
     (_,wr,_) <- get
     if n `elem` wr
         then return ()
@@ -101,7 +101,7 @@ printProcedure ssm@(Procedure n _ _) = do
               emit $ "Fork [ " ++ sep ++ "  " ++ intercalate (sep ++ ", ") calls ++ sep ++ "]"
               mapM_ printProcedure procs
               toString' (k ())
-          (Procedure n _ k) -> do
+          (Procedure n  k) -> do
               emit $ "Procedure " ++ n
               toString' (k ())
           (Argument n name (Left e) k)  -> do
@@ -121,7 +121,7 @@ printProcedure ssm@(Procedure n _ _) = do
           return $ Var t $ "v" ++ show i -- dummy tint for now
 
       printProcedureCall :: SSM () -> String
-      printProcedureCall (Procedure n _ k) = n ++ "(" ++ intercalate ", " args ++ ")"
+      printProcedureCall (Procedure n k) = n ++ "(" ++ intercalate ", " args ++ ")"
           where
               getArgs :: SSM () -> [String]
               getArgs (Argument _ _ (Left e) k)      = show e : getArgs (k ())

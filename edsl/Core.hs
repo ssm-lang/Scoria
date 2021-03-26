@@ -29,7 +29,7 @@ data SSM a where
     Fork    :: [SSM ()] -> (() -> SSM b) -> SSM b
 
     -- | Procedure construction
-    Procedure :: Arg a => String -> (a -> b) -> (() -> SSM c) -> SSM c
+    Procedure :: String -> (() -> SSM c) -> SSM c
     Argument  :: String -> String -> Either SSMExp Reference -> (() -> SSM b) -> SSM b
     Result    :: (Show a, Res a) => String -> a -> (() -> SSM b) -> SSM b
 
@@ -56,7 +56,7 @@ instance Monad SSM where
     Changed r s k     >>= fa = Changed r s     (\x -> k x >>= fa)
     Wait vars k       >>= fa = Wait vars       (\x -> k x >>= fa)
     Fork procs k      >>= fa = Fork procs      (\x -> k x >>= fa)
-    Procedure n f k   >>= fa = Procedure n f   (\x -> k x >>= fa)
+    Procedure n k     >>= fa = Procedure n     (\x -> k x >>= fa)
     Argument n m a k  >>= fa = Argument n m a  (\x -> k x >>= fa)
     Result n r k      >>= fa = Result n r      (\x -> k x >>= fa)
 
@@ -74,8 +74,8 @@ instance Applicative SSM where
         return $ f m
 
 getname :: SSM () -> String
-getname (Procedure n _ _) = n
-getname _                 = error "not a procedure"
+getname (Procedure n  _) = n
+getname _                = error "not a procedure"
 
 data Type = TInt
           | TBool
@@ -171,7 +171,7 @@ instance (Arg b, Box c) => Box (b -> c) where
 
 instance Res b => Box (SSM b) where
     box name xs f = \x -> do
-        Procedure name f return
+        Procedure name return
         (x',_) <- arg name xs x
         y'     <- f x'
         result name y'

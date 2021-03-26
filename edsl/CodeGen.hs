@@ -89,7 +89,7 @@ generateProcedures = do
   where
       -- | Get the name of a procedure
       name :: SSM () -> String
-      name (Procedure n _ _) = n
+      name (Procedure n _) = n
 
       -- | Reset the procedure specific parts of the state before generating C for the next procedure
       resetState :: TR ()
@@ -237,7 +237,7 @@ genIR ssm = stmts ssm
 
               stmts $ k ()
           
-          (Procedure n _ k) -> do
+          (Procedure n k)   -> do
               let params = getParams $ k ()
 
               {- enter -}
@@ -322,12 +322,12 @@ genIR ssm = stmts ssm
                 where
                     -- | Fetch the name of a procedure
                     getFun :: SSM () -> String
-                    getFun (Procedure n _ _) = n
-                    getFun _                 = error "not a function"
+                    getFun (Procedure n _) = n
+                    getFun _               = error "not a function"
 
                     -- | Fetch the values a function was applied to
                     getArgs :: SSM () -> [Either Reference SSMExp]
-                    getArgs (Procedure _ _ k)             = getArgs $ k ()
+                    getArgs (Procedure _ k)               = getArgs $ k ()
                     getArgs (Argument _ name (Left e) k)  = Right e : getArgs (k ())
                     getArgs (Argument _ name (Right r) k) = Left  r : getArgs (k ())
                     getArgs s                             = []
@@ -342,7 +342,7 @@ genIR ssm = stmts ssm
             have not already been generated. -}
             generateRecursively :: [SSM ()] -> TR ()
             generateRecursively xs = do
-                forM_ xs $ \ssm@(Procedure n _ _) -> do
+                forM_ xs $ \ssm@(Procedure n _) -> do
                     gen <- gets generated
                     if n `elem` gen
                         then return ()
@@ -546,7 +546,7 @@ genCFromIR (x:xs) lrefs           = case x of
           else concat ["sv_", prtyp t, "_t "]
 
 generateMain :: SSM () -> Writer [String] ()
-generateMain ssm@(Procedure n _ k) = do
+generateMain ssm@(Procedure n k) = do
     top_return
     indent 0 "void main(void) {"
     indent 4 "act_t top = { .step = top_return };"
@@ -589,7 +589,7 @@ generateMain ssm@(Procedure n _ k) = do
             baseval (Ref t) = baseval t
               
       forkentrypoint :: SSM () -> Writer [String] ()
-      forkentrypoint (Procedure n _ k) = do
+      forkentrypoint (Procedure n k) = do
           indent 4 $ concat ["fork_routine((act_t *) enter_"
                             , n
                             , "(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT, "

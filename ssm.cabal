@@ -38,6 +38,7 @@ library
       Examp2
       Manyrefs
       Generator
+      WhileEx
   other-modules:
       Paths_ssm
   hs-source-dirs:

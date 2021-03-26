@@ -2,7 +2,7 @@ module Interpreter where
 
 import qualified Data.Map as Map
 import Data.IORef
-import Control.Monad.State
+import Control.Monad.State.Lazy
 import Data.List
 import GHC.Float
 
@@ -67,12 +67,13 @@ interpret' ssm = do
     args <- mkArgs ssm
     let p = Proc 1024 10 0 Nothing Map.empty Map.empty Nothing ssm
     let state = St 0 (Map.fromList args) [] [p] [] []
-    instants <- evalStateT mainloop' state
-    res <- mapM (\(n,r) -> readIORef r >>= \v -> return (n ++ " " ++ show v)) args
-    return $ instants ++ res
+    evalStateT mainloop' state
+    --instants <- evalStateT mainloop' state
+    --res <- mapM (\(n,r) -> readIORef r >>= \v -> return (n ++ " " ++ show v)) args
+    --return $ instants ++ res
   where
       mkArgs :: SSM () -> IO [(String, IORef SSMExp)]
-      mkArgs (Procedure _ _ k)              = mkArgs $ k ()
+      mkArgs (Procedure _ k)                = mkArgs $ k ()
       mkArgs (Argument _ n (Left e) k)      = mkArgs $ k ()
       mkArgs (Argument _ n (Right (r,t)) k) = do
           ref  <- newIORef (defaultVal (dereference t))
@@ -90,8 +91,7 @@ interpret' ssm = do
           runProcesses
           st <- get
           let r = concat ["now: ", show (now st), " eventqueuesize: ", show (length (events st))]
-          res <- go
-          return $ r:res
+          ((:) r) <$> go
         where
             go :: Interp [String]
             go = do 
@@ -249,7 +249,7 @@ runProcess p = case continuation p of
         par         <- liftIO $ newIORef p'
         forM_ (zip procs priodeps) $ \(cont, (prio, dep)) -> do
             enqueue $ Proc prio dep 0 (Just par) Map.empty Map.empty Nothing cont
-    Procedure n f k   -> do
+    Procedure n k     -> do
         --liftIO $ putStrLn $ "procedure"
         runProcess $ p { continuation = k ()}
     Argument n m a k  -> do
@@ -272,7 +272,7 @@ runProcess p = case continuation p of
                                    , continuation = k ()}
                 Nothing  -> do
                     st <- get
-                    case Map.lookup (fst r) (arguments st) of
+                    case Map.lookup m (arguments st) of
                         Just ref -> do
                             runProcess $ p { references = Map.insert m ref (references p)
                                            , continuation = k ()
