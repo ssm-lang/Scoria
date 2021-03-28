@@ -154,25 +154,35 @@ eval p e = do
             e' <- eval p e
             let Lit _ (LInt i) = e'
             return $ Lit TInt $ LInt (-i)
-        BOp _ e1 e2 op -> do
-            se1 <- eval p e1
-            se2 <- eval p e2
+        BOp TInt e1 e2 op -> do
+            i1 <- getInt <$> eval p e1
+            i2 <- getInt <$> eval p e2
             case op of
-                OPlus  -> let (Lit t (LInt i1)) = se1
-                              (Lit _ (LInt i2)) = se2
-                        in return $ Lit t $ LInt $ i1 + i2
-                OMinus -> let (Lit t (LInt i1)) = se1
-                              (Lit _ (LInt i2)) = se2
-                        in return $ Lit t $ LInt $ i1 - i2
-                OTimes -> let (Lit t (LInt i1)) = se1
-                              (Lit _ (LInt i2)) = se2
-                        in return $ Lit t $ LInt $ i1 * i2
-                OLT    -> let (Lit t (LInt i1)) = se1
-                              (Lit _ (LInt i2)) = se2
-                        in return $ Lit t $ LBool $ i1 < i2
-                OEQ    -> let (Lit t (LInt i1)) = se1
-                              (Lit _ (LInt i2)) = se2
-                        in return $ Lit t $ LBool $ i1 == i2
+                OPlus  -> return $ Lit TInt  $ LInt  (i1 + i2)
+                OMinus -> return $ Lit TInt  $ LInt  (i1 - i2)
+                OTimes -> return $ Lit TInt  $ LInt  (i1 * i2)
+        BOp TBool e1 e2 op -> do
+            l1 <- eval p e1
+            l2 <- eval p e2
+            case op of
+                OLT -> let i1 = getInt l1
+                           i2 = getInt l2
+                       in return $ Lit TBool $ LBool (i1 < i2)
+                OEQ -> case (expType e1) of
+                    TInt  -> let i1 = getInt l1
+                                 i2 = getInt l2
+                             in return $ Lit TBool $ LBool (i1 == i2)
+                    TBool -> let b1 = getBool l1
+                                 b2 = getBool l2
+                             in return $ Lit TBool $ LBool (b1 == b2)
+  where
+      getInt :: SSMExp -> Int
+      getInt (Lit _ (LInt i)) = i
+      getInt e                = error $ "not an integer: " ++ show e
+
+      getBool :: SSMExp -> Bool
+      getBool (Lit _ (LBool b)) = b
+      getBool e                 = error $ "not a boolean: " ++ show e
 
 runProcess :: Proc -> Interp ()
 runProcess p = case continuation p of

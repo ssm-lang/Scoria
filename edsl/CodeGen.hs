@@ -38,6 +38,7 @@ data IR = Function String [String]
   deriving Show
 
 data TRState = TRState { nextLabel  :: Int         -- ^ Counter to generate fresh labels
+                       , nextVar    :: Int         -- ^ Counter to generate fresh names
                        , ncase      :: Int         -- ^ Which number has the next case?
                        , numwaits   :: Int         -- ^ The size of the widest wait
                        , localrefs  :: [Reference] -- ^ Local references declared with var
@@ -50,7 +51,7 @@ type TR a = State TRState a
 
 -- | Main compiler entrypoint. Will output a C-file as a single string.
 compile :: Bool -> SSM () -> String
-compile b ssm = let methods  = evalState generateProcedures (TRState 0 0 0 [] ([], [], []) [] [ssm])
+compile b ssm = let methods  = evalState generateProcedures (TRState 0 0 0 0 [] ([], [], []) [] [ssm])
                     testmain = if b then execWriter (generateMain ssm) else [""]
                 in unlines $ [ "#include \"peng-platform.h\""
                              , "#include \"peng.h\""
@@ -94,6 +95,7 @@ generateProcedures = do
       -- | Reset the procedure specific parts of the state before generating C for the next procedure
       resetState :: TR ()
       resetState = modify $ \st -> st { nextLabel = 0
+                                      , nextVar   = 0
                                       , ncase     = 0
                                       , numwaits  = 0
                                       , localrefs = []
@@ -133,13 +135,20 @@ genIR ssm = stmts ssm
       stmts ssm = case ssm of
           (Return x) -> return ()
 
-          (NewRef (Just ((f,x,y),n)) e k) -> do
+          (NewRef name e k) -> do
+              (n,c) <- case name of
+                  Just ((f,x,y), n) -> let comment = concat [" // Declared at ("
+                                                            , show x
+                                                            , ", ", show y
+                                                            , ") in file ", file f
+                                                            ]
+                                       in return (n, comment)
+                  Nothing           -> let comment = " // generated name"
+                                       in flip (,) comment <$> freshName
               let reftype = mkReference $ expType e
               let ref     = (n, reftype)
-              let comment = concat [" // Declared at (", show x, ", ", show y, ") in file ", file f]
-              modify $ \st -> st {localrefs = localrefs st ++ [ref]}
-
-              appendStruct $ FieldDec (expType e) n (Just comment)
+              modify $ \st -> st { localrefs = localrefs st ++ [ref]}
+              appendStruct $ FieldDec (expType e) n (Just c)
 
               appendStep $ Initialize (Left ref)
               appendStep $ Assign (Left ref) (Right e)
@@ -153,17 +162,24 @@ genIR ssm = stmts ssm
           (SetLocal e v k) -> do
               appendStep $ Assign (Right e) (Right v)
               stmts $ k ()
-          
-          (GetRef (r, t) (Just ((f,x,y),n)) k) -> do
-              let vartyp  = dereference t
-              let var     = Var vartyp n
-              let comment = concat [" // Declared at (", show x, ", ", show y, ") in file ", file f]
 
-              appendStruct $ FieldDec vartyp n (Just comment)
+          (GetRef (r, t) name k) -> do
+              (n,c) <- case name of
+                  Just ((f,x,y),n) -> let comment = concat [" // Declared at ("
+                                                           , show x, ", ", show y
+                                                           , ") in file ", file f
+                                                           ]
+                                      in return (n, comment)
+                  Nothing          -> let comment = " // generated name"
+                                      in flip (,) comment <$> freshName
+              let vartyp = dereference t
+              let var = Var vartyp n
+
+              appendStruct $ FieldDec vartyp n (Just c)
 
               appendStep $ Assign (Right var) (Left (r,t))
 
-              stmts $ k var
+              stmts $ k var              
 
           (If c thn (Just els) k) -> do
               l1 <- freshLabel
@@ -206,17 +222,24 @@ genIR ssm = stmts ssm
           (After e r v k) -> do
               appendStep $ Later r e v
               stmts $ k ()
-          
-          (Changed r (Just ((f,x,y),n)) k) -> do
-              let var = Var TBool n
-              let comment = concat [" // Declared at (", show x, ", ", show y, " in file ", file f]
 
-              appendStruct $ FieldDec TBool n (Just comment)
+          (Changed r name k) -> do
+              (n,c) <- case name of
+                  Just ((f,x,y),n) -> let comment = concat [" // Declared at ("
+                                                           , show x, ", "
+                                                           , show y, " in file ", file f
+                                                           ]
+                                      in return (n, comment)
+                  Nothing          -> let comment = " // generated name"
+                                      in flip (,) comment <$> freshName
+              let var = Var TBool n
+
+              appendStruct $ FieldDec TBool n (Just c)
               
               appendStep $ EventOn r var
 
-              stmts $ k var
-          
+              stmts $ k var              
+        
           (Wait vars k) -> do
               modify $ \st -> st { numwaits = max (numwaits st) (length vars)}
 
@@ -313,6 +336,12 @@ genIR ssm = stmts ssm
                 st <- get
                 put $ st { nextLabel = nextLabel st + 1 }
                 return $ "L" ++ show (nextLabel st)
+            
+            freshName :: TR String
+            freshName = do
+                st <- gets nextVar
+                modify $ \st -> st { nextVar = nextVar st + 1}
+                return $ "v" ++ show st
             
             -- | Compile a program into a tuple that describes a fork
             compileFork :: SSM () -> (String, [Either Reference SSMExp])
