@@ -1,89 +1,74 @@
 module Interpreter where
 
 import qualified Data.Map as Map
-import Data.IORef
 import Control.Monad.State.Lazy
 import Control.Monad.ST.Lazy
 import Data.STRef.Lazy
 import Data.List
+import Data.Maybe
 import GHC.Float
 
 import Core
 
-data Event = Event
-    { at  :: Int           -- ^ The time when this event occurs
-    , ref :: IORef SSMExp  -- ^ The reference variable that gets the new value
-    , val :: SSMExp        -- ^ The value this reference will assume at time at
+type Var s = STRef s (STRef s SSMExp, [Proc s])
+
+data Event s = Event
+    { at  :: Int     -- ^ The time when this event occurs
+    , ref :: Var s   -- ^ The reference variable that gets the new value
+    , val :: SSMExp  -- ^ The value this reference will assume at time at
+    } deriving Eq
+
+data Proc s = Proc
+    { priority        :: Int                       -- ^ priority of the process
+    , depth           :: Int                       -- ^ The depth, which helps give priorities to children
+    , runningChildren :: Int                       -- ^ Number of non-terminated child processes
+    , parent          :: Maybe (STRef s (Proc s))  -- ^ Parent of this process, Nothing in the case of main
+    , references      :: Map.Map String (Var s)    -- ^ Reference variables and their values
+    , variables       :: Map.Map String (Var s)    -- ^ Local variables and their values
+    , waitingOn       :: Maybe [Var s]             -- ^ Variables this process is waiting for, if any
+    , continuation    :: SSM ()                    -- ^ The work left to do for this process
     }
 
-data Proc = Proc
-    { priority        :: Int                            -- ^ priority of the process
-    , depth           :: Int                            -- ^ The depth, which helps give priorities to children
-    , runningChildren :: Int                            -- ^ Number of non-terminated child processes
-    , parent          :: Maybe (IORef Proc)             -- ^ Parent of this process, Nothing in the case of main
-    , references      :: Map.Map String (IORef SSMExp)  -- ^ Reference variables and their values
-    , variables       :: Map.Map String (IORef SSMExp)  -- ^ Local variables and their values
-    , waitingOn       :: Maybe [IORef SSMExp]           -- ^ Variables this process is waiting for, if any
-    , continuation    :: SSM ()                         -- ^ The work left to do for this process
-    }
+instance Eq (Proc s) where
+    p1 == p2 =  priority p1        == priority p2
+             && depth p1           == depth p2
+             && runningChildren p1 == runningChildren p2
+             && parent p1          == parent p2
+             && references p1      == references p2
+             && variables p1       == variables p2
+             && waitingOn p1       == waitingOn p2
 
-data St = St
-    { now        :: Int                           -- ^ Current time
-    , arguments  :: Map.Map String (IORef SSMExp) -- ^ Arguments to main
-    , events     :: [Event]                       -- ^ Outstanding events
-    , readyQueue :: [Proc]                        -- ^ Processes ready to run, should be a priority queue
-    , waiting    :: [Proc]                        -- ^ Processes that are waiting on variables
-    , written    :: [IORef SSMExp]                -- ^ References that were written in this instance
-    , counter    :: Int                           -- ^ Counter for fresh name supply
-    }
+data St s = St
+    { now        :: Int                     -- ^ Current time
+    , arguments  :: Map.Map String (Var s)  -- ^ Arguments to main
+    , events     :: [Event s]               -- ^ Outstanding events
+    , readyQueue :: [Proc s]                -- ^ Processes ready to run, should be a priority queue
+    , written    :: [Var s]                 -- ^ References that were written in this instance
+    , counter    :: Int                     -- ^ Counter for fresh name supply
+    } deriving Eq
 
-type Interp a = StateT St IO a
-
-interpret :: SSM () -> [(String, SSMExp)] -> IO ()
-interpret ssm args = do
-    putStrLn "beginning interpretation --"
-    -- Create references for the program arguments and create the state
-    args' <- mkArgs args
-    let p = Proc 1024 10 0 Nothing Map.empty Map.empty Nothing ssm
-    let state = st (Map.fromList args') p
-    putStrLn "done setting up program arguments --"
-
-    -- Run the actual program
-    putStrLn "running the program --"
-    runStateT mainloop state
-    
-    -- Print the state of the references after program termination
-    putStrLn "program terminated -- state of input arguments are:"
-    forM_ args' $ \(n,r) -> do
-        v <- readIORef r
-        putStrLn $ n ++ ": " ++ show v
-  where
-      st :: Map.Map String (IORef SSMExp) -> Proc -> St
-      st args p = St (-1) args [] [p] [] [] 0
-
-      mkArgs :: [(String, SSMExp)] -> IO [(String, IORef SSMExp)]
-      mkArgs args = mapM (\(n,v) -> newIORef v >>= (\r -> return (n, r))) args
+type Interp s a = StateT (St s) (ST s) a
 
 
-type Interp2 s a = State St (ST s a)
+interpret :: SSM () -> [String]
+interpret ssm = runST (interpret' ssm)
 
-interpret' :: SSM () -> IO [String]
+interpret' :: SSM () -> ST s [String]
 interpret' ssm = do
-    args <- mkArgs ssm
-    let p = Proc 1024 10 0 Nothing Map.empty Map.empty Nothing ssm
-    let state = St 0 (Map.fromList args) [] [p] [] [] 0
+    args     <- mkArgs ssm
+    let p     = Proc 1024 10 0 Nothing Map.empty Map.empty Nothing ssm
+    let state = St 0 (Map.fromList args) [] [p] [] 0
     evalStateT mainloop' state
-    --instants <- evalStateT mainloop' state
-    --res <- mapM (\(n,r) -> readIORef r >>= \v -> return (n ++ " " ++ show v)) args
-    --return $ instants ++ res
+
   where
-      mkArgs :: SSM () -> IO [(String, IORef SSMExp)]
+      mkArgs :: SSM () -> ST s [(String, Var s)]
       mkArgs (Procedure _ k)                = mkArgs $ k ()
       mkArgs (Argument _ n (Left e) k)      = mkArgs $ k ()
       mkArgs (Argument _ n (Right (r,t)) k) = do
-          ref  <- newIORef (defaultVal (dereference t))
+          ref <- newSTRef (defaultVal (dereference t))
+          variable <- newSTRef (ref, [])
           rest <- mkArgs $ k ()
-          return $ (n,ref) : rest
+          return $ (n,variable) : rest
       mkArgs _                              = return []
 
       defaultVal :: Type -> SSMExp
@@ -91,14 +76,14 @@ interpret' ssm = do
       defaultVal TBool = Lit TBool (LBool False)
       defaultVal t     = error $ "not a simple type: " ++ show t
 
-      mainloop' :: Interp [String]
+      mainloop' :: Interp s [String]
       mainloop' = do
           runProcesses
           st <- get
           let r = concat ["now: ", show (now st), " eventqueuesize: ", show (length (events st))]
           ((:) r) <$> go
         where
-            go :: Interp [String]
+            go :: Interp s [String]
             go = do 
                 next_time <- next_event_time
                 case next_time of
@@ -111,7 +96,7 @@ interpret' ssm = do
                                     return $ r:rest
                     Nothing   -> return []
 
-            next_event_time :: Interp (Maybe Int)
+            next_event_time :: Interp s (Maybe Int)
             next_event_time = do
                 evs <- gets events
                 if null evs
@@ -119,38 +104,22 @@ interpret' ssm = do
                     else let next = foldl min (at (head evs)) $ tail $ map at evs
                         in return $ Just next
 
-{- | Mainloop of a program. If there is work left to do it will increment the current
-time, perform the outstanding events for this time and then run the scheduler. -}
-mainloop :: Interp ()
-mainloop = do
-    st <- get
-    if null (events st) && null (readyQueue st)
-        then return ()
-        else do liftIO $ putStrLn $ "TIME: " ++ show (now st + 1) ++ " SIZE EVENTQUEUE: " ++
-                                    show (length (events st))
-                modify $ \st -> st { now = now st + 1
-                                   , written = []
-                                   }
-                performEvents
-                runProcesses
-                mainloop
-
 {- | Dequeues the process with lowest priority and runs it until the ready queue
 becomes empty. It is worth mentioning and running a process might enqueue additional
 processes on the ready queue. -}
-runProcesses :: Interp ()
+runProcesses :: Interp s ()
 runProcesses = do
     mp <- dequeue
     case mp of
         Just p  -> runProcess p >> runProcesses
         Nothing -> return ()
 
--- this is very non exhaustive, fix later
-eval :: Proc -> SSMExp -> Interp SSMExp
+
+eval :: Proc s -> SSMExp -> Interp s SSMExp
 eval p e = do
     case e of
         Var _ n -> case Map.lookup n (variables p) of
-            Just r -> do v <- liftIO $ readIORef r
+            Just r -> do v <- lift $ (readSTRef . fst) =<< readSTRef r
                          eval p v
             Nothing -> error $ "interpreter error - variable " ++ n ++ " not found in current process"
         Lit _ l -> return e
@@ -188,52 +157,51 @@ eval p e = do
       getBool (Lit _ (LBool b)) = b
       getBool e                 = error $ "not a boolean: " ++ show e
 
-runProcess :: Proc -> Interp ()
+newVar :: SSMExp -> Interp s (Var s)
+newVar e = do
+    r <- lift $ newSTRef e
+    ref <- lift $ newSTRef (r, [])
+    return ref
+
+runProcess :: Proc s -> Interp s ()
 runProcess p = case continuation p of
     Return x          -> return ()
     NewRef ba e k      -> do
-        --liftIO $ putStrLn $ "newref"
         name <- case ba of
             Just (_,n) -> return n
             Nothing    -> fresh
-        r <- liftIO $ newIORef e
+        r <- newVar e
         runProcess $ p { references   = Map.insert name r (references p)
                        , continuation = k (name, mkReference (expType e))
                        }
     SetRef r e k -> do
-        --liftIO $ putStrLn $ "setref"
         writeRef p r e
         runProcess $ p { continuation = k ()}
     SetLocal (Var t r) v k -> do
-        --liftIO $ putStrLn "setlocal"
         writeRef p (r,t) v
         runProcess $ p { continuation = k ()}
     SetLocal e v k -> error $ "interpreter error - can not assign value to expression: " ++ show e
     GetRef r s k -> do
-        --liftIO $ putStrLn $ "getref"
         ior <- lookupRef r p
-        e <- liftIO $ readIORef ior
+        (r,_) <- lift $ readSTRef ior
+        e <- lift $ readSTRef r
         runProcess $ p { continuation = k e}
     If c thn (Just els) k -> do
-        --liftIO $ putStrLn $ "if"
         b <- eval p c
         case b of
           Lit _ (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
           Lit _ (LBool False) -> runProcess $ p { continuation = els >> k ()}
     If c thn Nothing k -> do
-        --liftIO $ putStrLn $ "if"
         b <- eval p c
         case b of
           Lit _ (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
           Lit _ (LBool False) -> runProcess $ p { continuation = k ()}
     While c bdy k -> do
-        --liftIO $ putStrLn $ "while"
         b <- eval p c
         case b of
           Lit _ (LBool True)  -> runProcess $ p { continuation = bdy >> continuation p}
           Lit _ (LBool False) -> runProcess $ p { continuation = k ()}
     After e r v k -> do
-        --liftIO $ putStrLn $ "after"
         i <- eval p e
         case i of
           Lit _ (LInt num) -> do
@@ -244,47 +212,43 @@ runProcess p = case continuation p of
               runProcess $ p { continuation = k ()}
           _ -> error $ "interpreter error - not a number " ++ show i
     Changed r s k     -> do
-        --liftIO $ putStrLn $ "changed"
         st <- get
         ref <- lookupRef r p
         if ref `elem` written st
             then runProcess $ p { continuation = k (Lit TBool (LBool True))}
             else runProcess $ p { continuation = k (Lit TBool (LBool False))}
     Wait vars k       -> do
-        --liftIO $ putStrLn $ "wait"
         refs <- mapM (`lookupRef` p) vars
-        wait $ p { waitingOn = Just refs
-                 , continuation = k ()
-                 }
+        let p' = p { waitingOn    = Just refs
+                   , continuation = k ()
+                   }
+        mapM_ (sensitize p') refs
     Fork procs k      -> do
-        --liftIO $ putStrLn $ "fork"
         let numchild = length procs
         let d'       = depth p - integerLogBase 2 (toInteger $ depth p)
         let priodeps = [ (priority p + p'*(2^d'), d') | p' <- [0 .. numchild-1]]
         let p'       = p { runningChildren = numchild
                          , continuation = k ()
                          }
-        par         <- liftIO $ newIORef p'
+        par         <- lift $ newSTRef p'
         forM_ (zip procs priodeps) $ \(cont, (prio, dep)) -> do
             enqueue $ Proc prio dep 0 (Just par) Map.empty Map.empty Nothing cont
     Procedure n k     -> do
-        --liftIO $ putStrLn $ "procedure"
         runProcess $ p { continuation = k ()}
     Argument n m a k  -> do
-        --liftIO $ putStrLn $ "argument"
         case a of
             Left e  -> do
                 v <- case parent p of
-                    Just par -> do p' <- liftIO $ readIORef par
+                    Just par -> do p' <- lift $ readSTRef par
                                    eval p' e
                     Nothing  -> return e
-                ref <- liftIO $ newIORef v
+                ref <- newVar v
                 runProcess $ p { variables = Map.insert m ref (variables p)
                                , continuation = k ()
                                }
             Right r -> case parent p of
                 Just par -> do
-                    p'  <- liftIO $ readIORef par
+                    p'  <- lift $ readSTRef par
                     ref <- lookupRef r p'
                     runProcess $ p { references = Map.insert m ref (references p)
                                    , continuation = k ()}
@@ -297,52 +261,68 @@ runProcess p = case continuation p of
                                            }
                         Nothing  -> error $ "interpreter error - unknown reference " ++ fst r
     Result n r k -> do
-        --liftIO $ putStrLn $ "result"
         case parent p of
             Just par -> do
-                p' <- liftIO $ readIORef par
+                p' <- lift $ readSTRef par
                 if runningChildren p' == 1
                     then enqueue $ p' { runningChildren = 0}
-                    else liftIO $ writeIORef par $ p' { runningChildren = runningChildren p' - 1}
+                    else lift $ writeSTRef par $ p' { runningChildren = runningChildren p' - 1}
             Nothing  -> return ()
         runProcess $ p { continuation = k ()} -- this will probably just be one more return
   where
-      writeRef :: Proc -> Reference -> SSMExp -> Interp ()
+      writeRef :: Proc s -> Reference -> SSMExp -> Interp s ()
       writeRef p (r,_) e = do
           case Map.lookup r (references p) of
               Just ref -> do v <- eval p e
-                             liftIO $ writeIORef ref v
+                             writeVar ref v
                              modify $ \st -> st { written = ref : written st }
               Nothing  -> case Map.lookup r (variables p) of
                   Just ref -> do v <- eval p e
-                                 liftIO $ writeIORef ref v
+                                 writeVar ref v
                                  modify $ \st -> st { written = ref : written st }
                   Nothing  -> error $ "interpreter error - not not find reference " ++ r
 
-
-      wait :: Proc -> Interp ()
-      wait p = modify $ \st -> st { waiting = p : waiting st}
-
-      fresh :: Interp String
+      fresh :: Interp s String
       fresh = do
           st <- gets counter
           modify $ \st -> st { counter = counter st + 1}
           return $ "v" ++ show st
 
-lookupRef :: Reference -> Proc -> Interp (IORef SSMExp)
+lookupRef :: Reference -> Proc s -> Interp s (Var s)
 lookupRef (r,_) p = case Map.lookup r (references p) of
     Just ref -> return ref
     Nothing  -> error $ "interpreter error - can not find reference " ++ r
 
+writeVar :: Var s -> SSMExp -> Interp s ()
+writeVar ref e = do
+    (variable,waits) <- lift $ readSTRef ref
+    lift $ writeSTRef variable e
+    mapM_ desensitize waits
+    lift $ writeSTRef ref (variable, [])
+  where
+      desensitize :: Proc s -> Interp s ()
+      desensitize p = do
+          let variables = fromJust $ waitingOn p
+          forM_ variables $ \r -> do
+              (ref,procs) <- lift $ readSTRef r
+              lift $ writeSTRef r (ref, delete p procs)
+          enqueue $ p { waitingOn = Nothing}
+
+-- | Make the procedure wait for writes to the variable
+sensitize :: Proc s -> Var s -> Interp s ()
+sensitize p v = do
+    (ref,procs) <- lift $ readSTRef v
+    lift $ writeSTRef v (ref, p:procs)
+
 {- | Perform all the events scheduled for this isntance, enqueueing those processes that
 were waiting for one of these events to happen. -}
-performEvents :: Interp ()
+performEvents :: Interp s ()
 performEvents = do
     es <- currentEvents
     mapM_ performEvent es
   where
       -- | Fetch the events at this instant in time, if any
-      currentEvents :: Interp [Event]
+      currentEvents :: Interp s [Event s]
       currentEvents = do
           st <- get
           let (current, future) = partition (\e -> at e == now st) (events st)
@@ -351,33 +331,13 @@ performEvents = do
 
       {- | Perform the update of a scheduled event and enqueue processes that were waiting for
       this event to happen. -}
-      performEvent :: Event -> Interp ()
+      performEvent :: Event s -> Interp s ()
       performEvent e = do
-          liftIO $ writeIORef (ref e) (val e)
+          writeVar (ref e) (val e)
           modify $ \st -> st { written = ref e : written st}
-          processes <- waitingProcesses
-          mapM_ enqueueWaiting processes
-        where
-            -- | Enqueue a process after making sure it is not waiting on any reference anymore
-            enqueueWaiting :: Proc -> Interp ()
-            enqueueWaiting p = do
-                enqueue $ p { waitingOn = Nothing}
-
-            -- | Processes that are waiting for this event
-            waitingProcesses :: Interp [Proc]
-            waitingProcesses = do
-                st <- get
-                let (w, nw) = partition pred (waiting st)
-                put $ st { waiting = nw}
-                return w
-                where
-                    pred :: Proc -> Bool
-                    pred p = case waitingOn p of
-                        Just vars -> ref e `elem` vars
-                        Nothing   -> False -- should really be an error
 
 -- | Fetch the process with the lowest priority from the ready queue
-dequeue :: Interp (Maybe Proc)
+dequeue :: Interp s (Maybe (Proc s))
 dequeue = do
     st <- get
     case readyQueue st of
@@ -386,10 +346,10 @@ dequeue = do
                      return (Just x)
 
 -- | Enqueue a process in the ready queue, ordered by its priority
-enqueue :: Proc -> Interp ()
+enqueue :: Proc s -> Interp s ()
 enqueue p = modify $ \st -> st { readyQueue = insert p (readyQueue st)}
   where
-      insert :: Proc -> [Proc] -> [Proc]
+      insert :: Proc s -> [Proc s] -> [Proc s]
       insert p [] = [p]
       insert p1 (p2:ps) = if priority p1 < priority p2
                             then p1 : p2 : ps

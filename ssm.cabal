@@ -39,6 +39,7 @@ library
       Manyrefs
       Generator
       WhileEx
+      NonTerminate
   other-modules:
       Paths_ssm
   hs-source-dirs:
