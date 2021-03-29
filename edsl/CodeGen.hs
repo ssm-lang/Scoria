@@ -50,17 +50,14 @@ data TRState = TRState { nextLabel  :: Int         -- ^ Counter to generate fres
 type TR a = State TRState a
 
 -- | Main compiler entrypoint. Will output a C-file as a single string.
-compile :: Bool -> SSM () -> String
-compile b ssm = let methods  = evalState generateProcedures (TRState 0 0 0 0 [] ([], [], []) [] [ssm])
-                    testmain = if b then execWriter (generateMain ssm) else [""]
-                in unlines $ [ "#include \"peng-platform.h\""
-                             , "#include \"peng.h\""
-                             --, "#include \"peng-scalar-code.h\""
-                             , "#include <stdio.h>"
-                             --, ""
-                             --, "PENG_SCALAR_CODE(int)"
-                             , ""
-                             ] ++ methods ++ testmain
+compile :: Bool -> Maybe Int -> SSM () -> String
+compile b d ssm = let methods  = evalState generateProcedures (TRState 0 0 0 0 [] ([], [], []) [] [ssm])
+                      testmain = if b then execWriter (generateMain ssm d) else [""]
+                  in unlines $ [ "#include \"peng-platform.h\""
+                               , "#include \"peng.h\""
+                               , "#include <stdio.h>"
+                               , ""
+                               ] ++ methods ++ testmain
 
 -- | Return a list of all triples (struct, enter, step)
 generateProcedures :: TR [String]
@@ -574,8 +571,8 @@ genCFromIR (x:xs) lrefs           = case x of
           then concat ["sv_", prtyp (dereference t), "_t *"]
           else concat ["sv_", prtyp t, "_t "]
 
-generateMain :: SSM () -> Writer [String] ()
-generateMain ssm@(Procedure n k) = do
+generateMain :: SSM () -> Maybe Int -> Writer [String] ()
+generateMain ssm@(Procedure n k) d = do
     top_return
     indent 0 "void main(void) {"
     indent 4 "act_t top = { .step = top_return };"
@@ -583,13 +580,18 @@ generateMain ssm@(Procedure n k) = do
     forkentrypoint ssm
     indent 4 "tick();"
     indent 4 "printf(\"now: %lu eventqueuesize: %d\\n\", now, event_queue_len);"
-    indent 4 "while(1) {"
+    maybe (return ())
+          (\s -> indent 4 (concat ["int counter = ", show s, ";"])) d
+    maybe (indent 4 "while(1) {")
+          (\_ -> indent 4 "while(counter) {") d
     indent 8 "now = next_event_time();"
     indent 8 "if(now == NO_EVENT_SCHEDULED) {"
     indent 12 "break;"
     indent 8 "}"
     indent 8 "tick();"
     indent 8 "printf(\"now: %lu eventqueuesize: %d\\n\", now, event_queue_len);"
+    maybe (return ())
+          (\_ -> indent 8 "counter = counter - 1;") d
     indent 4 "}"
     printrefs $ refs (k ())
     indent 0 "}"
@@ -619,9 +621,11 @@ generateMain ssm@(Procedure n k) = do
               
       forkentrypoint :: SSM () -> Writer [String] ()
       forkentrypoint (Procedure n k) = do
+          let args = vals (k ())
           indent 4 $ concat ["fork_routine((act_t *) enter_"
                             , n
-                            , "(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT, "
+                            , "(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT"
+                            , if null args then "" else ", "
                             , intercalate ", " (vals (k()))
                             , "));"]
         where
