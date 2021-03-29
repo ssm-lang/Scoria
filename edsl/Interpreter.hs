@@ -3,6 +3,8 @@ module Interpreter where
 import qualified Data.Map as Map
 import Data.IORef
 import Control.Monad.State.Lazy
+import Control.Monad.ST.Lazy
+import Data.STRef.Lazy
 import Data.List
 import GHC.Float
 
@@ -62,6 +64,8 @@ interpret ssm args = do
       mkArgs :: [(String, SSMExp)] -> IO [(String, IORef SSMExp)]
       mkArgs args = mapM (\(n,v) -> newIORef v >>= (\r -> return (n, r))) args
 
+
+type Interp2 s a = State St (ST s a)
 
 interpret' :: SSM () -> IO [String]
 interpret' ssm = do
