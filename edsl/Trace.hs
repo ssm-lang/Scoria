@@ -7,40 +7,33 @@ import Data.Void
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as Lexer
-import Text.Megaparsec.Debug
-
-import Control.Monad
 
 type Parser a = Parsec Void Text a
 
-data Trace = Trace { instants :: [Instant]
-                   , result :: [Result]
-                   }
+data OutputEntry = Instant Int Int
+                 | Event Int String
+                 | Result String String
   deriving (Show, Eq)
 
-data Instant = Instant Int Int deriving (Show, Eq)
-data Result = Result String String deriving (Show, Eq)
+type Output = [OutputEntry]
 
-mkTrace :: String -> Trace
+mkTrace :: String -> Output
 mkTrace inp = fromRight $ parse pTrace "" (pack inp)
   where
       fromRight :: Show a => Either a b -> b
-      fromRight (Left a) = error $ "parsing of test results failed: " ++ show a
+      fromRight (Left a)  = error $ "parsing of test results failed: " ++ show a
       fromRight (Right b) = b
 
-pTrace :: Parser Trace
-pTrace = do
-    instants <- some pInstant
-    results <- many pResult
-    return $ Trace instants results
+pTrace :: Parser Output
+pTrace = many $ choice [pInstant, pResult]
 
-pInstant :: Parser Instant
+pInstant :: Parser OutputEntry
 pInstant = do
     now <- pNow
     eventqueuesize <- pEventqueuesize
     return $ Instant now eventqueuesize
 
-pResult :: Parser Result
+pResult :: Parser OutputEntry
 pResult = do
     refname <- pIdent
     pSpace

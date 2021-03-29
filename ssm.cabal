@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+      Trace
       Core
       CodeGen
       Interpreter
@@ -53,6 +54,9 @@ library
     , BinderAnn
     , prettyprinter
     , QuickCheck
+    , text
+    , megaparsec
+    , parser-combinators
   default-language: Haskell2010
 
 executable ssm-exe
@@ -73,7 +77,6 @@ test-suite ssm-test
   other-modules:
       Paths_ssm
       Evaluation
-      Trace
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
@@ -83,7 +86,5 @@ test-suite ssm-test
     , directory
     , process
     , text
-    , megaparsec
-    , parser-combinators
   default-language: Haskell2010
 

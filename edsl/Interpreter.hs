@@ -2,6 +2,7 @@ module Interpreter where
 
 import qualified Data.Map as Map
 import Control.Monad.State.Lazy
+import Control.Monad.Writer.Lazy
 import Control.Monad.ST.Lazy
 import Data.STRef.Lazy
 import Data.List
@@ -9,6 +10,7 @@ import Data.Maybe
 import GHC.Float
 
 import Core
+import qualified Trace as T
 
 type Var s = STRef s (STRef s SSMExp, [Proc s])
 
@@ -47,19 +49,18 @@ data St s = St
     , counter    :: Int                     -- ^ Counter for fresh name supply
     } deriving Eq
 
-type Interp s a = StateT (St s) (ST s) a
+type Interp s a = StateT (St s) (WriterT T.Output (ST s)) a
 
 
-interpret :: SSM () -> [String]
-interpret ssm = runST (interpret' ssm)
+interpret :: SSM () -> T.Output
+interpret ssm = snd $ runST (interpret' ssm)
 
-interpret' :: SSM () -> ST s [String]
+interpret' :: SSM () -> ST s ((), T.Output)
 interpret' ssm = do
     args     <- mkArgs ssm
     let p     = Proc 1024 10 0 Nothing Map.empty Map.empty Nothing ssm
     let state = St 0 (Map.fromList args) [] [p] [] 0
-    evalStateT mainloop' state
-
+    runWriterT (evalStateT mainloop' state)
   where
       mkArgs :: SSM () -> ST s [(String, Var s)]
       mkArgs (Procedure _ k)                = mkArgs $ k ()
@@ -76,14 +77,14 @@ interpret' ssm = do
       defaultVal TBool = Lit TBool (LBool False)
       defaultVal t     = error $ "not a simple type: " ++ show t
 
-      mainloop' :: Interp s [String]
+      mainloop' :: Interp s ()
       mainloop' = do
           runProcesses
           st <- get
-          let r = concat ["now: ", show (now st), " eventqueuesize: ", show (length (events st))]
-          ((:) r) <$> go
+          tell [T.Instant (now st) (length (events st))]
+          go
         where
-            go :: Interp s [String]
+            go :: Interp s ()
             go = do 
                 next_time <- next_event_time
                 case next_time of
@@ -91,10 +92,9 @@ interpret' ssm = do
                                     performEvents
                                     runProcesses
                                     st <- get
-                                    let r = concat ["now: ", show (now st), " eventqueuesize: ", show (length (events st))]
-                                    rest <- go
-                                    return $ r:rest
-                    Nothing   -> return []
+                                    tell [T.Instant (now st) (length (events st))]
+                                    go
+                    Nothing   -> return ()
 
             next_event_time :: Interp s (Maybe Int)
             next_event_time = do
@@ -119,7 +119,7 @@ eval :: Proc s -> SSMExp -> Interp s SSMExp
 eval p e = do
     case e of
         Var _ n -> case Map.lookup n (variables p) of
-            Just r -> do v <- lift $ (readSTRef . fst) =<< readSTRef r
+            Just r -> do v <- lift $ lift $ (readSTRef . fst) =<< readSTRef r
                          eval p v
             Nothing -> error $ "interpreter error - variable " ++ n ++ " not found in current process"
         Lit _ l -> return e
@@ -159,8 +159,8 @@ eval p e = do
 
 newVar :: SSMExp -> Interp s (Var s)
 newVar e = do
-    r <- lift $ newSTRef e
-    ref <- lift $ newSTRef (r, [])
+    r <- lift $ lift $ newSTRef e
+    ref <- lift $ lift $ newSTRef (r, [])
     return ref
 
 runProcess :: Proc s -> Interp s ()
@@ -183,8 +183,8 @@ runProcess p = case continuation p of
     SetLocal e v k -> error $ "interpreter error - can not assign value to expression: " ++ show e
     GetRef r s k -> do
         ior <- lookupRef r p
-        (r,_) <- lift $ readSTRef ior
-        e <- lift $ readSTRef r
+        (r,_) <- lift $ lift $ readSTRef ior
+        e <- lift $ lift $ readSTRef r
         runProcess $ p { continuation = k e}
     If c thn (Just els) k -> do
         b <- eval p c
@@ -230,7 +230,7 @@ runProcess p = case continuation p of
         let p'       = p { runningChildren = numchild
                          , continuation = k ()
                          }
-        par         <- lift $ newSTRef p'
+        par         <- lift $ lift $ newSTRef p'
         forM_ (zip procs priodeps) $ \(cont, (prio, dep)) -> do
             enqueue $ Proc prio dep 0 (Just par) Map.empty Map.empty Nothing cont
     Procedure n k     -> do
@@ -239,7 +239,7 @@ runProcess p = case continuation p of
         case a of
             Left e  -> do
                 v <- case parent p of
-                    Just par -> do p' <- lift $ readSTRef par
+                    Just par -> do p' <- lift $ lift $ readSTRef par
                                    eval p' e
                     Nothing  -> return e
                 ref <- newVar v
@@ -248,7 +248,7 @@ runProcess p = case continuation p of
                                }
             Right r -> case parent p of
                 Just par -> do
-                    p'  <- lift $ readSTRef par
+                    p'  <- lift $ lift $ readSTRef par
                     ref <- lookupRef r p'
                     runProcess $ p { references = Map.insert m ref (references p)
                                    , continuation = k ()}
@@ -263,10 +263,10 @@ runProcess p = case continuation p of
     Result n r k -> do
         case parent p of
             Just par -> do
-                p' <- lift $ readSTRef par
+                p' <- lift $ lift $ readSTRef par
                 if runningChildren p' == 1
                     then enqueue $ p' { runningChildren = 0}
-                    else lift $ writeSTRef par $ p' { runningChildren = runningChildren p' - 1}
+                    else lift $ lift $ writeSTRef par $ p' { runningChildren = runningChildren p' - 1}
             Nothing  -> return ()
         runProcess $ p { continuation = k ()} -- this will probably just be one more return
   where
@@ -295,24 +295,24 @@ lookupRef (r,_) p = case Map.lookup r (references p) of
 
 writeVar :: Var s -> SSMExp -> Interp s ()
 writeVar ref e = do
-    (variable,waits) <- lift $ readSTRef ref
-    lift $ writeSTRef variable e
+    (variable,waits) <- lift $ lift $ readSTRef ref
+    lift $ lift $ writeSTRef variable e
     mapM_ desensitize waits
-    lift $ writeSTRef ref (variable, [])
+    lift $ lift $ writeSTRef ref (variable, [])
   where
       desensitize :: Proc s -> Interp s ()
       desensitize p = do
           let variables = fromJust $ waitingOn p
           forM_ variables $ \r -> do
-              (ref,procs) <- lift $ readSTRef r
-              lift $ writeSTRef r (ref, delete p procs)
+              (ref,procs) <- lift $ lift $ readSTRef r
+              lift $ lift $ writeSTRef r (ref, delete p procs)
           enqueue $ p { waitingOn = Nothing}
 
 -- | Make the procedure wait for writes to the variable
 sensitize :: Proc s -> Var s -> Interp s ()
 sensitize p v = do
-    (ref,procs) <- lift $ readSTRef v
-    lift $ writeSTRef v (ref, p:procs)
+    (ref,procs) <- lift $ lift $ readSTRef v
+    lift $ lift $ writeSTRef v (ref, p:procs)
 
 {- | Perform all the events scheduled for this isntance, enqueueing those processes that
 were waiting for one of these events to happen. -}
@@ -333,6 +333,8 @@ performEvents = do
       this event to happen. -}
       performEvent :: Event s -> Interp s ()
       performEvent e = do
+          st <- get
+          tell [T.Event (now st) (show (val e))]
           writeVar (ref e) (val e)
           modify $ \st -> st { written = ref e : written st}
 

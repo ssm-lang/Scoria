@@ -1,5 +1,7 @@
 module Main where
 
+import Data.List
+
 import Frontend
 import Fib
 import NonTerminate
@@ -8,5 +10,6 @@ import Interpreter
 
 main :: IO ()
 main = do
-    let output = interpret $ nonterminate inputIntRef--(myfib (int 13) (Ptr ("r", mkReference TInt)))
-    putStrLn $ unlines output
+    --let output = interpret $ nonterminate inputIntRef
+    let output = interpret $ myfib (int 13) inputIntRef
+    putStrLn $ intercalate "\n" $ map show output
