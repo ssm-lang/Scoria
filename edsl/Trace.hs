@@ -25,7 +25,19 @@ mkTrace inp = fromRight $ parse pTrace "" (pack inp)
       fromRight (Right b) = b
 
 pTrace :: Parser Output
-pTrace = many $ choice [pInstant, pResult]
+pTrace = many $ choice [pInstant, pResult, pEvent]
+
+pEvent :: Parser OutputEntry
+pEvent = do
+    pSpace
+    pSymbol "event"
+    pSpace
+    num <- Lexer.lexeme pSpace Lexer.decimal
+    pSpace
+    pSymbol "value"
+    pSpace
+    res <- pRes
+    return $ Event num res
 
 pInstant :: Parser OutputEntry
 pInstant = do
