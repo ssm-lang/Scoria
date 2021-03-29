@@ -91,11 +91,12 @@ instance Arbitrary Program where
                       k <- promote $ \(Var t v) -> arbBody tab ((v,t):vars) refs (n-1)
                       return $ GetRef r Nothing k)
 
-             , (n, do delay <- choose (0,3) >>= arbExp TInt vars -- semantics should be able to handle negative delays
+             , (n, do delay <- choose (0,3) >>= arbExp TInt vars
                       r <- elements refs
                       e <- choose (0,3) >>= arbExp (dereference (snd r)) vars
                       k <- promote $ \() -> arbBody tab vars refs (n-1)
-                      return $ After delay r e k)
+                      -- for now, I force the after to be positive by multiplying it by itself
+                      return $ After delay r (BOp TInt e e OTimes) k)
 
              , (n, do r <- elements refs
                       k <- promote $ \e -> case e of
