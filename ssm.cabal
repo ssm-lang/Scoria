@@ -86,5 +86,6 @@ test-suite ssm-test
     , directory
     , process
     , text
+    , QuickCheck
   default-language: Haskell2010
 

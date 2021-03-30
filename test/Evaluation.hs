@@ -5,7 +5,8 @@ import System.Process
 
 import Frontend ( SSM, getname )
 import CodeGen (compile)
-import Interpreter (interpret')
+import Interpreter (interpret)
+import Trace
 
 {- | Given a SSM program, this function will create a new directory, compile the program in
 that directory and run it, producing some output in a txt-file. This output will then be read
@@ -37,7 +38,8 @@ runCG program = do
                            , rtssrc, "peng-int.c "
                            , rtssrc, "peng-bool.c -I"
                            , rtsloc, "include -I"
-                           , rtsloc, "linux/include"]
+                           , rtsloc, "linux/include "
+                           , " -DDEBUG"]
 
             rtssrc :: String
             rtssrc = rtsloc ++ "src/"
@@ -72,7 +74,7 @@ runCG program = do
       createTestFile :: SSM () -> IO ()
       createTestFile program = do
           let name = getname program
-          let c = compile True program
+          let c = compile True Nothing program
 
           inDirectory testdir $ do
               writeFile (name ++ ".c") c
@@ -96,5 +98,5 @@ runCG program = do
           inDirectory testdir $ do
               readFile $ name ++ ".txt"
 
-runInterpreter :: SSM () -> IO [String]
-runInterpreter = interpret'
+runInterpreter :: SSM () -> Output
+runInterpreter = interpret

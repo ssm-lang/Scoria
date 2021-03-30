@@ -8,14 +8,27 @@ import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as Lexer
 
+import Core hiding (Result)
+
 type Parser a = Parsec Void Text a
 
 data OutputEntry = Instant Int Int
-                 | Event Int String
-                 | Result String String
+                 | Event Int SSMExp
+                 | Result String SSMExp
   deriving (Show, Eq)
 
 type Output = [OutputEntry]
+
+testoutput = Prelude.unlines [ "event 0 value int 0"
+                             , "event 1 value bool 1"
+                             , "event 2 value int 1"
+                             , "now 3 eventqueuesize 3"
+                             , "now 5 eventqueuesize 5"
+                             , "event 6 value int 7"
+                             , "result x int 1"
+                             , "result y bool 0"
+                             , "result z bool 1"
+                             ]
 
 mkTrace :: String -> Output
 mkTrace inp = fromRight $ parse pTrace "" (pack inp)
@@ -25,7 +38,7 @@ mkTrace inp = fromRight $ parse pTrace "" (pack inp)
       fromRight (Right b) = b
 
 pTrace :: Parser Output
-pTrace = many $ choice [pInstant, pResult, pEvent]
+pTrace = many $ choice [pEvent, pInstant, pResult]
 
 pEvent :: Parser OutputEntry
 pEvent = do
@@ -47,6 +60,8 @@ pInstant = do
 
 pResult :: Parser OutputEntry
 pResult = do
+    pSymbol "result"
+    pSpace
     refname <- pIdent
     pSpace
     val <- pRes
@@ -59,23 +74,32 @@ pIdent = do
     pSpace
     return $ a:as
 
-pRes :: Parser String
+pRes :: Parser SSMExp
 pRes = do
     -- add more variants here as we add more types
     choice [pInt, pBool]
   where
-      pInt :: Parser String
-      pInt = show <$> Lexer.lexeme pSpace Lexer.decimal
+      pInt :: Parser SSMExp
+      pInt = do
+          pSpace
+          pSymbol "int"
+          pSpace
+          Lit TInt . LInt <$> Lexer.lexeme pSpace Lexer.decimal
 
-      pBool :: Parser String
-      pBool = choice [unpack <$> pSymbol "true", unpack <$> pSymbol "false"]
+      pBool :: Parser SSMExp
+      pBool = do
+          pSpace
+          pSymbol "bool"
+          pSpace
+          b <- Lexer.lexeme pSpace Lexer.decimal
+          case b of
+              0 -> return $ Lit TBool $ LBool False
+              _ -> return $ Lit TBool $ LBool True
 
 pEventqueuesize :: Parser Int
 pEventqueuesize = do
     pSpace
     pSymbol "eventqueuesize"
-    pSpace
-    char ':'
     pSpace
     num <- Lexer.lexeme pSpace Lexer.decimal
     pSpace
@@ -85,15 +109,15 @@ pNow :: Parser Int
 pNow = do
     pSymbol "now"
     pSpace
-    char ':'
-    pSpace
     num <- Lexer.lexeme pSpace Lexer.decimal 
     pSpace
     return num
 
+-- | Try to parse the given text as a symbol
 pSymbol :: Text -> Parser Text
 pSymbol = Lexer.symbol pSpace
 
+-- | Characters we don't care about are spaces and newlines. Should probably add clrf etc also.
 pSpace :: Parser ()
 pSpace = do
     many $ choice [spaceChar, newline]

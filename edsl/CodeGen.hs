@@ -579,7 +579,7 @@ generateMain ssm@(Procedure n k) d = do
     createrefs $ refs (k ())
     forkentrypoint ssm
     indent 4 "tick();"
-    indent 4 "printf(\"now: %lu eventqueuesize: %d\\n\", now, event_queue_len);"
+    indent 4 "printf(\"now %lu eventqueuesize %d\\n\", now, event_queue_len);"
     maybe (return ())
           (\s -> indent 4 (concat ["int counter = ", show s, ";"])) d
     maybe (indent 4 "while(1) {")
@@ -589,7 +589,7 @@ generateMain ssm@(Procedure n k) d = do
     indent 12 "break;"
     indent 8 "}"
     indent 8 "tick();"
-    indent 8 "printf(\"now: %lu eventqueuesize: %d\\n\", now, event_queue_len);"
+    indent 8 "printf(\"now %lu eventqueuesize %d\\n\", now, event_queue_len);"
     maybe (return ())
           (\_ -> indent 8 "counter = counter - 1;") d
     indent 4 "}"

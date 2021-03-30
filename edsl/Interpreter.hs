@@ -334,7 +334,7 @@ performEvents = do
       performEvent :: Event s -> Interp s ()
       performEvent e = do
           st <- get
-          tell [T.Event (now st) (show (val e))]
+          tell [T.Event (now st) (val e)]
           writeVar (ref e) (val e)
           modify $ \st -> st { written = ref e : written st}
 

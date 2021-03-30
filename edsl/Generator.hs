@@ -88,9 +88,10 @@ instance Arbitrary Program where
                       return $ SetRef r e (const k))
 
              , (n, do r <- elements refs
-                      k <- promote $ \(Var t v) -> arbBody tab ((v,t):vars) refs (n-1)
+                      k <- promote $ \v -> do
+                          k <- promote $ \ref -> arbBody tab vars (ref:refs) (n-1)
+                          return $ NewRef Nothing v k
                       return $ GetRef r Nothing k)
-
              , (n, do delay <- choose (0,3) >>= arbExp TInt vars
                       r <- elements refs
                       e <- choose (0,3) >>= arbExp (dereference (snd r)) vars
@@ -99,11 +100,11 @@ instance Arbitrary Program where
                       return $ After delay r (BOp TInt e e OTimes) k)
 
              , (n, do r <- elements refs
-                      k <- promote $ \e -> case e of
-                                             (Var t v) -> arbBody tab ((v,t):vars) refs (n-1)
-                                             _         -> arbBody tab vars refs (n-1) -- interpreter uses literals here
+                      k <- promote $ \v -> do
+                          let t = expType v
+                          k <- promote $ \ref -> arbBody tab vars (ref:refs) (n-1)
+                          return $ NewRef Nothing v k
                       return $ Changed r Nothing k)
-
              , (n, do rs <- sublistOf refs
                       k <- promote $ \() -> arbBody tab vars refs (n-1)
                       return $ Wait rs k)
