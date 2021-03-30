@@ -73,9 +73,11 @@ instance Arbitrary Program where
 
            , (n, do b   <- arbitrary
                     bs  <- choose (0,3) >>= arbExp TBool vars
-                    thn <- arbBody tab vars refs (n `div` 2)
+                    let size = n `div` 2
+                    let size' = if size == 0 then 1 else size -- don't want to generate empty then/else
+                    thn <- arbBody tab vars refs size'
                     els <- if b
-                             then Just <$> arbBody tab vars refs (n `div` 2)
+                             then Just <$> arbBody tab vars refs size'
                              else return Nothing
                     k   <- promote $ \() -> arbBody tab vars refs ((n `div` 2))
                     return $ If bs thn els k)
@@ -96,8 +98,10 @@ instance Arbitrary Program where
                       r <- elements refs
                       e <- choose (0,3) >>= arbExp (dereference (snd r)) vars
                       k <- promote $ \() -> arbBody tab vars refs (n-1)
-                      -- for now, I force the after to be positive by multiplying it by itself
-                      return $ After delay r (BOp TInt e e OTimes) k)
+                      -- for now, I force the after to be positive and strictly greater than 0
+                      -- by multiplying it by itself and adding 1 lol
+                      let delay' = BOp TInt (BOp TInt delay delay OTimes) (Lit TInt (LInt 1)) OPlus 
+                      return $ After delay' r e k)
 
              , (n, do r <- elements refs
                       k <- promote $ \v -> do
@@ -186,14 +190,14 @@ instance Arbitrary Program where
                               , (7, do e1 <- arbExp t vars (n `div` 2) -- 7 arbitrarily chosen
                                        e2 <- arbExp t vars (n `div` 2)
                                        elements [ BOp t e1 e2 OPlus
-                                               , BOp t e1 e2 OMinus
-                                               , BOp t e1 e2 OTimes
+                                                , BOp t e1 e2 OMinus
+                                                , BOp t e1 e2 OTimes
                                                ])
                                ]
            TBool -> oneof [ do e1 <- arbExp TInt vars (n `div` 2)
                                e2 <- arbExp TInt vars (n `div` 2)
-                               return $ BOp t e1 e2 OLT
+                               return $ BOp TBool e1 e2 OLT
                           , do typ <- elements [TInt, TBool]
                                e1 <- arbExp typ vars (n `div` 2)
                                e2 <- arbExp typ vars (n `div` 2)
-                               return $ BOp typ e1 e2 OEQ]
+                               return $ BOp TBool e1 e2 OEQ]

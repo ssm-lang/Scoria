@@ -393,10 +393,10 @@ genIR ssm = stmts ssm
           where
               -- | Predicate to know when to close a case. A case should be closed on a blocking call.
               pred :: IR -> Bool
-              pred (Call _ _)      = True
-              pred (ForkProcedures _)       = True
-              pred (Sensitize _ )  = True
-              pred _               = False
+              pred (Call _ _)         = True
+              pred (ForkProcedures _) = True
+              pred (Sensitize _ )     = True
+              pred _                  = False
 
               -- | Like the normal takeWhile, but also includes the first element that fails the predicate
               myTakeWhile :: (a -> Bool) -> [a] -> ([a], [a])
@@ -413,9 +413,15 @@ genIR ssm = stmts ssm
           where
               wcase i = Case i
               incPC i = Literal 12 $ "act->pc = " ++ show (i + 1)
+
+              incpcAndRet :: [IR] -> Int -> [IR]
+              incpcAndRet ir i = case last ir of
+                  Call a b -> concat [[wcase i], init ir, [incPC i], [last ir, Ret, Blank]]
+                  _        -> concat [[wcase i], ir, [incPC i, Ret, Blank]]
+
               {- before every wakeup we insert a new case and after the statements we must increase
               the program counter and then return. -}
-              (y:ys) = map (\(c,i) -> concat [[wcase i], c, [incPC i, Ret, Blank]]) (zip xs [0..])
+              (y:ys) = zipWith incpcAndRet xs [0..]
 
               {- The first case in a procedure must be preceeded by the method signature,
               the type casting of the act variable and a switch statement. -}
@@ -481,7 +487,10 @@ genCFromIR (x:xs) lrefs           = case x of
                            genCFromIR xs lrefs
 
     Call fun args    -> let args' = map compArg args
-                        in do indent 12 $ concat (["call((act_t *) enter_", fun, "((act_t *) act, act->priority, act->depth, "] ++ intersperse ", " args' ++ ["));"])
+                            argstr = if not (null args')
+                                       then [", "] ++ intersperse ", " args'
+                                       else [""]
+                        in do indent 12 $ concat (["call((act_t *) enter_", fun, "((act_t *) act, act->priority, act->depth"] ++ argstr ++ ["));"])
                               genCFromIR xs lrefs
     ForkProcedures procs -> do let new_depth = integerLogBase 2 (toInteger (length procs))
                                indent 12   "{"
@@ -518,7 +527,7 @@ genCFromIR (x:xs) lrefs           = case x of
       compLit e = case e of
           Var _ e        -> "act->" ++ e ++ ".value"
           Lit _ l        -> case l of
-                              LInt i      -> show i
+                              LInt i      -> if i >= 0 then show i else "(" ++ show i ++ ")"
                               LBool True  -> "true"
                               LBool False -> "false"
           UOp _ e op     -> case op of

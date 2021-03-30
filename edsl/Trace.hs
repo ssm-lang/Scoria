@@ -21,7 +21,7 @@ type Output = [OutputEntry]
 
 testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "event 1 value bool 1"
-                             , "event 2 value int 1"
+                             , "event 2 value int (-1)"
                              , "now 3 eventqueuesize 3"
                              , "now 5 eventqueuesize 5"
                              , "event 6 value int 7"
@@ -84,7 +84,19 @@ pRes = do
           pSpace
           pSymbol "int"
           pSpace
-          Lit TInt . LInt <$> Lexer.lexeme pSpace Lexer.decimal
+          num <- choice [try (parens signed), signed]
+          pSpace
+          return $ Lit TInt . LInt $ num
+        where
+            parens :: Parser a -> Parser a
+            parens p = do
+                char '('
+                res <- p
+                char ')'
+                return res
+
+            signed :: Parser Int
+            signed = Lexer.signed pSpace Lexer.decimal
 
       pBool :: Parser SSMExp
       pBool = do
