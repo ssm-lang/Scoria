@@ -47,6 +47,7 @@ library
       Interpreter2
       Trace2
       NonTerminate2
+      CodeGen2
   other-modules:
       Paths_ssm
   hs-source-dirs:
