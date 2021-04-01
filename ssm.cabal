@@ -46,6 +46,7 @@ library
       Fib2
       Interpreter2
       Trace2
+      NonTerminate2
   other-modules:
       Paths_ssm
   hs-source-dirs:

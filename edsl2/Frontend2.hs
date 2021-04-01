@@ -40,18 +40,18 @@ instance AnnotatedM SSM (Exp a) where
     annotateM ma info = do
         v       <- ma
         stmts   <- gets statements
-        let stmt = head stmts
+        let stmt = last stmts
         let stmt' = renameStmt stmt info
-        modify $ \st -> st { statements = stmt' : (tail stmts)}
+        modify $ \st -> st { statements = init stmts ++ [stmt']}
         return $ renameExp v info
 
 instance AnnotatedM SSM (Ref a) where
     annotateM ma info = do
         v <- ma
         stmts <- gets statements
-        let stmt = head stmts
+        let stmt = last stmts
         let stmt' = renameStmt stmt info
-        modify $ \st -> st { statements = stmt' : (tail stmts)}
+        modify $ \st -> st { statements = init stmts ++ [stmt']}
         return $ renameRef v info
 
 renameStmt :: SSMStm -> SrcInfo -> SSMStm

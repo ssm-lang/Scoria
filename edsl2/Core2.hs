@@ -7,11 +7,6 @@ module Core2 where
 import Control.Monad.State.Lazy
 import BinderAnn.Monadic
 
-import System.IO.Unsafe
-
-trace :: Show a => a -> a
-trace x = unsafePerformIO $ putStrLn (show x) >> return x
-
 type Reference = (String, Type)
 data Name = Fresh String
           | Captured (String,Int,Int) String
@@ -52,10 +47,10 @@ newtype SSM a = SSM (State SSMSt a)
   deriving (MonadState SSMSt) via State SSMSt
 
 runSSM :: SSM a -> [SSMStm]
-runSSM (SSM program) = reverse $ statements $ execState program (SSMSt 0 [])
+runSSM (SSM program) = statements $ execState program (SSMSt 0 [])
 
 emit :: SSMStm -> SSM ()
-emit stm = modify $ \st -> st { statements = stm : statements st }
+emit stm = modify $ \st -> st { statements = statements st ++ [stm]}
 
 fresh :: SSM String
 fresh = do

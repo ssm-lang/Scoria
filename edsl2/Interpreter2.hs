@@ -191,7 +191,10 @@ runProcess p = let cont = continuation p
         ior   <- lookupRef r p
         (r,_) <- liftST $ readSTRef ior
         e     <- liftST $ readSTRef r
-        runProcess $ p { continuation = tail $ continuation p}
+        var'  <- newVar e
+        runProcess $ p { variables = Map.insert (getVarName s) var' (variables p)
+                       , continuation = tail $ continuation p
+                       }
     If c thn (Just els) -> do
         b <- eval p c
         case b of
@@ -218,12 +221,12 @@ runProcess p = let cont = continuation p
               runProcess $ p { continuation = tail $ continuation p}
           _ -> error $ "interpreter error - not a number " ++ show i
     Changed r s     -> do
-        st <- get
+        st  <- get
         ref <- lookupRef r p
-        if ref `elem` written st
-            -- need to do something smarter here now... perhaps just use variables?
-            then runProcess $ p { continuation = undefined}--k (Lit TBool (LBool True))}
-            else runProcess $ p { continuation = undefined}--k (Lit TBool (LBool False))}
+        b   <- newVar $ Lit TBool $ LBool $ ref `elem` written st
+        runProcess $ p { variables = Map.insert (getVarName s) b (variables p)
+                       , continuation = tail $ continuation p
+                       }
     Wait vars       -> do
         refs <- mapM (`lookupRef` p) vars
         let p' = p { waitingOn    = Just refs
