@@ -40,10 +40,17 @@ library
       Manyrefs
       Generator
       NonTerminate
+      Core2
+      Frontend2
+      Pretty2
+      Fib2
+      Interpreter2
+      Trace2
   other-modules:
       Paths_ssm
   hs-source-dirs:
       edsl
+      edsl2
       example
   build-depends:
       base >=4.7 && <5
