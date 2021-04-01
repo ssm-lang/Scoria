@@ -14,18 +14,12 @@ import Test.QuickCheck.Monadic
 
 main :: IO ()
 main = quickCheck prop_correct
-{-
-    do
-    r <- testSingle $ myfib (int 13) (Ptr ("r", Ref TInt))
-    case r of
-        Left err -> putStrLn err
-        Right _  -> putStrLn "test OK" -}
 
-
+prop_correct :: Program -> Property
 prop_correct (Program main) = monadicIO $ do
     res <- run $ testSingle main
     case res of
-        Left s  -> do monitor (whenFail $ writeFile "fail.c" (compile True Nothing main) >> putStrLn s)
+        Left s  -> do monitor (whenFail $ writeFile "/home/robert/fail.c" (compile True Nothing main) >> putStrLn s)
                       assert False
         Right _ -> return ()
 

@@ -51,7 +51,6 @@ data St s = St
 
 type Interp s a = StateT (St s) (WriterT T.Output (ST s)) a
 
-
 interpret :: SSM () -> T.Output
 interpret ssm = snd $ runST (interpret' ssm)
 

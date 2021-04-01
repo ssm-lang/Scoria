@@ -12,9 +12,9 @@ import Core hiding (Result)
 
 type Parser a = Parsec Void Text a
 
-data OutputEntry = Instant Int Int
-                 | Event Int SSMExp
-                 | Result String SSMExp
+data OutputEntry = Instant Int Int -- now, size of eventqueue
+                 | Event Int SSMExp -- now, new variable value
+                 | Result String SSMExp -- variable name and final value
   deriving (Show, Eq)
 
 type Output = [OutputEntry]

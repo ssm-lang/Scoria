@@ -9,6 +9,8 @@ import Data.Either
 
 import Core
 
+-- SSM () -> [IR]
+-- [IR] -> [IR]
 -- | One value of this datatype corresponds to one statement/line in the C code
 data IR = Function String [String]
 
@@ -51,21 +53,24 @@ type TR a = State TRState a
 
 -- | Main compiler entrypoint. Will output a C-file as a single string.
 compile :: Bool -> Maybe Int -> SSM () -> String
-compile b d ssm = let methods  = evalState generateProcedures (TRState 0 0 0 0 [] ([], [], []) [] [ssm])
+compile b d ssm = let ( structs
+                       , prototypes
+                       , entersteps
+                       ) = evalState generateProcedures (TRState 0 0 0 0 [] ([], [], []) [] [ssm])
                       testmain = if b then execWriter (generateMain ssm d) else [""]
                   in unlines $ [ "#include \"peng-platform.h\""
                                , "#include \"peng.h\""
                                , "#include <stdio.h>"
                                , ""
-                               ] ++ methods ++ testmain
+                               ] ++ structs ++ prototypes ++ entersteps ++ testmain
 
 -- | Return a list of all triples (struct, enter, step)
-generateProcedures :: TR [String]
+generateProcedures :: TR ([String], [String], [String])
 generateProcedures = do
     st <- gets toGenerate
     -- If there are no procedures left to generate C code for the function terminates
     if null st
-        then return []
+        then return ([],[],[])
         else do
             -- Otherwise the procedure specific state is reset and the next procedure is fetched
             resetState
@@ -78,12 +83,13 @@ generateProcedures = do
                         generateProcedures
                 else do -- Remove the procedure to generate code for from the toGenerate list
                         modify $ \state -> state { toGenerate = tail (toGenerate state)}
-                        tri  <- ssmToC toc
+                        (struct, prototype, enterstep)  <- ssmToC toc
                         {- After code has been generated for the procedure we add its name
                         to the list of generated procedures. -}
                         modify $ \state -> state { generated  = name toc : generated state}
-                        rest <- generateProcedures
-                        return $ rest ++ tri
+                        (structs, prototypes, entersteps) <- generateProcedures
+                        return $ (struct ++ "":structs, prototype ++ "":prototypes, enterstep ++ "":entersteps)
+                        --return $ rest ++ tri
   where
       -- | Get the name of a procedure
       name :: SSM () -> String
@@ -98,8 +104,8 @@ generateProcedures = do
                                       , localrefs = []
                                       , code      = ([], [], [])}
 
-      -- | Take a single SSM program and generate a struct, enter and step function.
-      ssmToC :: SSM () -> TR [String]
+      -- | Take a single SSM program and generate a struct, function prototypes and the enter+step function.
+      ssmToC :: SSM () -> TR ([String], [String], [String])
       ssmToC ssm = do
           genIR ssm
           (struct, enter, step) <- gets code
@@ -111,7 +117,9 @@ generateProcedures = do
           let (enter',  p2) = execWriter (genCFromIR enter lrefs)
           let (step',   p3) = execWriter (genCFromIR step lrefs)
 
-          return [unlines struct', p2, p3, "", unlines enter', unlines step']
+          return (struct', [p2,p3], concat [enter', [""], step'])
+
+--          return [unlines struct', p2, p3, "", unlines enter', unlines step']
 
 genIR :: SSM () -> TR ()
 genIR ssm = stmts ssm

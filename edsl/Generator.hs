@@ -29,9 +29,10 @@ instance Arbitrary Type where
 
 instance Arbitrary Program where
     arbitrary = do
-        types <- arbitrary `suchThat` (not . null)
+        types <- arbitrary `suchThat` (not . null) -- [[Type]]
         let funs = [ ("fun" ++ show i, as) | (as,i) <- types `zip` [1..] ]
         
+        -- tab :: [(String, [Type], SSM ())]
         tab <- mfix $ \tab -> sequence [ do
                         {- I changed the second component of an entry in tab to be of type
                            (String, Type) instead of just Type, as when I create the Argument
@@ -63,6 +64,7 @@ instance Arbitrary Program where
 
            , (n, do tp <- oneof [return TInt, return TBool]
                     e  <- choose (0,3) >>= arbExp tp vars
+                    -- f :: a -> Gen b, promote f :: Gen (a -> b)
                     k  <- promote $ \r -> arbBody tab vars (r:refs) (n-1)
                     return $ NewRef Nothing e k)
 

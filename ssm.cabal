@@ -39,7 +39,6 @@ library
       Examp2
       Manyrefs
       Generator
-      WhileEx
       NonTerminate
   other-modules:
       Paths_ssm
