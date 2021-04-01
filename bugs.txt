@@ -1,0 +1,49 @@
+** Bugs I found with the generator **
+
+1) It generated this program
+
+Procedure fun1
+Argument var1
+If False
+Then
+Else
+Result ()
+
+Procedure main
+Fork [
+       fun1((1 + -1))
+     ]
+Result ()
+
+Which of course makes no sense. However, the C code inflooped where it was supposed to be able to
+handle it anyway. The problem was the code generator. When a process is forked it is placed in the
+ready queue and then the current process will increment its program counter and return, yielding to
+the new forked process. However, forking only works like this if you fork more than one process. If
+you are forking only one process the new process will be immediately called by the current process. The
+call will not return before the child is run, so there is no chance for the parent to increment its
+program counter. The fix was to make sure that if only one process is forked, the program counter
+is incremented before the call, while if more than one process is forked the program counter should
+be incremented after they are forked.
+
+2)
+
+Function prototypes were for some programs generated in the wrong place, namely after their first
+reference point. The fix was to collect all structs and function prototypes during code generation and
+make sure that they are the first thing that appears in the C file.
+
+3)
+
+I was pattern-matching only on the scenario where BinderAnn had captured variable names for us. I
+had to add the more general pattern and make sure to generate fresh names if BinderAnn hasn't run,
+which is the case with the generator.
+
+4)
+
+I had nonexhaustive-patterns in the part of the interpreter that evaluated expressions. I Had to
+finish the function definition.
+
+5)
+
+The interpreter would infinitely loop if a program does not terminate. In order to be able to
+cease execution if needed I rewrote it to give output lazily instead. It still infinitely loops but
+I don't have to wait for the computation to finish before I get the output.
