@@ -152,8 +152,11 @@ genIR ssm = stmts $ runSSM ssm
               let reftype = mkReference $ expType e
               let ref     = (n, reftype)
               modify $ \st -> st { localrefs = localrefs st ++ [ref]}
+
+              {- struct -}
               appendStruct $ FieldDec (expType e) n (Just c)
 
+              {- step -}
               appendStep $ Initialize (Left ref)
               appendStep $ Assign (Left ref) (Right e)
               stmts xs
@@ -176,13 +179,17 @@ genIR ssm = stmts $ runSSM ssm
               let vartyp = dereference t
               let var = Var vartyp n
 
+              {- struct -}
               appendStruct $ FieldDec vartyp n (Just c)
 
+              {- step -}
               appendStep $ Assign (Right var) (Left (r,t))      
 
               stmts xs
 
           If c thn (Just els) -> do
+
+              {- step -}
               l1 <- freshLabel
               l2 <- freshLabel
 
@@ -198,6 +205,8 @@ genIR ssm = stmts $ runSSM ssm
               stmts xs
           
           If c thn Nothing -> do
+
+              {- step -}
               l <- freshLabel
               
               appendStep $ IfFalse c l
@@ -208,6 +217,8 @@ genIR ssm = stmts $ runSSM ssm
               stmts xs
 
           While c bdy -> do
+
+              {- step -}
               l1 <- freshLabel
               l2 <- freshLabel
 
@@ -233,14 +244,17 @@ genIR ssm = stmts $ runSSM ssm
                                         in return (n, comment)
               let var = Var TBool n
 
+              {- struct -}
               appendStruct $ FieldDec TBool n (Just c)
-              
+
+              {- step -}
               appendStep $ EventOn r var
               stmts xs
         
           Wait vars -> do
               modify $ \st -> st { numwaits = max (numwaits st) (length vars)}
 
+              {- step -}
               appendStep $ Sensitize $ zip vars [1..]
               incPC
               appendStep $ Ret
@@ -250,6 +264,8 @@ genIR ssm = stmts $ runSSM ssm
               stmts xs
 
           Fork procs -> do
+
+              {- step -}
               let forks = map (compileFork . runSSM) procs
 
               if length procs == 1
@@ -295,6 +311,7 @@ genIR ssm = stmts $ runSSM ssm
               stmts xs
           
           Argument _ n arg -> do
+              {- struct -}
               case arg of
                   Left e      -> appendStruct $ FieldDec (expType e) n (Just " // Procedure argument")
                   Right (r,t) -> appendStruct $ FieldDec t n           (Just " // Procedure argument")
@@ -322,10 +339,6 @@ genIR ssm = stmts $ runSSM ssm
               {- step -}
               appendStep Blank
               appendStep $ Leave n
-
---              (struct, enter, step) <- gets code
---              modify $ \st -> st { code = (struct, enter, step)}
-
         where
             file :: String -> String
             file str = reverse $ takeWhile (/= '/') (reverse str)
