@@ -1,7 +1,7 @@
 module CodeGen (compile) where
 
-import Control.Monad.State
-import Control.Monad.Writer
+import Control.Monad.State.Lazy
+import Control.Monad.Writer.Lazy
 import GHC.Float
 import Data.List
 import Data.Maybe
@@ -57,7 +57,7 @@ compile b d ssm = let ( structs
                        , prototypes
                        , entersteps
                        ) = evalState generateProcedures (TRState 0 0 0 0 [] ([], [], []) [] [ssm])
-                      testmain = if b then execWriter (generateMain ssm d) else [""]
+                      testmain = if b then execWriter (generateMain (runSSM ssm) d) else [""]
                   in unlines $ [ "#include \"peng-platform.h\""
                                , "#include \"peng.h\""
                                , "#include <stdio.h>"
@@ -76,9 +76,10 @@ generateProcedures = do
             resetState
             gen <- gets generated
             let (toc, rest) = (head st, tail st)
+            let p = head $ runSSM toc
             {- If we have not already generated code for this procedure we will do so, otherwise
             we will forget about the procedure and recursively call generateProcedures. -}
-            if name toc `elem` gen
+            if name p `elem` gen
                 then do modify $ \st -> st { toGenerate = rest}
                         generateProcedures
                 else do -- Remove the procedure to generate code for from the toGenerate list
@@ -86,14 +87,14 @@ generateProcedures = do
                         (struct, prototype, enterstep)  <- ssmToC toc
                         {- After code has been generated for the procedure we add its name
                         to the list of generated procedures. -}
-                        modify $ \state -> state { generated  = name toc : generated state}
+                        modify $ \state -> state { generated  = name p : generated state}
                         (structs, prototypes, entersteps) <- generateProcedures
                         return $ (struct ++ "":structs, prototype ++ "":prototypes, enterstep ++ "":entersteps)
                         --return $ rest ++ tri
   where
       -- | Get the name of a procedure
-      name :: SSM () -> String
-      name (Procedure n _) = n
+      name :: SSMStm -> String
+      name (Procedure n) = n
 
       -- | Reset the procedure specific parts of the state before generating C for the next procedure
       resetState :: TR ()
@@ -122,7 +123,7 @@ generateProcedures = do
 --          return [unlines struct', p2, p3, "", unlines enter', unlines step']
 
 genIR :: SSM () -> TR ()
-genIR ssm = stmts ssm
+genIR ssm = stmts $ runSSM ssm
   where
       appendStruct :: IR -> TR ()
       appendStruct ir = modify $ \st -> st {code = code st <> ([ir], [], [])}
@@ -136,20 +137,19 @@ genIR ssm = stmts ssm
       appendStep :: IR -> TR ()
       appendStep ir = modify $ \st -> st {code = code st <> ([], [], [ir])}
 
-      stmts :: SSM () -> TR ()
-      stmts ssm = case ssm of
-          (Return x) -> return ()
-
-          (NewRef name e k) -> do
+      stmts :: [SSMStm] -> TR ()
+      stmts []       = return ()
+      stmts (ssm:xs) = case ssm of
+          NewRef name e -> do
               (n,c) <- case name of
-                  Just ((f,x,y), n) -> let comment = concat [" // Declared at ("
+                  Captured (f,x,y) n -> let comment = concat [" // Declared at ("
                                                             , show x
                                                             , ", ", show y
                                                             , ") in file ", file f
                                                             ]
-                                       in return (n, comment)
-                  Nothing           -> let comment = " // generated name"
-                                       in flip (,) comment <$> freshName
+                                        in return (n, comment)
+                  Fresh n            -> let comment = " // generated name"
+                                        in return (n, comment)
               let reftype = mkReference $ expType e
               let ref     = (n, reftype)
               modify $ \st -> st { localrefs = localrefs st ++ [ref]}
@@ -157,116 +157,108 @@ genIR ssm = stmts ssm
 
               appendStep $ Initialize (Left ref)
               appendStep $ Assign (Left ref) (Right e)
+              stmts xs
 
-              stmts $ k ref
-
-          (SetRef r e k) -> do
-               appendStep $ Assign (Left r) (Right e)
-               stmts $ k ()
+          SetRef r e -> do appendStep $ Assign (Left r) (Right e)
+                           stmts xs
           
-          (SetLocal e v k) -> do
-              appendStep $ Assign (Right e) (Right v)
-              stmts $ k ()
+          SetLocal e v -> do appendStep $ Assign (Right e) (Right v)
+                             stmts xs
 
-          (GetRef (r, t) name k) -> do
+          GetRef (r, t) name -> do
               (n,c) <- case name of
-                  Just ((f,x,y),n) -> let comment = concat [" // Declared at ("
+                  Captured (f,x,y) n -> let comment = concat [" // Declared at ("
                                                            , show x, ", ", show y
                                                            , ") in file ", file f
                                                            ]
-                                      in return (n, comment)
-                  Nothing          -> let comment = " // generated name"
-                                      in flip (,) comment <$> freshName
+                                        in return (n, comment)
+                  Fresh n            -> let comment = " // generated name"
+                                        in return (n, comment)
               let vartyp = dereference t
               let var = Var vartyp n
 
               appendStruct $ FieldDec vartyp n (Just c)
 
-              appendStep $ Assign (Right var) (Left (r,t))
+              appendStep $ Assign (Right var) (Left (r,t))      
 
-              stmts $ k var              
+              stmts xs
 
-          (If c thn (Just els) k) -> do
+          If c thn (Just els) -> do
               l1 <- freshLabel
               l2 <- freshLabel
 
               appendStep $ IfFalse c l1
-              stmts thn
+              stmts $ runSSM thn
               appendStep $ Goto l2
               appendStep   Blank
               appendStep $ Label l1
-              stmts els
+              stmts $ runSSM els
               appendStep   Blank
               appendStep $ Label l2
-              
-              stmts $ k ()
 
+              stmts xs
           
-          (If c thn Nothing k) -> do
+          If c thn Nothing -> do
               l <- freshLabel
               
               appendStep $ IfFalse c l
-              stmts thn
+              stmts $ runSSM thn
               appendStep   Blank
               appendStep $ Label l
 
-              stmts $ k ()
+              stmts xs
 
-          (While c bdy k) -> do
+          While c bdy -> do
               l1 <- freshLabel
               l2 <- freshLabel
 
               appendStep $ Label l1
               appendStep $ IfFalse c l2
-              stmts bdy
+              stmts $ runSSM bdy
               appendStep $ Goto l1
               appendStep $ Label l2
+              
+              stmts xs
 
-              stmts $ k ()
-          
-          (After e r v k) -> do
-              appendStep $ Later r e v
-              stmts $ k ()
+          After e r v -> do appendStep $ Later r e v
+                            stmts xs
 
-          (Changed r name k) -> do
+          Changed r name -> do
               (n,c) <- case name of
-                  Just ((f,x,y),n) -> let comment = concat [" // Declared at ("
+                  Captured (f,x,y) n -> let comment = concat [" // Declared at ("
                                                            , show x, ", "
                                                            , show y, " in file ", file f
                                                            ]
-                                      in return (n, comment)
-                  Nothing          -> let comment = " // generated name"
-                                      in flip (,) comment <$> freshName
+                                        in return (n, comment)
+                  Fresh n            -> let comment = " // generated name"
+                                        in return (n, comment)
               let var = Var TBool n
 
               appendStruct $ FieldDec TBool n (Just c)
               
               appendStep $ EventOn r var
-
-              stmts $ k var              
+              stmts xs
         
-          (Wait vars k) -> do
+          Wait vars -> do
               modify $ \st -> st { numwaits = max (numwaits st) (length vars)}
 
               appendStep $ Sensitize $ zip vars [1..]
               forM_ [1..length vars] $ \i ->
                   appendStep (Desensitize i)
+              stmts xs
 
-              stmts $ k ()
-          
-          (Fork procs k) -> do
-              let forks = map compileFork procs
+          Fork procs -> do
+              let forks = map (compileFork . runSSM) procs
 
               if length procs == 1
                   then appendStep $ uncurry Call (head forks)
                   else appendStep $ ForkProcedures forks
             
               generateRecursively procs
-
-              stmts $ k ()
+              stmts xs
           
-          (Procedure n k)   -> do
-              let params = getParams $ k ()
+          Procedure n   -> do
+              let params = getParams xs
 
               {- enter -}
               let strarg (Left (r,t))      = svtype (dereference t) ++ " *" ++ r
@@ -291,17 +283,15 @@ genIR ssm = stmts ssm
               {- step -}
               appendStep $ Function ("void step_" ++ n) ["act_t *gen_act"]
               appendStep $ Literal 4 $ concat ["act_", n, "_t *act = (act_", n, "_t *) gen_act"]
-
-              stmts $ k ()
+              stmts xs
           
-          (Argument _ n arg k) -> do
+          Argument _ n arg -> do
               case arg of
                   Left e      -> appendStruct $ FieldDec (expType e) n (Just " // Procedure argument")
                   Right (r,t) -> appendStruct $ FieldDec t n           (Just " // Procedure argument")
-            
-              stmts $ k ()
+              stmts xs
  
-          (Result n r k) -> do
+          Result n -> do
               nw <- gets numwaits
 
               {- struct -}
@@ -321,16 +311,12 @@ genIR ssm = stmts ssm
               appendEnter $ Literal 0 "}"
 
               {- step -}
-
               appendStep Blank
-              --lrefs <- gets localrefs
-              --mapM_ (appendStep . Free) lrefs
               appendStep $ Leave n
 
               (struct, enter, step) <- gets code
               modify $ \st -> st { code = (struct, enter, (concat . wrapInSwitch . cases) step)}
 
-              stmts $ k ()
         where
             file :: String -> String
             file str = reverse $ takeWhile (/= '/') (reverse str)
@@ -341,42 +327,37 @@ genIR ssm = stmts ssm
                 st <- get
                 put $ st { nextLabel = nextLabel st + 1 }
                 return $ "L" ++ show (nextLabel st)
-            
-            freshName :: TR String
-            freshName = do
-                st <- gets nextVar
-                modify $ \st -> st { nextVar = nextVar st + 1}
-                return $ "v" ++ show st
-            
+                        
             -- | Compile a program into a tuple that describes a fork
-            compileFork :: SSM () -> (String, [Either Reference SSMExp])
-            compileFork ssm = let fun  = getFun ssm
+            compileFork :: [SSMStm] -> (String, [Either Reference SSMExp])
+            compileFork ssm = let fun  = getFun $ head ssm
                                   args = getArgs ssm
                               in (fun, args)
                 where
                     -- | Fetch the name of a procedure
-                    getFun :: SSM () -> String
-                    getFun (Procedure n _) = n
+                    getFun :: SSMStm -> String
+                    getFun (Procedure n) = n
                     getFun _               = error "not a function"
 
                     -- | Fetch the values a function was applied to
-                    getArgs :: SSM () -> [Either Reference SSMExp]
-                    getArgs (Procedure _ k)               = getArgs $ k ()
-                    getArgs (Argument _ name (Left e) k)  = Right e : getArgs (k ())
-                    getArgs (Argument _ name (Right r) k) = Left  r : getArgs (k ())
-                    getArgs s                             = []
+                    getArgs :: [SSMStm] -> [Either Reference SSMExp]
+                    getArgs (Procedure _:xs)               = getArgs xs
+                    getArgs (Argument _ name (Left e):xs)  = Right e : getArgs xs
+                    getArgs (Argument _ name (Right r):xs) = Left  r : getArgs xs
+                    getArgs s                              = []
 
             -- | Fetch the parameters of a procedure, and the rest of the program
-            getParams :: SSM () -> [Either Reference SSMExp]
-            getParams (Argument _ n (Left e) k)      = Right (Var (expType e) n) : getParams (k ())
-            getParams (Argument _ n (Right (r,t)) k) = Left (n, t)               : getParams (k ())
+            getParams :: [SSMStm] -> [Either Reference SSMExp]
+            getParams (Argument _ n (Left e):xs)      = Right (Var (expType e) n) : getParams xs
+            getParams (Argument _ n (Right (r,t)):xs) = Left (n, t)               : getParams xs
             getParams _ = []
 
             {- | Take the programs that were forked and put them in the `toGenerate` list, if they
             have not already been generated. -}
             generateRecursively :: [SSM ()] -> TR ()
             generateRecursively xs = do
-                forM_ xs $ \ssm@(Procedure n _) -> do
+                forM_ xs $ \ssm -> do
+                    let n = getProcedureName $ head $ runSSM ssm
                     gen <- gets generated
                     if n `elem` gen
                         then return ()
@@ -588,12 +569,12 @@ genCFromIR (x:xs) lrefs           = case x of
           then concat ["sv_", prtyp (dereference t), "_t *"]
           else concat ["sv_", prtyp t, "_t "]
 
-generateMain :: SSM () -> Maybe Int -> Writer [String] ()
-generateMain ssm@(Procedure n k) d = do
+generateMain :: [SSMStm] -> Maybe Int -> Writer [String] ()
+generateMain ssm@(Procedure n:xs) d = do
     top_return
     indent 0 "void main(void) {"
     indent 4 "act_t top = { .step = top_return };"
-    createrefs $ refs (k ())
+    createrefs $ refs xs
     forkentrypoint ssm
     indent 4 "tick();"
     indent 4 "printf(\"now %lu eventqueuesize %d\\n\", now, event_queue_len);"
@@ -610,16 +591,16 @@ generateMain ssm@(Procedure n k) d = do
     maybe (return ())
           (\_ -> indent 8 "counter = counter - 1;") d
     indent 4 "}"
-    printrefs $ refs (k ())
+    printrefs $ refs xs
     indent 0 "}"
   where
       indent :: Int -> String -> Writer [String] ()
       indent i str = tell [replicate i ' ' ++ str]
 
-      refs :: SSM () -> [Reference]
-      refs (Argument _ n (Right (_,t)) k) = (n,t) : refs (k ())
-      refs (Argument _ n (Left _) k )     = refs $ k ()
-      refs _                              = []
+      refs :: [SSMStm] -> [Reference]
+      refs (Argument _ n (Right (_,t)):xs) = (n,t) : refs xs
+      refs (Argument _ n (Left _):xs)      = refs xs
+      refs _                               = []
 
       createrefs :: [Reference] -> Writer [String] ()
       createrefs refs = do
@@ -636,20 +617,20 @@ generateMain ssm@(Procedure n k) d = do
             baseval TBool   = "false"
             baseval (Ref t) = baseval t
               
-      forkentrypoint :: SSM () -> Writer [String] ()
-      forkentrypoint (Procedure n k) = do
-          let args = vals (k ())
+      forkentrypoint :: [SSMStm] -> Writer [String] ()
+      forkentrypoint (Procedure n:xs) = do
+          let args = vals xs
           indent 4 $ concat ["fork_routine((act_t *) enter_"
                             , n
                             , "(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT"
                             , if null args then "" else ", "
-                            , intercalate ", " (vals (k()))
+                            , intercalate ", " (vals xs)
                             , "));"]
         where
-            vals :: SSM () -> [String]
-            vals (Argument _ n (Left e) k)  = compExp e : vals (k ())
-            vals (Argument _ n (Right _) k) = ("&" ++ n) : vals (k ())
-            vals _                          = []
+            vals :: [SSMStm] -> [String]
+            vals (Argument _ n (Left e):xs)  = compExp e : vals xs
+            vals (Argument _ n (Right _):xs) = ("&" ++ n) : vals xs
+            vals _                           = []
 
             compExp :: SSMExp -> String
             compExp (Var _ _)            = error "can not apply main procedure to expression variables"

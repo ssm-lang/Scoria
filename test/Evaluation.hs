@@ -3,10 +3,14 @@ module Evaluation (runCG, runInterpreter) where
 import System.Directory
 import System.Process
 
-import Frontend ( SSM, getname )
-import CodeGen (compile)
-import Interpreter (interpret)
-import Trace
+import Core2
+import Frontend2 ( SSM )
+import CodeGen2 (compile)
+import Interpreter2 (interpret)
+import Trace2
+
+getname :: SSM () -> String
+getname ssm = getProcedureName $ head $ runSSM ssm
 
 {- | Given a SSM program, this function will create a new directory, compile the program in
 that directory and run it, producing some output in a txt-file. This output will then be read

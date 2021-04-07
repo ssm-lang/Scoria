@@ -1,12 +1,12 @@
 
 import Evaluation
-import Frontend
-import Interpreter
-import Fib
-import Core
-import Trace
-import Generator
-import CodeGen
+import Frontend2
+import Interpreter2
+import Fib2
+import Core2
+import Trace2
+import Generator2
+import CodeGen2
 
 import Data.List
 import Test.QuickCheck

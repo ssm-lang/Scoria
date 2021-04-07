@@ -9,8 +9,13 @@ import Data.List
 import Data.Maybe
 import GHC.Float
 
-import Core
+import System.IO.Unsafe
+
+import Core hiding (counter)
 import qualified Trace as T
+
+trace :: Show a => a -> a
+trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
 type Var s = STRef s (STRef s SSMExp, [Proc s])
 
@@ -28,7 +33,7 @@ data Proc s = Proc
     , references      :: Map.Map String (Var s)    -- ^ Reference variables and their values
     , variables       :: Map.Map String (Var s)    -- ^ Local variables and their values
     , waitingOn       :: Maybe [Var s]             -- ^ Variables this process is waiting for, if any
-    , continuation    :: SSM ()                    -- ^ The work left to do for this process
+    , continuation    :: [SSMStm]                  -- ^ The work left to do for this process
     }
 
 instance Eq (Proc s) where
@@ -56,20 +61,21 @@ interpret ssm = snd $ runST (interpret' ssm)
 
 interpret' :: SSM () -> ST s ((), T.Output)
 interpret' ssm = do
-    args     <- mkArgs ssm
-    let p     = Proc 1024 10 0 Nothing Map.empty Map.empty Nothing ssm
+    let stmts = runSSM ssm
+    args     <- mkArgs stmts
+    let p     = Proc 1024 10 0 Nothing Map.empty Map.empty Nothing stmts
     let state = St 0 (Map.fromList args) [] [p] [] 0
     runWriterT (evalStateT mainloop' state)
   where
-      mkArgs :: SSM () -> ST s [(String, Var s)]
-      mkArgs (Procedure _ k)                = mkArgs $ k ()
-      mkArgs (Argument _ n (Left e) k)      = mkArgs $ k ()
-      mkArgs (Argument _ n (Right (r,t)) k) = do
+      mkArgs :: [SSMStm] -> ST s [(String, Var s)]
+      mkArgs (Procedure _:xs)                = mkArgs xs
+      mkArgs (Argument _ n (Left e):xs)      = mkArgs xs
+      mkArgs (Argument _ n (Right (r,t)):xs) = do
           ref <- newSTRef (defaultVal (dereference t))
           variable <- newSTRef (ref, [])
-          rest <- mkArgs $ k ()
+          rest <- mkArgs xs
           return $ (n,variable) : rest
-      mkArgs _                              = return []
+      mkArgs _                               = return []
 
       defaultVal :: Type -> SSMExp
       defaultVal TInt  = Lit TInt (LInt 0)
@@ -162,45 +168,49 @@ newVar e = do
     ref <- lift $ lift $ newSTRef (r, [])
     return ref
 
+liftST :: ST s a -> Interp s a
+liftST sa = lift $ lift sa
+
 runProcess :: Proc s -> Interp s ()
-runProcess p = case continuation p of
-    Return x          -> return ()
-    NewRef ba e k      -> do
-        name <- case ba of
-            Just (_,n) -> return n
-            Nothing    -> fresh
+runProcess p = let cont = continuation p
+               in if null cont then return () else case head cont of
+    NewRef ba e      -> do
+        let name = getVarName ba
         r <- newVar e
         runProcess $ p { references   = Map.insert name r (references p)
-                       , continuation = k (name, mkReference (expType e))
+                       , continuation = tail $ continuation p
                        }
-    SetRef r e k -> do
+    SetRef r e -> do
         writeRef p r e
-        runProcess $ p { continuation = k ()}
-    SetLocal (Var t r) v k -> do
+        runProcess $ p { continuation = tail $ continuation p}
+    SetLocal (Var t r) v -> do
         writeRef p (r,t) v
-        runProcess $ p { continuation = k ()}
-    SetLocal e v k -> error $ "interpreter error - can not assign value to expression: " ++ show e
-    GetRef r s k -> do
-        ior <- lookupRef r p
-        (r,_) <- lift $ lift $ readSTRef ior
-        e <- lift $ lift $ readSTRef r
-        runProcess $ p { continuation = k e}
-    If c thn (Just els) k -> do
+        runProcess $ p { continuation = tail $ continuation p}
+    SetLocal e v -> error $ "interpreter error - can not assign value to expression: " ++ show e
+    GetRef r s -> do
+        ior   <- lookupRef r p
+        (r,_) <- liftST $ readSTRef ior
+        e     <- liftST $ readSTRef r
+        var'  <- newVar e
+        runProcess $ p { variables = Map.insert (getVarName s) var' (variables p)
+                       , continuation = tail $ continuation p
+                       }
+    If c thn (Just els) -> do
         b <- eval p c
         case b of
-          Lit _ (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
-          Lit _ (LBool False) -> runProcess $ p { continuation = els >> k ()}
-    If c thn Nothing k -> do
+          Lit _ (LBool True)  -> runProcess $ p { continuation = runSSM thn ++ tail (continuation p)}
+          Lit _ (LBool False) -> runProcess $ p { continuation = runSSM els ++ tail (continuation p)}
+    If c thn Nothing -> do
         b <- eval p c
         case b of
-          Lit _ (LBool True)  -> runProcess $ p { continuation = thn >> k ()}
-          Lit _ (LBool False) -> runProcess $ p { continuation = k ()}
-    While c bdy k -> do
+          Lit _ (LBool True)  -> runProcess $ p { continuation = runSSM thn ++ tail (continuation p)}
+          Lit _ (LBool False) -> runProcess $ p { continuation = tail $ continuation p}
+    While c bdy -> do
         b <- eval p c
         case b of
-          Lit _ (LBool True)  -> runProcess $ p { continuation = bdy >> continuation p}
-          Lit _ (LBool False) -> runProcess $ p { continuation = k ()}
-    After e r v k -> do
+          Lit _ (LBool True)  -> runProcess $ p { continuation = runSSM bdy ++ continuation p}
+          Lit _ (LBool False) -> runProcess $ p { continuation = tail (continuation p)}
+    After e r v -> do
         i <- eval p e
         case i of
           Lit _ (LInt num) -> do
@@ -208,58 +218,59 @@ runProcess p = case continuation p of
               t   <- gets now
               v'  <- eval p v
               modify $ \st -> st { events = Event (t + num) ref v' : events st }
-              runProcess $ p { continuation = k ()}
+              runProcess $ p { continuation = tail $ continuation p}
           _ -> error $ "interpreter error - not a number " ++ show i
-    Changed r s k     -> do
-        st <- get
+    Changed r s     -> do
+        st  <- get
         ref <- lookupRef r p
-        if ref `elem` written st
-            then runProcess $ p { continuation = k (Lit TBool (LBool True))}
-            else runProcess $ p { continuation = k (Lit TBool (LBool False))}
-    Wait vars k       -> do
+        b   <- newVar $ Lit TBool $ LBool $ ref `elem` written st
+        runProcess $ p { variables = Map.insert (getVarName s) b (variables p)
+                       , continuation = tail $ continuation p
+                       }
+    Wait vars       -> do
         refs <- mapM (`lookupRef` p) vars
         let p' = p { waitingOn    = Just refs
-                   , continuation = k ()
+                   , continuation = tail $ continuation p
                    }
         mapM_ (sensitize p') refs
-    Fork procs k      -> do
+    Fork procs      -> do
         let numchild = length procs
         let d'       = depth p - integerLogBase 2 (toInteger $ depth p)
         let priodeps = [ (priority p + p'*(2^d'), d') | p' <- [0 .. numchild-1]]
         let p'       = p { runningChildren = numchild
-                         , continuation = k ()
+                         , continuation = tail $ continuation p
                          }
-        par         <- lift $ lift $ newSTRef p'
+        par         <- liftST $ newSTRef p'
         forM_ (zip procs priodeps) $ \(cont, (prio, dep)) -> do
-            enqueue $ Proc prio dep 0 (Just par) Map.empty Map.empty Nothing cont
-    Procedure n k     -> do
-        runProcess $ p { continuation = k ()}
-    Argument n m a k  -> do
+            enqueue $ Proc prio dep 0 (Just par) Map.empty Map.empty Nothing (runSSM cont)
+    Procedure n     -> do
+        runProcess $ p { continuation = tail $ continuation p}
+    Argument n m a  -> do
         case a of
             Left e  -> do
                 v <- case parent p of
-                    Just par -> do p' <- lift $ lift $ readSTRef par
+                    Just par -> do p' <- liftST $ readSTRef par
                                    eval p' e
                     Nothing  -> return e
                 ref <- newVar v
                 runProcess $ p { variables = Map.insert m ref (variables p)
-                               , continuation = k ()
+                               , continuation = tail $ continuation p
                                }
             Right r -> case parent p of
                 Just par -> do
-                    p'  <- lift $ lift $ readSTRef par
+                    p'  <- liftST $ readSTRef par
                     ref <- lookupRef r p'
                     runProcess $ p { references = Map.insert m ref (references p)
-                                   , continuation = k ()}
+                                   , continuation = tail $ continuation p}
                 Nothing  -> do
                     st <- get
                     case Map.lookup m (arguments st) of
                         Just ref -> do
                             runProcess $ p { references = Map.insert m ref (references p)
-                                           , continuation = k ()
+                                           , continuation = tail $ continuation p
                                            }
                         Nothing  -> error $ "interpreter error - unknown reference " ++ fst r
-    Result n r k -> do
+    Result n -> do
         case parent p of
             Just par -> do
                 p' <- lift $ lift $ readSTRef par
@@ -267,7 +278,7 @@ runProcess p = case continuation p of
                     then enqueue $ p' { runningChildren = 0}
                     else lift $ lift $ writeSTRef par $ p' { runningChildren = runningChildren p' - 1}
             Nothing  -> return ()
-        runProcess $ p { continuation = k ()} -- this will probably just be one more return
+        runProcess $ p { continuation = tail $ continuation p}
   where
       writeRef :: Proc s -> Reference -> SSMExp -> Interp s ()
       writeRef p (r,_) e = do
@@ -280,12 +291,6 @@ runProcess p = case continuation p of
                                  writeVar ref v
                                  modify $ \st -> st { written = ref : written st }
                   Nothing  -> error $ "interpreter error - not not find reference " ++ r
-
-      fresh :: Interp s String
-      fresh = do
-          st <- gets counter
-          modify $ \st -> st { counter = counter st + 1}
-          return $ "v" ++ show st
 
 lookupRef :: Reference -> Proc s -> Interp s (Var s)
 lookupRef (r,_) p = case Map.lookup r (references p) of

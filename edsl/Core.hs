@@ -1,81 +1,69 @@
 {-# LANGUAGE GADTs#-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DerivingVia #-}
 module Core where
 
+import Control.Monad.State.Lazy
 import BinderAnn.Monadic
 
 type Reference = (String, Type)
-type Name = Maybe ((String, Int, Int), String)
+data Name = Fresh String
+          | Captured (String,Int,Int) String
 
-data SSM a where
-    -- | Monadic operations
-    Return  :: a -> SSM a
+getVarName :: Name -> String
+getVarName (Fresh n)      = n
+getVarName (Captured _ n) = n
 
-    -- | Variable/Stream operations
-    NewRef   :: Name -> SSMExp -> (Reference -> SSM b) -> SSM b
-    SetRef   :: Reference -> SSMExp -> (() -> SSM b) -> SSM b
-    GetRef   :: Reference -> Name -> (SSMExp -> SSM b) -> SSM b
-    SetLocal :: SSMExp -> SSMExp -> (() -> SSM b) -> SSM b
-    
-    -- | Control operations
-    If     :: SSMExp -> SSM () -> Maybe (SSM ()) -> (() -> SSM b) -> SSM b
-    While  :: SSMExp -> SSM () -> (() -> SSM b) -> SSM b
-    
-    -- | SSM specific operations
-    After   :: SSMExp -> Reference -> SSMExp -> (() -> SSM b) -> SSM b
-    Changed :: Reference -> Name -> (SSMExp -> SSM b) -> SSM b
-    Wait    :: [Reference] -> (() -> SSM b) -> SSM b
-    Fork    :: [SSM ()] -> (() -> SSM b) -> SSM b
+data SSMStm = -- | Variable/Stream operations
+              NewRef Name SSMExp
+            | SetRef Reference SSMExp
+            | GetRef Reference Name
+            | SetLocal SSMExp SSMExp
 
-    -- | Procedure construction
-    Procedure :: String -> (() -> SSM c) -> SSM c
-    Argument  :: String -> String -> Either SSMExp Reference -> (() -> SSM b) -> SSM b
-    Result    :: (Show a, Res a) => String -> a -> (() -> SSM b) -> SSM b
+              -- | Control operations
+            | If SSMExp (SSM ()) (Maybe (SSM ()))
+            | While SSMExp (SSM ())
+            
+              -- | SSM specific operations
+            | After SSMExp Reference SSMExp
+            | Changed Reference Name
+            | Wait [Reference]
+            | Fork [SSM ()]
 
-instance AnnotatedM SSM a where
-    annotateM (NewRef _ e k) info = let (Info (Just name) (Just (f, x, y))) = info
-                                    in NewRef (Just ((f,x,y), name)) e k
-    annotateM (GetRef r _ k) info = let (Info (Just name) (Just (f, x, y))) = info
-                                    in GetRef r (Just ((f,x,y), name)) k
-    annotateM (Changed r _ k) info = let (Info (Just name) (Just (f, x, y))) = info
-                                     in Changed r (Just ((f,x,y), name)) k
-    annotateM ma _                 = ma
+              -- | Procedure construction
+            | Procedure String
+            | Argument String String (Either SSMExp Reference)
+            | Result String
 
-instance Monad SSM where
-    return = Return
+data SSMSt = SSMSt { counter    :: Int
+                   , statements :: [SSMStm]
+                   }
 
-    Return x          >>= fa = fa x
-    NewRef n e k      >>= fa = NewRef n e      (\x -> k x >>= fa)
-    SetRef r e k      >>= fa = SetRef r e      (\x -> k x >>= fa)
-    SetLocal e v k    >>= fa = SetLocal e v    (\x -> k x >>= fa)
-    GetRef r s k      >>= fa = GetRef r s      (\x -> k x >>= fa)
-    If c thn els k    >>= fa = If c thn els    (\x -> k x >>= fa)
-    While c bdy k     >>= fa = While c bdy     (\x -> k x >>= fa)
-    After e r v k     >>= fa = After e r v     (\x -> k x >>= fa)
-    Changed r s k     >>= fa = Changed r s     (\x -> k x >>= fa)
-    Wait vars k       >>= fa = Wait vars       (\x -> k x >>= fa)
-    Fork procs k      >>= fa = Fork procs      (\x -> k x >>= fa)
-    Procedure n k     >>= fa = Procedure n     (\x -> k x >>= fa)
-    Argument n m a k  >>= fa = Argument n m a  (\x -> k x >>= fa)
-    Result n r k      >>= fa = Result n r      (\x -> k x >>= fa)
+newtype SSM a = SSM (State SSMSt a)
+  deriving Functor            via State SSMSt
+  deriving Applicative        via State SSMSt
+  deriving Monad              via State SSMSt
+  deriving (MonadState SSMSt) via State SSMSt
 
-instance Functor SSM where
-    fmap f ma = do
-        a <- ma
-        return $ f a
+runSSM :: SSM a -> [SSMStm]
+runSSM (SSM program) = statements $ execState program (SSMSt 0 [])
 
--- Forces sequential composition, while the interface makes no such demand.
-instance Applicative SSM where
-    pure = return
-    fa <*> ma = do
-        f <- fa
-        m <- ma
-        return $ f m
+pureSSM :: [SSMStm] -> SSM ()
+pureSSM stmts = modify $ \st -> st { statements = stmts }
 
-getname :: SSM () -> String
-getname (Procedure n  _) = n
-getname _                = error "not a procedure"
+emit :: SSMStm -> SSM ()
+emit stm = modify $ \st -> st { statements = statements st ++ [stm]}
+
+fresh :: SSM String
+fresh = do
+    i <- gets counter
+    modify $ \st -> st { counter = i + 1 }
+    return $ "v" ++ show i
+
+getProcedureName :: SSMStm -> String
+getProcedureName (Procedure n) = n
+getProcedureName _             = error "not a procedure"
 
 data Type = TInt
           | TBool
@@ -91,7 +79,7 @@ instance SSMType Int where
 instance SSMType Bool where
     typeOf _ = TBool
 
---instance Typeable SSMExp where
+expType :: SSMExp -> Type
 expType (Var t _)     = t
 expType (Lit t _)     = t
 expType (UOp t _ _)   = t
@@ -171,7 +159,7 @@ instance (Arg b, Box c) => Box (b -> c) where
 
 instance Res b => Box (SSM b) where
     box name xs f = \x -> do
-        Procedure name return
+        emit $ Procedure name
         (x',_) <- arg name xs x
         y'     <- f x'
         result name y'
