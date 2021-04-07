@@ -39,7 +39,6 @@ data IR = Function String [String]
   deriving Show
 
 data TRState = TRState { nextLabel  :: Int         -- ^ Counter to generate fresh labels
-                       , nextVar    :: Int         -- ^ Counter to generate fresh names
                        , ncase      :: Int         -- ^ Which number has the next case?
                        , numwaits   :: Int         -- ^ The size of the widest wait
                        , localrefs  :: [Reference] -- ^ Local references declared with var
@@ -55,7 +54,7 @@ compile :: Bool -> Maybe Int -> SSM () -> String
 compile b d ssm = let ( structs
                        , prototypes
                        , entersteps
-                       ) = evalState generateProcedures (TRState 0 0 0 0 [] ([], [], []) [] [ssm])
+                       ) = evalState generateProcedures (TRState 0 0 0 [] ([], [], []) [] [ssm])
                       testmain = if b then execWriter (generateMain (runSSM ssm) d) else [""]
                   in unlines $ [ "#include \"peng-platform.h\""
                                , "#include \"peng.h\""
@@ -98,7 +97,6 @@ generateProcedures = do
       -- | Reset the procedure specific parts of the state before generating C for the next procedure
       resetState :: TR ()
       resetState = modify $ \st -> st { nextLabel = 0
-                                      , nextVar   = 0
                                       , ncase     = 0
                                       , numwaits  = 0
                                       , localrefs = []
@@ -118,8 +116,6 @@ generateProcedures = do
           let (step',   p3) = execWriter (genCFromIR step lrefs)
 
           return (struct', [p2,p3], concat [enter', [""], step'])
-
---          return [unlines struct', p2, p3, "", unlines enter', unlines step']
 
 genIR :: SSM () -> TR ()
 genIR ssm = stmts $ runSSM ssm
