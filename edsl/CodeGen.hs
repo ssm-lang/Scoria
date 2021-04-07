@@ -19,7 +19,6 @@ data IR = Function String [String]
         | IfFalse SSMExp String -- if !exp goto label
         | Label String      -- label
         | Goto String       -- unconditional jump
-        | Switch String     -- switch(-the string-) {
         | Case Int          -- case -the int-:
         | Ret
 
@@ -243,6 +242,9 @@ genIR ssm = stmts $ runSSM ssm
               modify $ \st -> st { numwaits = max (numwaits st) (length vars)}
 
               appendStep $ Sensitize $ zip vars [1..]
+              incPC
+              appendStep $ Ret
+              nextCase
               forM_ [1..length vars] $ \i ->
                   appendStep (Desensitize i)
               stmts xs
@@ -251,8 +253,13 @@ genIR ssm = stmts $ runSSM ssm
               let forks = map (compileFork . runSSM) procs
 
               if length procs == 1
-                  then appendStep $ uncurry Call (head forks)
-                  else appendStep $ ForkProcedures forks
+                  then do incPC
+                          appendStep $ uncurry Call (head forks)
+                  else do appendStep $ ForkProcedures forks
+                          incPC
+              appendStep Ret
+              nextCase 
+
             
               generateRecursively procs
               stmts xs
@@ -283,6 +290,8 @@ genIR ssm = stmts $ runSSM ssm
               {- step -}
               appendStep $ Function ("void step_" ++ n) ["act_t *gen_act"]
               appendStep $ Literal 4 $ concat ["act_", n, "_t *act = (act_", n, "_t *) gen_act"]
+              appendStep $ LiteralNoSemi 4 "switch (act->pc) {"
+              nextCase
               stmts xs
           
           Argument _ n arg -> do
@@ -314,8 +323,8 @@ genIR ssm = stmts $ runSSM ssm
               appendStep Blank
               appendStep $ Leave n
 
-              (struct, enter, step) <- gets code
-              modify $ \st -> st { code = (struct, enter, (concat . wrapInSwitch . cases) step)}
+--              (struct, enter, step) <- gets code
+--              modify $ \st -> st { code = (struct, enter, step)}
 
         where
             file :: String -> String
@@ -372,51 +381,17 @@ genIR ssm = stmts $ runSSM ssm
             prtyp TInt = "int"
             prtyp TBool = "bool"
             prtyp t     = error $ "not a simple type: " ++ show t
-  
-      -- | This function takes a program and splits it up at points where the code should block.
-      cases :: [IR] -> [[IR]]
-      cases [] = []
-      cases xs = case myTakeWhile pred xs of
-          ([], []) -> []
-          (x, xs') -> x : cases xs'
-          where
-              -- | Predicate to know when to close a case. A case should be closed on a blocking call.
-              pred :: IR -> Bool
-              pred (Call _ _)         = True
-              pred (ForkProcedures _) = True
-              pred (Sensitize _ )     = True
-              pred _                  = False
 
-              -- | Like the normal takeWhile, but also includes the first element that fails the predicate
-              myTakeWhile :: (a -> Bool) -> [a] -> ([a], [a])
-              myTakeWhile p [] = ([], [])
-              myTakeWhile p (x:xs) = if p x
-                  then ([x], xs)
-                  else let (x', xs') = myTakeWhile p xs
-                      in (x:x', xs')
+            incPC :: TR ()
+            incPC = do
+                i <- gets ncase
+                appendStep $ Literal 12 $ "act->pc = " ++ show i
 
-      {- | This function takes a list of blocks and transforms them into a big switch statement where
-      the blocks become individual cases. -}
-      wrapInSwitch :: [[IR]] -> [[IR]]
-      wrapInSwitch xs = rewriteHead y : ys
-          where
-              wcase i = Case i
-              incPC i = Literal 12 $ "act->pc = " ++ show (i + 1)
-
-              incpcAndRet :: [IR] -> Int -> [IR]
-              incpcAndRet ir i = case last ir of
-                  Call a b -> concat [[wcase i], init ir, [incPC i], [last ir, Ret, Blank]]
-                  _        -> concat [[wcase i], ir, [incPC i, Ret, Blank]]
-
-              {- before every wakeup we insert a new case and after the statements we must increase
-              the program counter and then return. -}
-              (y:ys) = zipWith incpcAndRet xs [0..]
-
-              {- The first case in a procedure must be preceeded by the method signature,
-              the type casting of the act variable and a switch statement. -}
-              rewriteHead :: [IR] -> [IR]
-              rewriteHead xs = concat [[xs !! 1], [xs !! 2], [Switch "act->pc"], [Case 0], drop 3 xs]
-
+            nextCase :: TR ()
+            nextCase = do
+                i <- gets ncase
+                modify $ \st -> st { ncase = i + 1 }
+                appendStep $ Case i
 
 -- | Convert a sequence of IR values into (hopefully) valid C code
 genCFromIR :: [IR] -> [Reference] -> Writer ([String], String) ()
@@ -437,8 +412,6 @@ genCFromIR (x:xs) lrefs           = case x of
     Label label      -> do indent 8 $ label ++ ":"
                            genCFromIR xs lrefs
     Goto label       -> do indent 12 $ "goto " ++ label ++ ";"
-                           genCFromIR xs lrefs
-    Switch scrut     -> do indent 4 $ "switch(" ++ scrut ++ ") {"
                            genCFromIR xs lrefs
     Case num         -> do indent 8 $ "case " ++ show num ++ ":"
                            genCFromIR xs lrefs
