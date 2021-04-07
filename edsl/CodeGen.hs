@@ -284,7 +284,7 @@ genIR ssm = stmts $ runSSM ssm
               let params = getParams xs
 
               {- enter -}
-              let strarg (Left (r,t))      = svtype (dereference t) ++ " *" ++ r
+              let strarg (Left (r,t))      = svtyp (dereference t) ++ " *" ++ r
                   strarg (Right (Var t n)) = prtyp t ++ " " ++ n
               let sig = concat ["act_", n, "_t *enter_", n]
               let args = [ "act_t *caller"
@@ -384,16 +384,6 @@ genIR ssm = stmts $ runSSM ssm
                     if n `elem` gen
                         then return ()
                         else modify $ \st -> st { toGenerate = ssm : toGenerate st}
-            
-            -- | Convert a type to it's sv-version
-            svtype :: Type -> String
-            svtype t = "sv_" ++ prtyp t ++ "_t"
-
-            -- | Print a base type
-            prtyp :: Type -> String
-            prtyp TInt = "int"
-            prtyp TBool = "bool"
-            prtyp t     = error $ "not a simple type: " ++ show t
 
             incPC :: TR ()
             incPC = do
@@ -543,18 +533,6 @@ genCFromIR (x:xs) lrefs           = case x of
       simpleType (Left (r,t)) = prtyp $ dereference t
       simpleType (Right e)    = prtyp $ expType e
 
-      -- | Print a base type
-      prtyp :: Type -> String
-      prtyp TInt  = "int"
-      prtyp TBool = "bool"
-      prtyp t     = error $ "not a simple type: " ++ show t
-
-      -- | Convert a type to the string representing the sv-type
-      svtyp :: Type -> String
-      svtyp t = if isReference t
-          then concat ["sv_", prtyp (dereference t), "_t *"]
-          else concat ["sv_", prtyp t, "_t "]
-
 generateMain :: [SSMStm] -> Maybe Int -> Writer [String] ()
 generateMain ssm@(Procedure n:xs) d = do
     top_return
@@ -646,14 +624,14 @@ generateMain ssm@(Procedure n:xs) d = do
           indent 0 "}"
           indent 0 ""
     
-      -- | Print a base type
-      prtyp :: Type -> String
-      prtyp TInt  = "int"
-      prtyp TBool = "bool"
-      prtyp t     = error $ "not a simple type: " ++ show t
+-- | Print a base type
+prtyp :: Type -> String
+prtyp TInt  = "int"
+prtyp TBool = "bool"
+prtyp t     = error $ "not a simple type: " ++ show t
 
-      -- | Convert a type to the string representing the sv-type
-      svtyp :: Type -> String
-      svtyp t = if isReference t
-          then concat ["sv_", prtyp (dereference t), "_t *"]
-          else concat ["sv_", prtyp t, "_t "]
+-- | Convert a type to the string representing the sv-type
+svtyp :: Type -> String
+svtyp t = if isReference t
+    then concat ["sv_", prtyp (dereference t), "_t *"]
+    else concat ["sv_", prtyp t, "_t "]
