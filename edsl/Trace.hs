@@ -37,6 +37,13 @@ mkTrace inp = fromRight $ parse pTrace "" (pack inp)
       fromRight (Left a)  = error $ "parsing of test results failed: " ++ show a
       fromRight (Right b) = b
 
+parseLine :: String -> Maybe OutputEntry
+parseLine inp = toMaybe $ parse (choice [pEvent, pInstant, pResult]) "" (pack inp)
+  where
+      toMaybe :: Show a => Either a b -> Maybe b
+      toMaybe (Left a)  = Nothing
+      toMaybe (Right b) = Just b
+
 pTrace :: Parser Output
 pTrace = many $ choice [pEvent, pInstant, pResult]
 

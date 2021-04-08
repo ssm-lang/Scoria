@@ -18,12 +18,12 @@ import Test.QuickCheck.Monadic
 main :: IO ()
 main = do
 --    c <- testSingle $ myfib (int 13) inputIntRef
-    c <- testSingle $ nonterminate inputIntRef
-    case c of
-        Left err -> putStrLn err
-        Right _  -> putStrLn "test OK"
+--    c <- testSingle $ nonterminate inputIntRef
+--    case c of
+--        Left err -> putStrLn err
+--        Right _  -> putStrLn "test OK"
 
---    quickCheck prop_correct
+    quickCheck prop_correct
 
 prop_correct :: Program -> Property
 prop_correct (Program main) = monadicIO $ do
@@ -32,9 +32,11 @@ prop_correct (Program main) = monadicIO $ do
         Left s  -> do monitor (whenFail $ do
                         putStrLn "Test failed!"
                         putStrLn "Compiling and writing test file to fail.c..."
-                        writeFile "/home/robert/fail.c" (compile True Nothing main)
-                        putStrLn "Prettyprinting and writing test file to fail.ssm"
-                        writeFile "/home/robert/fail.ssm" (showSSM main))
+                        writeFile "fail.c" (compile True Nothing main)
+                        putStrLn "Prettyprinting and writing test file to fail.ssm..."
+                        writeFile "fail.ssm" (showSSM main)
+                        putStrLn "writing the output traces to fail.out..."
+                        writeFile "fail.out" s)
                       assert False
         Right _ -> return ()
 
@@ -43,19 +45,28 @@ prop_correct (Program main) = monadicIO $ do
 the C code and comparing the output. -}
 testSingle :: SSM () -> IO (Either String ())
 testSingle program = do
-    putStrLn "running code generator"
-    out1   <- runCG program
-    let trace1 = mkTrace out1
-    putStrLn $ "running interpreter, need " ++ show (length trace1) ++ " lines of output"
-    let trace2 = take (length trace1) $ interpret program
-    if trace1 /= trace2
-        then return (Left (unlines (printDifferences trace1 trace2 0)))
-        else return $ Right ()
+    mtrace1   <- runCG program
+    case mtrace1 of
+        Just trace1 -> do let trace2 = take (length trace1) $ interpret program
+                          if trace1 /= trace2
+                              then return (Left (unlines (errorStr trace1 trace2)))
+                              else return $ Right ()
+        Nothing     -> return (Left "code generator failed")
 
-printDifferences :: Output -> Output -> Int -> [String]
-printDifferences [] _ _ = []
-printDifferences _ [] _ = []
-printDifferences (x:xs) (y:ys) i = if x == y
-    then printDifferences xs ys (i+1)
-    else let line = concat ["entry ", show i, " was different: ", show x, " ", show y ]
-         in line : printDifferences xs ys (i+1)
+errorStr :: Output -> Output -> [String]
+errorStr xs ys = zipWith (\x y -> padTo xsmax x ++ padTo ysmax y ++ indicate x y) xs' ys'
+  where
+      xs'   = "code generator" : "--------------" : map show xs
+      ys'   = "interpreter"    : "-----------" : map show ys
+      xsmax = foldl (\acc str -> max acc (length str)) 0 xs'
+      ysmax = foldl (\acc str -> max acc (length str)) 0 ys'
+
+      padTo :: Int -> String -> String
+      padTo n str = str ++ replicate (n - length str + 2) ' '
+
+      indicate :: String -> String -> String
+      indicate x y = if x /= y 
+          then if "-" `isPrefixOf` x || "code" `isPrefixOf` x 
+              then "" 
+              else " <----- different" 
+          else ""

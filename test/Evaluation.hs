@@ -1,7 +1,10 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Evaluation (runCG, runInterpreter) where
 
 import System.Directory
 import System.Process
+import System.IO
+import Control.Exception
 
 import Core
 import Frontend ( SSM )
@@ -15,14 +18,15 @@ getname ssm = getProcedureName $ head $ runSSM ssm
 {- | Given a SSM program, this function will create a new directory, compile the program in
 that directory and run it, producing some output in a txt-file. This output will then be read
 before the temporary directory is deleted. -}
-runCG :: SSM () -> IO String
+runCG :: SSM () -> IO (Maybe Output)
 runCG program = do
     setupTestDir
     createTestFile program
-    runTest program
-    output <- getOutput program
+    output <- runTest program
     removeTestDir
-    return output
+    case output of
+        Just out -> return $ parseOutput $ lines out
+        Nothing  -> return Nothing
   where
       -- | Name of temporary test directory
       testdir :: String
@@ -33,17 +37,16 @@ runCG program = do
       rtsloc = "runtime/"
 
       -- | The command that compiles the test-file
-      gcc :: String -> String
-      gcc execname = concat ["gcc -o ", execname, " ", execname, ".c", flags]
+      gcc :: String -> (String, [String])
+      gcc execname = ("gcc", ["-o",execname,execname ++ ".c"] ++ flags)
         where
-            flags :: String
-            flags = concat [ " "
-                           , rtssrc, "peng-scheduler.c "
-                           , rtssrc, "peng-int.c "
-                           , rtssrc, "peng-bool.c -I"
-                           , rtsloc, "include -I"
-                           , rtsloc, "linux/include "
-                           , " -DDEBUG"]
+            flags :: [String]
+            flags = [ rtssrc ++ "peng-scheduler.c"
+                    , rtssrc ++ "peng-int.c"
+                    , rtssrc ++ "peng-bool.c"
+                    , "-I" ++ rtsloc ++ "include"
+                    , "-I" ++ rtsloc ++ "linux/include"
+                    , "-DDEBUG"]
 
             rtssrc :: String
             rtssrc = rtsloc ++ "src/"
@@ -56,13 +59,13 @@ runCG program = do
       setupTestDir :: IO ()
       setupTestDir = do
           createDirectory testdir
-          system cprts
+          callProcess "cp" ["-r",rtsloc,testdir]
           return ()
 
       -- | Remove the temporary test directory
       removeTestDir :: IO ()
       removeTestDir = do
-          system $ "rm -r " ++ testdir
+          callProcess "rm" ["-r",testdir]
           return ()
 
       -- | Utility function that is given a directory in which it should execute the IO action
@@ -84,33 +87,28 @@ runCG program = do
               writeFile (name ++ ".c") c
 
       -- | Compile and run a test
-      runTest :: SSM () -> IO ()
-      runTest program = do
+      runTest :: SSM () -> IO (Maybe String)
+      runTest program = flip catch (\(e :: IOException) -> return Nothing) $ do
           let name = getname program
 
           inDirectory testdir $ do
-              system $ gcc name
-              system $ concat ["timeout ", show timeout, "s ./", name, " > ", name, ".txt"]
-              -- shamelessly stole this from StackOverflow. It removes the last line in a file, but
-              -- I don't know how :)
-              -- When timeout cuts a program short the last line might not finish printing.
-              system $ concat [ "dd if=/dev/null of=", name, ".txt "
-                              , "bs=1 seek=$(echo $(stat --format=%s ", name, ".txt ) - "
-                              , "$( tail -n1 ", name, ".txt | wc -c) | bc ) >/dev/null 2>&1"
-                              ]
-        
-          return ()
+              let (cmd,args) = gcc name
+              callProcess cmd args
+              (_, Just hout, _, _) <- createProcess (proc "timeout" [show timeout ++ "s", "./" ++ name]) {std_out = CreatePipe}
+              Just <$> hGetContents hout
         where
             timeout :: Double
             timeout = 0.2
-
-      -- | Get the output of running a test. The output will have been written to a txt-file.
-      getOutput :: SSM () -> IO String
-      getOutput program = do
-          let name = getname program
-
-          inDirectory testdir $ do
-              readFile $ name ++ ".txt"
+    
+      -- | Parse the output, but discard the last line. The call to timeout might have cut it
+      -- off short so that it would not be parsed properly.
+      parseOutput :: [String] -> Maybe Output
+      parseOutput []     = Just []
+      parseOutput [_]    = Just []
+      parseOutput (x:xs) = do
+          line <- parseLine x
+          rest <- parseOutput xs
+          return $ line : rest
 
 runInterpreter :: SSM () -> Output
 runInterpreter = interpret
