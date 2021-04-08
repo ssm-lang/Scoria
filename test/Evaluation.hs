@@ -3,11 +3,11 @@ module Evaluation (runCG, runInterpreter) where
 import System.Directory
 import System.Process
 
-import Core2
-import Frontend2 ( SSM )
-import CodeGen2 (compile)
-import Interpreter2 (interpret)
-import Trace2
+import Core
+import Frontend ( SSM )
+import CodeGen (compile)
+import Interpreter (interpret)
+import Trace
 
 getname :: SSM () -> String
 getname ssm = getProcedureName $ head $ runSSM ssm
@@ -90,9 +90,19 @@ runCG program = do
 
           inDirectory testdir $ do
               system $ gcc name
-              system $ concat ["./", name, " > ", name, ".txt"]
+              system $ concat ["timeout ", show timeout, "s ./", name, " > ", name, ".txt"]
+              -- shamelessly stole this from StackOverflow. It removes the last line in a file, but
+              -- I don't know how :)
+              -- When timeout cuts a program short the last line might not finish printing.
+              system $ concat [ "dd if=/dev/null of=", name, ".txt "
+                              , "bs=1 seek=$(echo $(stat --format=%s ", name, ".txt ) - "
+                              , "$( tail -n1 ", name, ".txt | wc -c) | bc ) >/dev/null 2>&1"
+                              ]
         
           return ()
+        where
+            timeout :: Double
+            timeout = 0.2
 
       -- | Get the output of running a test. The output will have been written to a txt-file.
       getOutput :: SSM () -> IO String
