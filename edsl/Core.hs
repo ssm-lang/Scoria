@@ -96,6 +96,13 @@ isReference :: Type -> Bool
 isReference (Ref _) = True
 isReference _       = False
 
+instance Num SSMExp where
+  e1 + e2       = BOp (expType e1) e1 e2 OPlus
+  e1 * e2       = BOp (expType e1) e1 e2 OTimes
+  e1 - e2       = BOp (expType e1) e1 e2 OMinus
+  fromInteger i = Lit TInt $ LInt $ fromInteger i
+  negate e      = UOp (expType e) e Neg
+
 -- | SSM expressions
 data SSMExp = Var Type String               -- ^ Variables
             | Lit Type SSMLit               -- ^ Literals
@@ -120,7 +127,7 @@ instance Show SSMLit where
 
 {-- | SSM unary operators -}
 data UnaryOp = Neg  -- ^ negation
-  deriving (Eq)
+  deriving (Show,Eq)
 
 {-- | SSM binary operators. We use phantom types to represent the two argument types and
 the result type of the operator. E.g OLT 2 3 :: BinOp Int Int Bool -}
