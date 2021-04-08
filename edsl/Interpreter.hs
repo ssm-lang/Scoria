@@ -166,6 +166,7 @@ newVar :: SSMExp -> Interp s (Var s)
 newVar e = do
     r <- lift $ lift $ newSTRef e
     ref <- lift $ lift $ newSTRef (r, [])
+    modify $ \st -> st { written = ref : written st}
     return ref
 
 liftST :: ST s a -> Interp s a

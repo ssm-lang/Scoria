@@ -47,3 +47,10 @@ finish the function definition.
 The interpreter would infinitely loop if a program does not terminate. In order to be able to
 cease execution if needed I rewrote it to give output lazily instead. It still infinitely loops but
 I don't have to wait for the computation to finish before I get the output.
+
+6)
+
+When I implemented the interpreter I did not consider a variable 'written' when it was created,
+so if I create a reference r and then check @r, the result would be false. It appears that the
+RTS considers variables to be written to in the same instant where they are created, so I changed
+the interpreter to act accordingly.
