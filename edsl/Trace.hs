@@ -8,13 +8,14 @@ import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as Lexer
 
-import Core hiding (Result)
+import Core hiding (Result, Fork)
 
 type Parser a = Parsec Void Text a
 
-data OutputEntry = Instant Int Int -- now, size of eventqueue
-                 | Event Int SSMExp -- now, new variable value
-                 | Result String SSMExp -- variable name and final value
+data OutputEntry = Instant Int Int      -- ^ now, size of eventqueue
+                 | Event Int SSMExp     -- ^ now, new variable value
+                 | Fork [String]        -- ^ Fork call, names of forked procedures
+                 | Result String SSMExp -- ^ variable name and final value
   deriving (Show, Eq)
 
 type Output = [OutputEntry]
@@ -24,8 +25,10 @@ testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "event 2 value int (-1)"
                              , "now 3 eventqueuesize 3"
                              , "now 5 eventqueuesize 5"
+                             , "fork mywait mywait mysum"
                              , "event 6 value int 7"
                              , "result x int 1"
+                             , "fork mywait"
                              , "result y bool 0"
                              , "result z bool 1"
                              ]
@@ -38,14 +41,23 @@ mkTrace inp = fromRight $ parse pTrace "" (pack inp)
       fromRight (Right b) = b
 
 parseLine :: String -> Maybe OutputEntry
-parseLine inp = toMaybe $ parse (choice [pEvent, pInstant, pResult]) "" (pack inp)
+parseLine inp = toMaybe $ parse (choice [pEvent, pInstant, pResult, pFork]) "" (pack inp)
   where
       toMaybe :: Show a => Either a b -> Maybe b
       toMaybe (Left a)  = Nothing
       toMaybe (Right b) = Just b
 
 pTrace :: Parser Output
-pTrace = many $ choice [pEvent, pInstant, pResult]
+pTrace = many $ choice [pEvent, pInstant, pResult, pFork]
+
+pFork :: Parser OutputEntry
+pFork = do
+    pSpace
+    pSymbol "fork"
+    pSpace
+    procs <- some (try pIdent)
+    pSpace
+    return $ Fork procs
 
 pEvent :: Parser OutputEntry
 pEvent = do
@@ -79,8 +91,19 @@ pIdent = do
     a <- letterChar 
     as <- many $ choice [letterChar, digitChar, char '_']
     pSpace
-    return $ a:as
-
+    let res = a:as
+    if res `elem` keywords
+        then fail "found keyword, expected identifier"
+        else return res
+  where
+      keywords :: [String]
+      keywords = [ "event"
+                 , "fork"
+                 , "now"
+                 , "result"
+                 , "eventqueuesize"
+                 , "int"
+                 , "bool"]
 pRes :: Parser SSMExp
 pRes = do
     -- add more variants here as we add more types

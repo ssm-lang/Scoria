@@ -244,6 +244,7 @@ runProcess p = let cont = continuation p
         par         <- liftST $ newSTRef p'
         forM_ (zip procs priodeps) $ \(cont, (prio, dep)) -> do
             enqueue $ Proc prio dep 0 (Just par) Map.empty Map.empty Nothing (runSSM cont)
+        tell [T.Fork (map (getProcedureName . head . runSSM) procs)]
     Procedure n     -> do
         runProcess $ p { continuation = tail $ continuation p}
     Argument n m a  -> do

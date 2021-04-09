@@ -262,7 +262,8 @@ genIR ssm = stmts $ runSSM ssm
           Fork procs -> do
 
               {- step -}
-              let forks = map (compileFork . runSSM) procs
+              let forkStmts = map runSSM procs
+              let forks = map compileFork forkStmts
 
               if length procs == 1
                   then do incPC
@@ -451,9 +452,11 @@ genCFromIR (x:xs) lrefs           = case x of
                             argstr = if not (null args')
                                        then [", "] ++ intersperse ", " args'
                                        else [""]
-                        in do indent 12 $ concat (["call((act_t *) enter_", fun, "((act_t *) act, act->priority, act->depth"] ++ argstr ++ ["));"])
+                        in do debugForkStmt [fun]
+                              indent 12 $ concat (["call((act_t *) enter_", fun, "((act_t *) act, act->priority, act->depth"] ++ argstr ++ ["));"])
                               genCFromIR xs lrefs
-    ForkProcedures procs -> do let new_depth = integerLogBase 2 (toInteger (length procs))
+    ForkProcedures procs -> do debugForkStmt $ map fst procs
+                               let new_depth = integerLogBase 2 (toInteger (length procs))
                                indent 12   "{"
                                indent 12 $ "uint8_t new_depth = act->depth - " ++ show new_depth ++ ";"
                                indent 12   "uint32_t pinc = 1 << new_depth;"
@@ -494,11 +497,11 @@ genCFromIR (x:xs) lrefs           = case x of
           UOp _ e op     -> case op of
                               Neg -> "(-" ++ compLit e ++ ")"
           BOp _ e1 e2 op -> case op of
-                              OPlus  -> "(" ++ compLit e1 ++ ") + (" ++ compLit e2 ++ ")"
-                              OMinus -> "(" ++ compLit e1 ++ ") - (" ++ compLit e2 ++ ")"
-                              OTimes -> "(" ++ compLit e1 ++ ") * (" ++ compLit e2 ++ ")"
-                              OLT    -> "(" ++ compLit e1 ++ ") < (" ++ compLit e2 ++ ")"
-                              OEQ    -> "(" ++ compLit e1 ++ ") == (" ++ compLit e2 ++ ")"
+                              OPlus  -> "(" ++ compLit e1 ++ " + " ++ compLit e2 ++ ")"
+                              OMinus -> "(" ++ compLit e1 ++ " - " ++ compLit e2 ++ ")"
+                              OTimes -> "(" ++ compLit e1 ++ " * " ++ compLit e2 ++ ")"
+                              OLT    -> "(" ++ compLit e1 ++ " < " ++ compLit e2 ++ ")"
+                              OEQ    -> "(" ++ compLit e1 ++ " == " ++ compLit e2 ++ ")"
 
       -- | Compile either a reference or a variable into the string that fetches it out of the struct
       compVar :: Either Reference SSMExp -> String
@@ -528,6 +531,12 @@ genCFromIR (x:xs) lrefs           = case x of
       simpleType :: Either Reference SSMExp -> String
       simpleType (Left (r,t)) = prtyp $ dereference t
       simpleType (Right e)    = prtyp $ expType e
+
+      debugForkStmt :: [String] -> Writer ([String], String) ()
+      debugForkStmt procs = do
+          indent 0 "#ifdef DEBUG"
+          indent 12 $ concat ["printf(\"fork ",unwords procs,"\\n\");"]
+          indent 0 "#endif"
 
 generateMain :: [SSMStm] -> Maybe Int -> Writer [String] ()
 generateMain ssm@(Procedure n:xs) d = do
