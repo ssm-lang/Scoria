@@ -60,6 +60,11 @@ compile b d ssm = let ( structs
                                , "#include \"peng.h\""
                                , "#include <stdio.h>"
                                , ""
+                               , "#ifdef DEBUG"
+                               , "#define DEBUG_PRINT(x) printf(x);"
+                               , "#else"
+                               , "#define DEBUG_PRINT(x) while(0) {}"
+                               , "#endif"
                                ] ++ structs ++ prototypes ++ entersteps ++ testmain
 
 -- | Return a list of all triples (struct, enter, step)
@@ -533,10 +538,7 @@ genCFromIR (x:xs) lrefs           = case x of
       simpleType (Right e)    = prtyp $ expType e
 
       debugForkStmt :: [String] -> Writer ([String], String) ()
-      debugForkStmt procs = do
-          indent 0 "#ifdef DEBUG"
-          indent 12 $ concat ["printf(\"fork ",unwords procs,"\\n\");"]
-          indent 0 "#endif"
+      debugForkStmt procs = indent 12 $ concat ["DEBUG_PRINT(\"fork ",unwords procs,"\\n\");"]
 
 generateMain :: [SSMStm] -> Maybe Int -> Writer [String] ()
 generateMain ssm@(Procedure n:xs) d = do
