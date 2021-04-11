@@ -7,7 +7,6 @@ import Control.Monad.ST.Lazy
 import Data.STRef.Lazy
 import Data.List
 import Data.Maybe
-import GHC.Float
 
 import System.IO.Unsafe
 
@@ -235,15 +234,15 @@ runProcess p = let cont = continuation p
                    }
         mapM_ (sensitize p') refs
     Fork procs      -> do
-        let numchild = length procs
-        let d'       = depth p - integerLogBase 2 (toInteger $ depth p)
-        let priodeps = [ (priority p + p'*(2^d'), d') | p' <- [0 .. numchild-1]]
-        let p'       = p { runningChildren = numchild
-                         , continuation = tail $ continuation p
+        let priodeps = pds (priority p) (depth p) (length procs)
+        let p'       = p { runningChildren = (length procs)
+                         , continuation    = tail $ continuation p
                          }
-        par         <- liftST $ newSTRef p'
+        par <- liftST $ newSTRef p'
         forM_ (zip procs priodeps) $ \(cont, (prio, dep)) -> do
-            enqueue $ Proc prio dep 0 (Just par) Map.empty Map.empty Nothing (runSSM cont)
+            let newprocedure = Proc prio dep 0 (Just par) Map.empty Map.empty Nothing (runSSM cont)
+            enqueue newprocedure
+
         tell [T.Fork (map (getProcedureName . head . runSSM) procs)]
     Procedure n     -> do
         runProcess $ p { continuation = tail $ continuation p}
@@ -298,6 +297,16 @@ lookupRef :: Reference -> Proc s -> Interp s (Var s)
 lookupRef (r,_) p = case Map.lookup r (references p) of
     Just ref -> return ref
     Nothing  -> error $ "interpreter error - can not find reference " ++ r
+
+-- | Computes new priorities and depths
+pds :: Int  -- ^ Priority of calling process
+    -> Int  -- ^ Depth of calling process
+    -> Int  -- ^ Number of new processes to fork
+    -> [(Int, Int)]
+pds p d k = zip prios (repeat d')
+  where
+      d'    = d - ceiling (logBase 2 (fromIntegral k))
+      prios = [ p + i * (2^d') | i <- [0..k-1]]
 
 writeVar :: Var s -> SSMExp -> Interp s ()
 writeVar ref e = do
@@ -359,6 +368,6 @@ enqueue p = modify $ \st -> st { readyQueue = insert p (readyQueue st)}
   where
       insert :: Proc s -> [Proc s] -> [Proc s]
       insert p [] = [p]
-      insert p1 (p2:ps) = if priority p1 < priority p2
+      insert p1 (p2:ps) = if priority p1 <= priority p2
                             then p1 : p2 : ps
                             else p2 : insert p1 ps
