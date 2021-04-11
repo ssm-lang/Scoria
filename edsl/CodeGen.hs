@@ -461,7 +461,7 @@ genCFromIR (x:xs) lrefs           = case x of
                               indent 12 $ concat (["call((act_t *) enter_", fun, "((act_t *) act, act->priority, act->depth"] ++ argstr ++ ["));"])
                               genCFromIR xs lrefs
     ForkProcedures procs -> do debugForkStmt $ map fst procs
-                               let new_depth = integerLogBase 2 (toInteger (length procs))
+                               let new_depth = ceiling (logBase 2 (fromIntegral (length procs)))
                                indent 12   "{"
                                indent 12 $ "uint8_t new_depth = act->depth - " ++ show new_depth ++ ";"
                                indent 12   "uint32_t pinc = 1 << new_depth;"
