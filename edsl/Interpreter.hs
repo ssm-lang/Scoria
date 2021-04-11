@@ -62,7 +62,7 @@ interpret' :: SSM () -> ST s ((), T.Output)
 interpret' ssm = do
     let stmts = runSSM ssm
     args     <- mkArgs stmts
-    let p     = Proc 1024 10 0 Nothing Map.empty Map.empty Nothing stmts
+    let p     = Proc 0 32 0 Nothing Map.empty Map.empty Nothing stmts
     let state = St 0 (Map.fromList args) [] [p] [] 0
     runWriterT (evalStateT mainloop' state)
   where
@@ -367,7 +367,7 @@ enqueue :: Proc s -> Interp s ()
 enqueue p = modify $ \st -> st { readyQueue = insert p (readyQueue st)}
   where
       insert :: Proc s -> [Proc s] -> [Proc s]
-      insert p [] = [p]
-      insert p1 (p2:ps) = if priority p1 <= priority p2
+      insert p []       = [p]
+      insert p1 (p2:ps) = if priority p1 < priority p2
                             then p1 : p2 : ps
                             else p2 : insert p1 ps
