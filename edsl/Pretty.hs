@@ -39,7 +39,7 @@ printProcedure ssm@(Procedure n:_) = do
               emit $ "SetRef " ++ r ++ " = " ++ show e
           (SetLocal e v)  -> do
               emit $ "SetLocal " ++ show e ++ " = " ++ show v
-          (GetRef (r,t) n)      -> do
+          (GetRef n (r,t))      -> do
               let name = getVarName n
               emit $ name ++ " = GetRef " ++ r
           (If c thn (Just els))  -> do
@@ -57,7 +57,7 @@ printProcedure ssm@(Procedure n:_) = do
               indent $ toString' $ runSSM bdy
           (After e (r,_) v)   -> do
               emit $ "After " ++ show e ++ " " ++ r ++ " = " ++ show v
-          (Changed (r,_) n)   -> do
+          (Changed n (r,_))   -> do
               let name = getVarName n
               emit $ name ++ " = @" ++ r
           (Wait vars)     -> do

@@ -168,7 +168,7 @@ genIR ssm = stmts $ runSSM ssm
           SetLocal e v -> do appendStep $ Assign (Right e) (Right v)
                              stmts xs
 
-          GetRef (r, t) name -> do
+          GetRef name (r, t) -> do
               (n,c) <- case name of
                   Captured (f,x,y) n -> let comment = concat [" // Declared at ("
                                                            , show x, ", ", show y
@@ -234,7 +234,7 @@ genIR ssm = stmts $ runSSM ssm
           After e r v -> do appendStep $ Later r e v
                             stmts xs
 
-          Changed r name -> do
+          Changed name r -> do
               (n,c) <- case name of
                   Captured (f,x,y) n -> let comment = concat [" // Declared at ("
                                                            , show x, ", "

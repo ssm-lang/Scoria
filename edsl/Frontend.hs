@@ -61,8 +61,8 @@ renameStmt s (Info (Just n) (Just (f,x,y))) =
     let srcinfo = Captured (f,x,y) n
     in case s of
         NewRef n e  -> NewRef srcinfo e
-        GetRef r n  -> GetRef r srcinfo
-        Changed r n -> Changed r srcinfo
+        GetRef n r  -> GetRef srcinfo r
+        Changed n r -> Changed srcinfo r
         _           -> s
 
 renameExp :: Exp a -> SrcInfo -> Exp a
@@ -143,7 +143,7 @@ false' = Exp $ Lit TBool $ LBool False
 deref :: Ref a -> SSM (Exp a)
 deref (Ptr r) = do
     n <- fresh
-    emit $ GetRef r (Fresh n)
+    emit $ GetRef (Fresh n) r
     return $ Exp $ Var (dereference (snd r)) n
 
 var :: Exp a -> SSM (Ref a)
@@ -166,7 +166,7 @@ fork procs = emit $ Fork procs
 changed :: Ref a -> SSM (Exp Bool)
 changed (Ptr r) = do
     n <- fresh
-    emit $ Changed r (Fresh n)
+    emit $ Changed (Fresh n) r
     return $ Exp $ Var TBool n
 
 -- | Conditional executing with a dangling else

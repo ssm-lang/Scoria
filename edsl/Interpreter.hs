@@ -62,7 +62,7 @@ interpret' :: SSM () -> ST s ((), T.Output)
 interpret' ssm = do
     let stmts = runSSM ssm
     args     <- mkArgs stmts
-    let p     = Proc 0 32 0 Nothing Map.empty Map.empty Nothing stmts
+    let p     = Proc 0 128 0 Nothing Map.empty Map.empty Nothing stmts
     let state = St 0 (Map.fromList args) [] [p] [] 0
     runWriterT (evalStateT mainloop' state)
   where
@@ -187,7 +187,7 @@ runProcess p = let cont = continuation p
         writeRef p (r,t) v
         runProcess $ p { continuation = tail $ continuation p}
     SetLocal e v -> error $ "interpreter error - can not assign value to expression: " ++ show e
-    GetRef r s -> do
+    GetRef s r  -> do
         ior   <- lookupRef r p
         (r,_) <- liftST $ readSTRef ior
         e     <- liftST $ readSTRef r
@@ -220,7 +220,7 @@ runProcess p = let cont = continuation p
               modify $ \st -> st { events = Event (t + num) ref v' : events st }
               runProcess $ p { continuation = tail $ continuation p}
           _ -> error $ "interpreter error - not a number " ++ show i
-    Changed r s     -> do
+    Changed s r     -> do
         st  <- get
         ref <- lookupRef r p
         b   <- newVar $ Lit TBool $ LBool $ ref `elem` written st

@@ -17,8 +17,8 @@ getVarName (Captured _ n) = n
 
 data SSMStm = -- | Variable/Stream operations
               NewRef Name SSMExp
+            | GetRef Name Reference
             | SetRef Reference SSMExp
-            | GetRef Reference Name
             | SetLocal SSMExp SSMExp
 
               -- | Control operations
@@ -27,7 +27,7 @@ data SSMStm = -- | Variable/Stream operations
             
               -- | SSM specific operations
             | After SSMExp Reference SSMExp
-            | Changed Reference Name
+            | Changed Name Reference
             | Wait [Reference]
             | Fork [SSM ()]
 

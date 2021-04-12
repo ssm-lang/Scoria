@@ -93,9 +93,20 @@ runCG program = do
 
           inDirectory testdir $ do
               let (cmd,args) = gcc name
-              callProcess cmd args
-              (_, Just hout, _, _) <- createProcess (proc "timeout" [show timeout ++ "s", "./" ++ name]) {std_out = CreatePipe}
-              Just <$> hGetContents hout
+              --callProcess cmd args
+              (_,_,Just gccerr,_) <- createProcess (proc cmd args) {std_err = CreatePipe}
+              c <- hGetContents gccerr
+              if null c
+                  then do (_, Just hout, Just herr, _) <- createProcess
+                                        (proc "timeout" [show timeout ++ "s", "./" ++ name])
+                                        { std_out = CreatePipe
+                                        , std_err = CreatePipe
+                                        }
+                          err <- hGetContents herr
+                          if null err
+                              then Just <$> hGetContents hout
+                              else return Nothing
+                  else return Nothing
         where
             timeout :: Double
             timeout = 0.2
