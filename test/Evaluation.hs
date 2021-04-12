@@ -12,6 +12,10 @@ import CodeGen (compile)
 import Interpreter (interpret)
 import Trace
 
+data Report = Success Output           -- ^ Test successful, with the output
+            | CompilationError String  -- ^ Error compiling the program, with the c-file
+            | ParseError String        -- ^ Error parsing output of running the program, with the output
+
 getname :: SSM () -> String
 getname ssm = getProcedureName $ head $ runSSM ssm
 
@@ -96,7 +100,7 @@ runCG program = do
               --callProcess cmd args
               (_,_,Just gccerr,_) <- createProcess (proc cmd args) {std_err = CreatePipe}
               c <- hGetContents gccerr
-              if null c
+              if not (null c)
                   then do (_, Just hout, Just herr, _) <- createProcess
                                         (proc "timeout" [show timeout ++ "s", "./" ++ name])
                                         { std_out = CreatePipe
