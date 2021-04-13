@@ -16,8 +16,8 @@ import System.IO.Unsafe
 
 import CodeGen
 
-trace :: [(String, [(String, Type)], [SSMStm])] -> [(String, [(String, Type)], [SSMStm])]
-trace x = unsafePerformIO $ putStrLn (printTab x) >> return x
+trace :: Show a => a -> a
+trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
 render :: Program -> Program
 render (Program ssm) = unsafePerformIO $ putStrLn (showSSM ssm) >> return (Program ssm)
@@ -40,7 +40,7 @@ printTab tab = unlines (map printOne tab)
       printOne (n, typs, stmts) = n ++ ": " ++ intercalate " -> " (map show typs) ++ " -> SSM ()"
 
 instance Arbitrary Program where
-    shrink    = shrinkSSM
+    shrink    = shrinkSSM -- a -> [a]
     arbitrary = do
         types <- arbitrary `suchThat` (not . null)
         let funs = [ ("fun" ++ show i, as) | (as,i) <- types `zip` [1..] ]
@@ -228,14 +228,53 @@ testprogram = Program $ pureSSM stmts
             , If (BOp bool 3 5 OLT)
                 (pureSSM [Wait [("v2", intref)]])
                 (Just $ pureSSM [Wait [("v0", intref)]])
-            , Fork [pureSSM ([ Procedure "fun1"
-                             , Argument "fun1" "x" (Left (Var int "v1"))
-                             , Argument "fun1" "y" (Right ("v0", intref))
-                             , Wait [("v0", intref)]
-                             , After 5 ("v0", intref) (Var int "x")
-                             , GetRef (Fresh "v3") ("v0", intref)
-                             , Result "fun1"
-                             ])]
+            --, Fork [pureSSM ([ Procedure "fun1"
+            --                 , Argument "fun1" "x" (Left (Var int "v1"))
+            --                 , Argument "fun1" "y" (Right ("v0", intref))
+            --                 , Wait [("v0", intref)]
+            --                 , After 5 ("v0", intref) (Var int "x")
+            --                 , GetRef (Fresh "v3") ("v0", intref)
+            --                 , Result "fun1"
+            --                 ])]
+            , Result "test"
+            ]
+    
+    int     = TInt
+    bool    = TBool
+    intref  = Ref int
+    boolref = Ref bool
+
+testprogram2 :: Program
+testprogram2 = Program $ pureSSM stmts
+  where
+    stmts = [ Procedure "test"
+            , NewRef (Fresh "v0") 3
+            , NewRef (Fresh "v2") 5
+            , If (Lit bool $ LBool True)
+                (pureSSM [Wait [("v2", intref), ("v0", intref)]])
+                (Just $ pureSSM [Wait [("v2", intref),("v0", intref)]])
+            , Result "test"
+            ]
+    
+    int     = TInt
+    bool    = TBool
+    intref  = Ref int
+    boolref = Ref bool
+
+testprogram3 :: Program
+testprogram3 = Program $ pureSSM stmts
+  where
+    stmts = [ Procedure "test"
+            , NewRef (Fresh "v0") 5
+            , NewRef (Fresh "v2") (2 - 0)
+            , GetRef (Fresh "v3") ("v2", intref)
+            , Fork [ pureSSM $ [ Procedure "fun3"
+                               , Argument "fun3" "var1" (Left (0 - 0))
+                               , Argument "fun3" "var2" (Left (-6))
+                               , Argument "fun3" "ref3" (Right ("v2", intref))
+                               , Argument "fun3" "ref4" (Right ("v0", intref))
+                               , Argument "fun3" "var4" (Left ((Var int "v3") - (Var int "v3")))
+                               , Result "fun3"] ]
             , Result "test"
             ]
     
@@ -247,14 +286,15 @@ testprogram = Program $ pureSSM stmts
 {- | Takes a program and returns all subprograms where each subprogram contains only
 a permutation of the reference declarations. -}
 shrinkSSM :: Program -> [Program]
-shrinkSSM (Program main) = map (\p -> Program (pureSSM p)) $ removeReferences $ runSSM main
+shrinkSSM (Program main) = map (Program . pureSSM) $ removeReferences $ runSSM main
 
 -- | Return all subprograms where one or more of the declared references are removed.
 removeReferences :: [SSMStm] -> [[SSMStm]]
-removeReferences stmts = map (\p -> removeRefs p [] [] stmts) $ tail $ subsequences refs
-  where
-    refs :: [String]
-    refs = declaredRefs stmts
+removeReferences stmts = let maybs = map (\p -> removeRef p [] [] stmts) (refs stmts)
+                         in map fromJust $ filter isJust maybs
+
+refs :: [SSMStm] -> [String]
+refs stmts = declaredRefs stmts
 
 -- | Fetch all declared references in a program
 declaredRefs :: [SSMStm] -> [String]
@@ -262,65 +302,59 @@ declaredRefs []                      = []
 declaredRefs (NewRef (Fresh n) e:xs) = n : declaredRefs xs
 declaredRefs (_:xs)                  =     declaredRefs xs
 
-removeRefs :: [String]     -- ^ Names of the references we wish to remove from the program
-           -> [String]     -- ^ Variables that are no longer valid (since e.g we did GetRef on a ref)
-           -> [Reference]  -- ^ References that are valid
-           -> [SSMStm]     -- ^ The program to transform
-           -> [SSMStm]
-removeRefs bad vars refs []     = []
-removeRefs bad vars refs (x:xs) = case x of
-  NewRef (Fresh n) e      | n `elem` bad ->     removeRefs bad vars refs xs
+removeRef :: String       -- ^ Name of the references we wish to remove from the program
+          -> [String]     -- ^ Variables that are no longer valid (since e.g we did GetRef on a ref)
+          -> [Reference]  -- ^ References that are valid
+          -> [SSMStm]     -- ^ The program to transform
+          -> Maybe [SSMStm]
+removeRef bad vars refs []     = Just []
+removeRef bad vars refs (x:xs) = case x of
+  NewRef (Fresh n) e      | n == bad ->     removeRef bad vars refs xs
                           | otherwise    -> let x' = NewRef (Fresh n) $ deleteVars vars e
                                                 r  = (n, mkReference (expType e))
-                                            in x' : removeRefs bad vars (r:refs) xs
-  GetRef (Fresh n) (r,t)  | r `elem` bad ->     removeRefs bad (n:vars) refs xs
-                          | otherwise    -> x : removeRefs bad vars refs xs
-  SetRef (r,t) e          | r `elem` bad ->     removeRefs bad vars refs xs
+                                            in (:) x' <$> removeRef bad vars (r:refs) xs
+  GetRef (Fresh n) (r,t)  | r == bad ->     removeRef bad (n:vars) refs xs
+                          | otherwise    -> (:) x <$> removeRef bad vars refs xs
+  SetRef (r,t) e          | r == bad ->     removeRef bad vars refs xs
                           | otherwise    -> let x' = SetRef (r,t) $ deleteVars vars e
-                                            in x' : removeRefs bad vars refs xs 
-  After d (r,t) e         | r `elem` bad ->     removeRefs bad vars refs xs
+                                            in (:) x' <$> removeRef bad vars refs xs 
+  After d (r,t) e         | r == bad ->     removeRef bad vars refs xs
                           | otherwise    -> let d' = deleteVars vars d'
                                                 e' = deleteVars vars e
                                                 x' = After d' (r,t) e'
-                                            in x' : removeRefs bad vars refs xs
-  Changed (Fresh n) (r,_) | r `elem` bad ->     removeRefs bad (n:vars) refs xs
-                          | otherwise    -> x : removeRefs bad vars refs xs
-  Wait waits -> let res = deleteMany bad waits
+                                            in (:) x' <$> removeRef bad vars refs xs
+  Changed (Fresh n) (r,_) | r == bad ->     removeRef bad (n:vars) refs xs
+                          | otherwise    -> (:) x <$> removeRef bad vars refs xs
+  Wait waits -> let res = filter ((/=) bad . fst) waits
                 in if null res
-                   then removeRefs bad vars refs xs
-                   else Wait res : removeRefs bad vars refs xs
+                   then Nothing --removeRef bad vars refs xs
+                   else (:) (Wait res) <$> removeRef bad vars refs xs
   
-  SetLocal (Var _ n) e2 | n `elem` vars ->     removeRefs bad vars refs xs
-                        | otherwise     -> x : removeRefs bad vars refs xs
-  SetLocal e1 e2 -> let e1' = deleteVars vars e1
-                        e2' = deleteVars vars e2
-                        x'  = SetLocal e1' e2'
-                    in  x'  : removeRefs bad vars refs xs
+  SetLocal (Var t n) e2 | n `elem` vars -> removeRef bad vars refs xs
+                        | otherwise     -> let x' = SetLocal (Var t n) $ deleteVars vars e2
+                                           in (:) x' <$> removeRef bad vars refs xs
   If c thn els   -> let c'   = deleteVars vars c
-                        thn' = pureSSM $ removeRefs bad vars refs $ runSSM thn
-                        els' = maybe Nothing (Just . pureSSM . removeRefs bad vars refs . runSSM) els
-                        x'   = If c' thn' els'
-                    in  x'   : removeRefs bad vars refs xs
+                        thn' = pureSSM <$> removeRef bad vars refs (runSSM thn)
+                        els' = case els of
+                          Just b -> Just $ pureSSM <$> removeRef bad vars refs (runSSM b)
+                          Nothing -> Nothing 
+                        x' = If c' <$> thn' <*> els'
+                    in  case els' of
+                      Just Nothing -> Nothing
+                      Just _       -> (:) <$> x' <*> removeRef bad vars refs xs
   While c bdy    -> let c'   = deleteVars vars c
-                        bdy' = pureSSM $ removeRefs bad vars refs $ runSSM bdy
-                        x'   = While c' bdy'
-                    in  x'   : removeRefs bad vars refs xs
+                        bdy' = fmap pureSSM $ removeRef bad vars refs $ runSSM bdy
+                        x'   = While c' <$> bdy'
+                    in  (:) <$> x' <*> removeRef bad vars refs xs
   Fork procs     -> let mayb   = map (deleteRefsFromFork vars bad refs) procs
                         procs' = map fromJust $ filter isJust mayb
                     in if null procs'
-                       then removeRefs bad vars refs xs
-                       else Fork procs' : removeRefs bad vars refs xs
-  Argument _ _ (Right r) -> x : removeRefs bad vars (r:refs) xs
+                       then removeRef bad vars refs xs
+                       else (:) (Fork procs') <$> removeRef bad vars refs xs
+  Argument _ _ (Right r) -> (:) x <$> removeRef bad vars (r:refs) xs
 
-  _ -> x : removeRefs bad vars refs xs
+  _ -> (:) x <$> removeRef bad vars refs xs
   where
-    {-| Given a list of reference names and a list of references, returns the list of references where
-    any reference whose name existed in the list of names has been deleted. -}
-    deleteMany :: [String]     -- ^ Names of references to remove
-               -> [Reference]  -- ^ List of references
-               -> [Reference]
-    deleteMany xs ys = filter (\(y,_) -> not (y `elem` xs)) ys
-
     {- | Given a list of variable names and an expression, returns the same expression but where
     every occurence of one of the variables in the list is replaced with a default value. -}
     deleteVars :: [String]  -- ^ Names of variables that were invalidated when removing references
@@ -342,7 +376,7 @@ removeRefs bad vars refs (x:xs) = case x of
     exists it will try to pick another one of the same type. If none exists, the fork is
     no longer possible. -}
     deleteRefsFromFork :: [String]     -- ^ Names of variables that are invalid and should be replaced
-                       -> [String]     -- ^ Names of references to remove
+                       -> String       -- ^ Name of references to remove
                        -> [Reference]  -- ^ References that are valid
                        -> SSM ()       -- ^ The forked procedure to possibly give new arguments
                        -> Maybe (SSM ())
@@ -354,9 +388,10 @@ removeRefs bad vars refs (x:xs) = case x of
         rewriteHeader (Argument n x (Left e):xs) =
           (:) (Argument n x (Left (deleteVars vars e))) <$> rewriteHeader xs
         rewriteHeader (Argument n x (Right (r,t)):xs)
-          | r `elem` bad = case findNewRef t refs of
+          | r == bad = case findNewRef t refs of
             Just r' -> (:) (Argument n x (Right r'))    <$> rewriteHeader xs
             Nothing -> Nothing
+          | otherwise = (:) (Argument n x (Right (r,t))) <$> rewriteHeader xs
         rewriteHeader inp@(_:xs)              = Just inp
 
         findNewRef :: Type -> [Reference] -> Maybe Reference

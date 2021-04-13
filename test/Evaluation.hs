@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-module Evaluation (runCG, runInterpreter) where
+module Evaluation where
 
 import System.Directory
 import System.Process
@@ -12,9 +12,12 @@ import CodeGen (compile)
 import Interpreter (interpret)
 import Trace
 
-data Report = Success Output           -- ^ Test successful, with the output
+data Report = Good                     -- ^ Test succeeded!
+            | Generated Output         -- ^ Code generator run was successful, with the output
+            | Bad Output Output        -- ^ Managed to run both the interpreter and codegenerator, but they were not equal
             | CompilationError String  -- ^ Error compiling the program, with the c-file
             | ParseError String        -- ^ Error parsing output of running the program, with the output
+            | ExecutionError String    -- ^ Error while running the compiled program
 
 getname :: SSM () -> String
 getname ssm = getProcedureName $ head $ runSSM ssm
@@ -22,15 +25,17 @@ getname ssm = getProcedureName $ head $ runSSM ssm
 {- | Given a SSM program, this function will create a new directory, compile the program in
 that directory and run it, producing some output in a txt-file. This output will then be read
 before the temporary directory is deleted. -}
-runCG :: SSM () -> IO (Maybe Output)
+runCG :: SSM () -> IO Report --(Maybe Output)
 runCG program = do
     setupTestDir
     createTestFile program
     output <- runTest program
     removeTestDir
     case output of
-        Just out -> return $ parseOutput $ lines out
-        Nothing  -> return Nothing
+        Left report -> return report
+        Right out   -> case parseOutput $ lines out of
+            Just trace -> return $ Generated trace
+            Nothing    -> return $ ParseError out
   where
       -- | Name of temporary test directory
       testdir :: String
@@ -91,8 +96,8 @@ runCG program = do
               writeFile (name ++ ".c") c
 
       -- | Compile and run a test
-      runTest :: SSM () -> IO (Maybe String)
-      runTest program = flip catch (\(e :: IOException) -> return Nothing) $ do
+      runTest :: SSM () -> IO (Either Report String)
+      runTest program = do
           let name = getname program
 
           inDirectory testdir $ do
@@ -100,7 +105,7 @@ runCG program = do
               --callProcess cmd args
               (_,_,Just gccerr,_) <- createProcess (proc cmd args) {std_err = CreatePipe}
               c <- hGetContents gccerr
-              if not (null c)
+              if null c
                   then do (_, Just hout, Just herr, _) <- createProcess
                                         (proc "timeout" [show timeout ++ "s", "./" ++ name])
                                         { std_out = CreatePipe
@@ -108,9 +113,9 @@ runCG program = do
                                         }
                           err <- hGetContents herr
                           if null err
-                              then Just <$> hGetContents hout
-                              else return Nothing
-                  else return Nothing
+                              then Right <$> hGetContents hout
+                              else return $ Left $ ExecutionError err
+                  else return $ Left $ CompilationError c
         where
             timeout :: Double
             timeout = 0.2
