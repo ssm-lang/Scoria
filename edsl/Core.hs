@@ -10,6 +10,7 @@ import BinderAnn.Monadic
 type Reference = (String, Type)
 data Name = Fresh String
           | Captured (String,Int,Int) String
+  deriving Show
 
 getVarName :: Name -> String
 getVarName (Fresh n)      = n
@@ -84,6 +85,9 @@ expType (Var t _)     = t
 expType (Lit t _)     = t
 expType (UOp t _ _)   = t
 expType (BOp t _ _ _) = t
+
+refType :: Reference -> Type
+refType (_,t) = t
 
 dereference :: Type -> Type
 dereference (Ref t) = t

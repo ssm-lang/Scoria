@@ -29,7 +29,9 @@ library
   exposed-modules:
       Trace
       Core
+      LowCore
       CodeGen
+      LowCodeGen
       Interpreter
       Frontend
       Pretty

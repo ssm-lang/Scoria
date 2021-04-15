@@ -82,6 +82,12 @@ newtype Ref a = Ptr Reference -- references that are shared, (variable name, ref
 newtype Exp a = Exp SSMExp                 -- expressions
   deriving Show
 
+instance Num a => Num (Exp a) where
+    (Exp e1) + (Exp e2) = Exp $ e1 + e2
+    (Exp e1) - (Exp e2) = Exp $ e1 - e2
+    (Exp e1) * (Exp e2) = Exp $ e1 * e2
+    fromInteger i = Exp $ fromInteger i
+
 -- | Arguments we can apply SSM procedures to
 instance Arg (Exp a) where
     arg name (x:xs) (Exp b) = do
