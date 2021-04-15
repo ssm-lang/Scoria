@@ -161,9 +161,9 @@ compileProcedure :: Procedure -> (IR, IR, IR)
 compileProcedure p = (structTR, enterTR, stepTR)
   where
       (structTR,enterTR,stepTR) = runTR $ do
-          step   <- stepIR (name p) (body p)
-          enter  <- enterIR (name p) (arguments p) (body p)
-          struct <- structIR (name p) (arguments p) (body p)
+          step   <- stepIR p
+          enter  <- enterIR p
+          struct <- structIR p
           return (struct, enter, step)
 
 -- | Returns the base type of a type. If the type is a reference it will unwrap the reference
@@ -290,12 +290,12 @@ prototypeIR p = ( Prototype (Pointer $ Act (name p)) (concat ["enter_", name p])
       dynargs :: [(String, Type)] -> [Param]
       dynargs xs = flip map xs $ \(n,t) -> (n, paramtype t)
 
-structIR :: String -> [(String, Type)] -> [Stm] -> TR IR
-structIR name params xs = do
-    let paramfields = map paramfield params
-    let dynfields' = dynfields xs
+structIR :: Procedure -> TR IR
+structIR p = do
+    let paramfields = map paramfield $ arguments p
+    let dynfields' = dynfields $ body p
     triggerfields <- triggerdecs
-    return $ Struct name $ concat [ [GenericFields]
+    return $ Struct (name p) $ concat [ [GenericFields]
                                   , paramfields
                                   , dynfields'
                                   , triggerfields
@@ -320,11 +320,11 @@ structIR name params xs = do
           i <- gets numwaits
           return $ flip map [1..i] $ \j -> TriggerDec j
 
-enterIR :: String -> [(String, Type)] -> [Stm] -> TR IR
-enterIR name params xs = do
-    let fun    = Function (Pointer $ Act name) ("enter_" ++ name) args
-    let cast   = UpcastEnter (Pointer $ Act name) name
-    let assvar = concat $ map assignParam params
+enterIR :: Procedure -> TR IR
+enterIR p = do
+    let fun    = Function (Pointer $ Act $ name p) (concat ["enter_", name p]) args
+    let cast   = UpcastEnter (Pointer $ Act $ name p) $ name p
+    let assvar = concat $ map assignParam $ arguments p
     setuptrigs <- setupTriggers
     return $ fun $ concat [ [cast]
                           , assvar
@@ -333,7 +333,7 @@ enterIR name params xs = do
     
   where
       args :: [Param]
-      args = genargs ++ dynargs params
+      args = genargs ++ dynargs (arguments p)
 
       genargs :: [Param]
       genargs = [ ("caller"  , Pointer $ Act "")
@@ -355,26 +355,25 @@ enterIR name params xs = do
           i <- gets numwaits
           return $ map InitializeTrigger [1..i]
 
-
-stepIR :: String -> [Stm] -> TR IR
-stepIR name xs = do
-    let fun = Function Void ("step_" ++ name) [("gen_act", Pointer $ Act "")]
-    let cast = UpcastAct (Pointer $ Act name) "gen_act"
-    cases <- body xs
-    let leave = Leave name
+stepIR :: Procedure -> TR IR
+stepIR p = do
+    let fun = Function Void (concat ["step_", name p]) [("gen_act", Pointer $ Act "")]
+    let cast = UpcastAct (Pointer $ Act $ name p) "gen_act"
+    cases <- stmts $ body p
+    let leave = Leave $ name p
     return $ fun [ cast
                  , Switch cases
                  , leave
                  ]
   where
-      body :: [Stm] -> TR [IR]
-      body [] = return []
-      body xs = do
+      stmts :: [Stm] -> TR [IR]
+      stmts [] = return []
+      stmts xs = do
           let (block, rest) = untilBlock xs
-          stmts <- gencase block
-          block' <- nextcase <*> endcase stmts
+          caseblock <- gencase block
+          block' <- nextcase <*> endcase caseblock
 --          block <- nextcase <*> ((\b -> b ++ [pc, Return]) <$> gencase block)
-          (:) block' <$> body rest
+          (:) block' <$> stmts rest
 
       nextcase :: TR ([IR] -> IR)
       nextcase = do
