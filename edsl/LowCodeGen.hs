@@ -15,45 +15,84 @@ import System.IO.Unsafe
 trace :: Show a => a -> a
 trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
-
+-- | Different kind of field declarations we can do in the generated struct.
 data FieldDec
-  = TriggerDec Int
-  | FieldDec RTSType String
-  | GenericFields
+  = -- | Declare a trigger with name "trig#".
+    TriggerDec Int
+  | -- | Declare a field with this type and name.
+    FieldDec RTSType String
+  | -- | Include the generic activation record fields.
+    GenericFields
   deriving Show
 
+-- | This datatype is used to render C code. The translation from [Stm] to [IR] will
+-- remove any SSMExp and Reference and replace them with strings representing the C
+-- code that means the same thing. E.g the reference "r0" would become "act->r0".
 data IR
-  = Function RTSType String [Param] [IR]
-  | Prototype RTSType String [Param]
-  | UpcastAct RTSType String
-  | UpcastEnter RTSType String
-  | CastGeneric RTSType String
-  | AssignStruct String String
-  | Struct String [FieldDec]
+  = -- | `Function typ nam args bdy` == "typ nam(args) { bdy }" in c
+    Function RTSType String [Param] [IR]
+  | -- | Function prototype.
+    Prototype RTSType String [Param]
+  | -- | In the step function a generic `act_t*` argument is casted to a more specific
+    -- `act_name_t*` type. This constructor represents that statement.
+    -- Type to cast to and name of variable to cast.
+    UpcastAct RTSType String
+  | -- | Similarly there's a generic call to `enter` that's done in every enter function.
+    -- Result type and name of procedure.
+    UpcastEnter RTSType String
+  | -- | `AssignStruct v1 v2` == "act->v1 = v2".
+    AssignStruct String String
+  | -- | Struct declaration. First argument is the name (renders as "act_name_t") and
+    -- second field are the field declarations in the struct.
+    Struct String [FieldDec]
 
-  | Switch [IR]
-  | IfFalse String Label
-  | Label Label
-  | Goto Label
-  | Case Int [IR]
-  | IncPC Int
-  | Return
+  | -- | Switch statement that renders to "switch(act->pc) { ... }".
+    Switch [IR]
+  | -- | `IfFalse c l` == "if (!(c)) goto l;".
+    IfFalse String Label
+  | -- | `Label l` = "l:".
+    Label Label
+  | -- | `Goto l` == "goto l;".
+    Goto Label
+  | -- | `Case i bdy` == "case i: { bdy }".
+    Case Int [IR]
+  | -- | `IncPC i` = "act->pc = i".
+    IncPC Int
+  | -- | `Return` == `return;`
+    Return
 
-  | -- Methods from the SSM runtime
+  | -- | Initialize a variable of the specific base type.
     Initialize BaseType String
-  | InitializeTrigger Int
-  | Assign BaseType String String
-  | Later BaseType String String String
-  | EventOn String String
-  | Sensitize [(String, Int)] -- [(reference, triggernumber)]
-  | Desensitize Int
-  | Call (String, [String])
-  | ForkProcedures [(String, [String])]
-  | Leave String
+  | -- | Initialize a trigger. Renders as "act->trig#.rar = (act_t *) act;"
+    -- Only done in the enter function.
+    InitializeTrigger Int
+  | -- | Assign a value of the base type to a variable. The second field is the variable
+    -- to receive the new value and the third field is the new value.
+    Assign BaseType String String
+  | -- | Schedule a delayed assignment. The second field is the delay, the third field
+    -- is the variable to later receive the update and the fourth field is the new value.
+    Later BaseType String String String
+  | -- | In the variable represented by the first field, store the boolean which represents
+    -- if the variable in the second field has been written to in this instant in time.
+    EventOn String String
+  | -- | Wait for any of these variables to be written to. The variables are paired up
+    -- with an integer denoting which trigger in the struct that will be used.
+    Sensitize [(String, Int)]
+  | -- | Stop waiting for this trigger.
+    Desensitize Int
+  | -- | Fork a single call to this procedure with these arguments.
+    Call (String, [String])
+  | -- | Fork many procedures with these names and these arguments.
+    ForkProcedures [(String, [String])]
+  | -- | At the end of a step function we need to call leave to free up the struct memory.
+    Leave String
 
-  | Blank -- Blank linkes for readability
-  | Literal Int String -- Verbatim code
-  | LiteralNoSemi Int String
+  | -- | Render a blank line in the C file, for readability.
+    Blank
+  | -- | Verbatim code at a specified indentation level, rendered with a semicolon.
+    Literal Int String
+  | -- | Same as above but without a semicolon at the EOL.
+    LiteralNoSemi Int String
   deriving (Show)
 
 -- | Labels to use in conjunction with goto statements.
@@ -100,7 +139,7 @@ instance Show RTSType where
     show (Pointer t)       = concat [show t, "*"]
 
 -- | A parameter to a function. The string is the name of the parameter and the
---     RTSType is the type of the parameter.
+-- RTSType is the type of the parameter.
 type Param = (String, RTSType)
 
 -- | State maintained while compiling a program
@@ -115,35 +154,44 @@ data TRState = TRState
     localrefs :: [String]
   }
 
--- | Translation monad
+-- | Translation monad.
 type TR a = State TRState a
 
+-- | Run a TR computation.
 runTR :: TR a -> a
 runTR tra = evalState tra st
   where
       st :: TRState
       st = TRState 0 0 0 []
 
+-- | This function takes a `Program` and returns a string, which contains the content
+-- of the generated C file.
 compile :: Program -> String
 compile p = unlines code
   where
+      -- | Entire C file.
       code :: [String]
       code = concat [header, generatedcode]
 
+      -- | Generated code content.
       generatedcode :: [String]
       generatedcode = map generateC [ intersperse Blank structs
                                     , prototypes
                                     , intersperse Blank enters
                                     , intersperse Blank steps]
 
+      -- | A sequence of `IR` statements representing all the structs, enter functions
+      -- and step functions to appear in the C file.
       structs, enters, steps :: [IR]
       (structs, enters, steps) = unzip3 $ map compileProcedure $ Map.elems (funs p)
 
+      -- | All function prototypes required in the C file.
       prototypes :: [IR]
       prototypes = concat $ flip map (Map.elems (funs p)) $ \f ->
           let (enter, step) = prototypeIR f
           in [enter, step, Blank]
 
+      -- | Header to include in the generated C file.
       header :: [String]
       header = [ "#include \"peng-platform.h\""
                , "#include \"peng.h\""
@@ -157,6 +205,8 @@ compile p = unlines code
                , ""
                ]
 
+-- | This function takes a procedure and returns three `IR` statements that
+-- represents the struct, enter function and step function of the procedure.
 compileProcedure :: Procedure -> (IR, IR, IR)
 compileProcedure p = (structTR, enterTR, stepTR)
   where
@@ -167,37 +217,37 @@ compileProcedure p = (structTR, enterTR, stepTR)
           return (struct, enter, step)
 
 -- | Returns the base type of a type. If the type is a reference it will unwrap the reference
---     to find the underlying basetype.
+-- to find the underlying basetype.
 basetype_ :: Type -> BaseType
 basetype_ TInt = CInt
 basetype_ TBool = CBool
 basetype_ (Ref t) = basetype_ t
 
-{- | `paramtype t` returns the RTSType a parameter to a function, whose type in the
-     SSM EDSL is t, would have. E.g `Ref Int` would be `sv_int_t*`, `Exp Int` would be `int`. -}
+-- | `paramtype t` returns the RTSType a parameter to a function, whose type in the
+-- SSM EDSL is t, would have. E.g `Ref Int` would be `sv_int_t*`, `Exp Int` would be `int`.
 paramtype :: Type -> RTSType
 paramtype TInt    = SInt
 paramtype TBool   = UBool
 paramtype (Ref t) = Pointer $ ScheduledVar $ basetype_ t
 
 -- | This class collects methods that helps us render expressions or
---     references appropriately depending on the situation we want to use it in.
+-- references appropriately depending on the situation we want to use it in.
 class CType a where
   -- | The basetype of a value. A int* has the basetype int, and a normal int is already
-  --   in the basetype form.
+  -- in the basetype form.
   basetype :: a -> BaseType
 
-  -- | compArg returns the string that we can apply a method to in order to pass the
-  --         `a` as an argument. E.g a SSMExp becomes a `int` or a `bool`, while a reference will
-  --         become a value of type `sv_type_t*`
+  -- | compArg returns the string that represents an `a` that we can pass to a call
+  -- of `fork_routine`. E.g references are passed as sv_type_t* and expressions are
+  -- passed as either ints or booleans.
   compArg :: a -> TR String
 
   -- | compVal returns the string that represents the underlying value, e.g and Int.
   compVal :: a -> TR String
 
   -- | compVar returns the string that symbolises a value of type sv_type_t*.
-  --         It is used when we need to e.g apply a function to a reference to a
-  --         variable.
+  -- This is used when we need a value of type sv_type_t* to pass to alter_type,
+  -- assign_type, initialize_type etc.
   compVar :: a -> TR String
 
 instance CType Reference where
@@ -239,11 +289,13 @@ instance (CType a, CType b) => CType (Either a b) where
     compVar (Left a)  = compVar a
     compVar (Right b) = compVar b
 
+-- | Get the name of a variable expression. Throws an error if expression is not a variable.
 getExpName :: SSMExp -> String
 getExpName (Var _ n) = n
 getExpName e         = error $ "getExpName - not a variable: " ++ show e
 
 -- | Compile an expression into the string that represent its semantic value.
+-- By semantic I mean that the result will be of type `int` or `bool`:
 compLit :: SSMExp -> String
 compLit e = case e of
   Var _ e -> "act->" ++ e ++ ".value"
@@ -263,33 +315,43 @@ compLit e = case e of
     OLT    -> "(" ++ compLit e1 ++ " < " ++ compLit e2 ++ ")"
     OEQ    -> "(" ++ compLit e1 ++ " == " ++ compLit e2 ++ ")"
 
+-- | Generate a fresh label.
 freshLabel :: TR Label
 freshLabel = do
     i <- gets nextLabel
     modify $ \st -> st { nextLabel = i + 1 }
     return $ "L" ++ show i
 
-infixl 4 <#>
+-- | Infix operator for applying a unlifted argument to a lifted function.
+-- Surprised that I did not find this anywhere.
 (<#>) :: Applicative f => f (a -> b) -> a -> f b
 fa <#> b = fa <*> pure b
+infixl 4 <#>
 
+-- | This function generates two `IR` statements that represents the two function
+-- prototypes for the enter and step function.
 prototypeIR :: Procedure -> (IR, IR)
 prototypeIR p = ( Prototype (Pointer $ Act (name p)) (concat ["enter_", name p]) args
                 , Prototype Void (concat ["step_", name p]) [("gen_act", Pointer $ Act "")]
                 )
   where
+      -- | All procedure arguments.
       args :: [Param]
       args = genargs ++ dynargs (arguments p)
 
+      -- | Procedure arguments that all procedures need.
       genargs :: [Param]
       genargs = [ ("caller"  , Pointer $ Act "")
                 , ("priority", UInt 32)
                 , ("depth"   , UInt 8)
                 ]
     
+      -- | The procedure specific arguments.
       dynargs :: [(String, Type)] -> [Param]
       dynargs xs = flip map xs $ \(n,t) -> (n, paramtype t)
 
+-- | This function generates a `IR` statement that represents the struct declaration
+-- of this procedure.
 structIR :: Procedure -> TR IR
 structIR p = do
     let paramfields = map paramfield $ arguments p
@@ -301,6 +363,7 @@ structIR p = do
                                   , triggerfields
                                   ]
   where
+      -- | The field declarations that arise from the procedure arguments.
       paramfield :: (String, Type) -> FieldDec
       paramfield (n,t) = FieldDec t' n
         where
@@ -308,6 +371,8 @@ structIR p = do
                 then Pointer $ ScheduledVar $ basetype_ t
                 else ScheduledVar $ basetype_ t
 
+      -- | The field declarations that arise from us creating variables in a
+      -- procedure body, e.g from NewRef and GetRef.
       dynfields :: [Stm] -> [FieldDec]
       dynfields xs = concat $ flip map xs $ \x -> case x of
           NewRef n e _  -> [ FieldDec (ScheduledVar (basetype e)) (getVarName n) ]
@@ -315,11 +380,15 @@ structIR p = do
           Changed n e _ -> [ FieldDec (ScheduledVar (basetype e)) (getVarName n) ]
           _             -> []
     
+      -- | Generate trigger declarations. The only variable thing in a trigger
+      -- declaration is the number in its variable name.
       triggerdecs :: TR [FieldDec]
       triggerdecs = do
           i <- gets numwaits
           return $ flip map [1..i] $ \j -> TriggerDec j
 
+-- | This function generates an `IR` statement that represents the enter function
+-- of this procedure.
 enterIR :: Procedure -> TR IR
 enterIR p = do
     let fun    = Function (Pointer $ Act $ name p) (concat ["enter_", name p]) args
@@ -332,29 +401,39 @@ enterIR p = do
                           ]
     
   where
+      -- | All arguments to this enter function.
       args :: [Param]
       args = genargs ++ dynargs (arguments p)
 
+      -- | Generic arguments that goes into all enter function.
       genargs :: [Param]
       genargs = [ ("caller"  , Pointer $ Act "")
                 , ("priority", UInt 32)
                 , ("depth"   , UInt 8)
                 ]
     
+      -- | Procedure dynamic arguments to enter function.
       dynargs :: [(String, Type)] -> [Param]
       dynargs xs = flip map xs $ \(n,t) -> (n, paramtype t)
 
+      -- | This function generates `IR` statements that initializes the procedure
+      -- arguments in the enter function. This is done by assigning them to the struct
+      -- fields after (maybe) having initialized the struct variable.
       assignParam :: (String, Type) -> [IR]
       assignParam (n,Ref t) = [AssignStruct n n]
       assignParam (n,t)     = [ Initialize (basetype_ t) (concat ["&act->", n])
                               , Assign (basetype_ t) (concat ["&act->", n]) n
                               ]
 
+      -- | This function will generate a sequence of `IR` instructions that represents
+      -- trigger initialization calls meant to appear in the enter function.
       setupTriggers :: TR [IR]
       setupTriggers = do
           i <- gets numwaits
           return $ map InitializeTrigger [1..i]
 
+-- | This function takes a procedure and generates an `IR` instruction that represents
+-- the step function of this procedure.
 stepIR :: Procedure -> TR IR
 stepIR p = do
     let fun = Function Void (concat ["step_", name p]) [("gen_act", Pointer $ Act "")]
@@ -366,26 +445,36 @@ stepIR p = do
                  , leave
                  ]
   where
+      -- | Takes as input a sequence of `Stm` and returns a sequence of `IR` statements.
+      -- The `IR` statements in the sequence will all be case blocks meant to go inside
+      -- of a switch statement.
       stmts :: [Stm] -> TR [IR]
       stmts [] = return []
       stmts xs = do
           let (block, rest) = untilBlock xs
           caseblock <- gencase block
           block' <- nextcase <*> endcase caseblock
---          block <- nextcase <*> ((\b -> b ++ [pc, Return]) <$> gencase block)
           (:) block' <$> stmts rest
 
+      -- | This function will return a function that takes a sequence of `IR` statements
+      -- should be in a case block and returns a case block with the next case number
+      -- and those `IR` statements in its body.
       nextcase :: TR ([IR] -> IR)
       nextcase = do
           i <- gets ncase
           modify $ \st -> st { ncase = i + 1 }
           return $ Case i
     
+      -- | Return a `IR` statement that increments the program counter to the next case.
       incpc :: TR IR
       incpc = do
           i <- gets ncase
           return $ IncPC i
 
+      -- | This function will take a sequence of `IR` statements and insert a pc increment and
+      -- return statement at the end. If the last `IR` statement is a `Call` statement the
+      -- program counter will be incremented before the `Call` instruction, as the `call`
+      -- method in C will immediately invoke the procedure rather than just scheduling it.
       endcase :: [IR] -> TR [IR]
       endcase xs = do
           pc <- incpc
@@ -393,6 +482,7 @@ stepIR p = do
             Call _ -> return $ concat [init xs, [pc, last xs, Return]]
             _      -> return $ concat [xs, [pc, Return]]
 
+      -- | This function will generate a sequence of `IR` statements for each `Stm`.
       gencase :: [Stm] -> TR [IR]
       gencase xs = fmap concat $
         flip mapM xs $ \x -> case x of
@@ -455,25 +545,27 @@ stepIR p = do
           
 
 -- | Returns a tuple where the first cell list contains the statements up to and including
---    the next blocking statement, and the second cell contains the statements left after
---    the blocking statement.
+-- the next blocking statement, and the second cell contains the statements left after
+-- the blocking statement.
 untilBlock :: [Stm] -> ([Stm], [Stm])
 untilBlock [] = ([], [])
 untilBlock (x : xs) = case x of
   Wait _ -> ([x], xs)
   Fork _ -> ([x], xs)
-  _ ->
-    let (xs', ys') = untilBlock xs
-     in (x : xs', ys')
+  _      -> ([x],[]) <> untilBlock xs
 
 {- ***************** Code generation *************** -}
 
-type PP a = ReaderT Int (Writer [String]) a
+-- | Monad for generating C code. The read only integer represents the indentation level at
+-- which to output code, and the writer output is the actual code that was generated.
+type CGen a = ReaderT Int (Writer [String]) a
 
+-- | Run the code generating function `irToC` and return the output emitted.
 generateC :: [IR] -> String
 generateC xs = unlines $ execWriter $ runReaderT (irToC xs) $ 0
 
-irToC :: [IR] -> PP ()
+-- | Generate output in the form of C code from the input IR instructions.
+irToC :: [IR] -> CGen ()
 irToC ir = flip mapM_ ir $ \x -> case x of
     Function typ name params bdy -> do
         let args = intercalate ", " $ flip map params $ \(n,t) -> concat [show t, " ", n]
@@ -492,7 +584,6 @@ irToC ir = flip mapM_ ir $ \x -> case x of
                       , ") enter(sizeof(act_", name, "_t), step_"
                       , name
                       , ", caller, priority, depth);"]
-    CastGeneric typ name       -> undefined
     AssignStruct var val       ->
         emit $ concat ["act->", var, " = ", val, ";"]
     Struct typedef fields      -> do
@@ -555,24 +646,26 @@ irToC ir = flip mapM_ ir $ \x -> case x of
     LiteralNoSemi ind str -> tell [concat [replicate ind ' ', str]]
   where
       -- | Emit a string output at the indentation level indicated by the reader environment.
-      emit :: String -> PP ()
+      emit :: String -> CGen ()
       emit str = do
           i <- ask
           tell [replicate i ' ' ++ str]
 
-      indent :: PP a -> PP a
+      -- | Run a code generating computation with increased indentation, making all output
+      -- generated by `emit` appear one indentation level deeper.
+      indent :: CGen a -> CGen a
       indent = local (+4)
 
+      -- | Given the name of the procedure to enter, the string representing the priority
+      -- argument, a string representing the depth argument and the actual procedure
+      -- arguments themselves, generates the enter_name function call.
       enter_ :: String -> String -> String -> [String] -> String
       enter_ name prio depth args =
-          concat [ "enter_", name
-                 , "((act_t *) act, "
-                 , prio, ", "
-                 , depth, ", "
-                 , intercalate ", " args
-                 , ")"
-                 ]
+          let args' = intercalate ", " $ ["(act_t *) act", prio, depth] ++ args
+          in  concat $ ["enter_", name, "(", args', ")"]
     
+      -- | This function will intercalate a monadic computation between a list of
+      -- monadic computations. intercalate ma [m1,m2,m3] == m1 >> ma >> m2 >> ma >> m3.
       intercalateM :: Monad m => m a -> [m a] -> m [a]
       intercalateM _ [] = return []
       intercalateM _ [x] = x >>= (return . flip (:) [])
