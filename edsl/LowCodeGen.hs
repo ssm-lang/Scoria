@@ -284,6 +284,17 @@ instance CType SSMExp where
   compVar (Var _ n) = return $ concat ["&act->", n]
   compVar e = error $ concat ["compvar - not a variable: ", show e]
 
+-- | Operations such as GetRef read a reference and assign the result to a variable
+-- with this name and type. Such local variables end up in the struct as a sv_type_t
+-- instead of sv_type_t* like input references does. When we use them they are
+-- rendered identically to how expression variables are rendered, so we will just
+-- reuse the instance for expressions and make sure to apply it to variables.
+instance CType (Name, Type) where
+  basetype (n,t) = basetype_ t
+  compArg (n,t)  = compArg $ Var t $ getVarName n
+  compVal (n,t)  = compVal $ Var t $ getVarName n
+  compVar (n,t)  = compVar $ Var t $ getVarName n
+
 instance (CType a, CType b) => CType (Either a b) where
     basetype (Left a)  = basetype a
     basetype (Right b) = basetype b
@@ -383,9 +394,9 @@ structIR p = do
       -- procedure body, e.g from NewRef and GetRef.
       dynfields :: [Stm] -> [FieldDec]
       dynfields xs = concat $ flip map xs $ \x -> case x of
-          NewRef n e _  -> [ FieldDec (ScheduledVar (basetype e)) (getVarName n) ]
-          GetRef n e _  -> [ FieldDec (ScheduledVar (basetype e)) (getVarName n) ]
-          Changed n e _ -> [ FieldDec (ScheduledVar (basetype e)) (getVarName n) ]
+          NewRef n t _  -> [ FieldDec (ScheduledVar (basetype_ t)) (getVarName n) ]
+          GetRef n t _  -> [ FieldDec (ScheduledVar (basetype_ t)) (getVarName n) ]
+          Changed n t _ -> [ FieldDec (ScheduledVar (basetype_ t)) (getVarName n) ]
           _             -> []
     
       -- | Generate trigger declarations. The only variable thing in a trigger
@@ -494,12 +505,12 @@ stepIR p = do
       gencase :: [Stm] -> TR [IR]
       gencase xs = fmap concat $
         flip mapM xs $ \x -> case x of
-            NewRef n e v     -> do
-                modify $ \st -> st { localrefs = getExpName e : localrefs st }
-                init <- Initialize (basetype e) <$> compVar e
-                assi <- Assign (basetype e) <$> compVar e <*> compVal v
+            NewRef n t v     -> do
+                modify $ \st -> st { localrefs = getVarName n : localrefs st }
+                init <- Initialize (basetype_ t) <$> compVar (n,t)
+                assi <- Assign (basetype_ t) <$> compVar (n,t) <*> compVal v
                 return $ [init, assi]
-            GetRef n v r   -> sequence [Assign (basetype v)  <$> compVar v <*> compVal r]
+            GetRef n t r   -> sequence [Assign (basetype_ t) <$> compVar (n,t) <*> compVal r]
             SetRef r e     -> sequence [Assign (basetype r)  <$> compVar r <*> compVal e]
             SetLocal e1 e2 -> sequence [Assign (basetype e1) <$> compVar e1 <*> compVal e2]
 
@@ -535,7 +546,7 @@ stepIR p = do
             Skip         -> return []
 
             After d r v   -> sequence [Later (basetype r) <$> compVal d <*> compVar r <*> compVal v]
-            Changed n v r -> sequence [EventOn <$> compVar v <*> compVar r]
+            Changed n t r -> sequence [EventOn <$> compVar (n,t) <*> compVar r]
 
             Wait refs  -> do
                 modify $ \st -> st { numwaits = max (numwaits st) (length refs)}
@@ -544,7 +555,7 @@ stepIR p = do
                     return (var,i)
                 return [Sensitize sensitizes]
             Fork calls -> do
-                let debugstr = unwords $ ["fork"] ++ (fst . unzip) calls
+                let debugstr = unwords (["fork"] ++ (fst . unzip) calls) ++ "\\n"
                 callstrings <- forM calls $ \(n,args) -> do
                     args' <- mapM compArg args
                     return (n, args')

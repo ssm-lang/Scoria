@@ -25,8 +25,8 @@ import qualified Data.Map as Map
 import Control.Monad.State.Lazy
 
 -- TODO change this to hold a String and Type instead of the SSMExp, to represent the variables
-data Stm = NewRef C.Name C.SSMExp C.SSMExp
-         | GetRef C.Name C.SSMExp C.Reference
+data Stm = NewRef C.Name C.Type C.SSMExp
+         | GetRef C.Name C.Type C.Reference
          | SetRef C.Reference C.SSMExp
          | SetLocal C.SSMExp C.SSMExp
 
@@ -35,7 +35,7 @@ data Stm = NewRef C.Name C.SSMExp C.SSMExp
          | Skip
 
          | After C.SSMExp C.Reference C.SSMExp
-         | Changed C.Name C.SSMExp C.Reference
+         | Changed C.Name C.Type C.Reference
          | Wait [C.Reference]
          | Fork [(String, [Either C.SSMExp C.Reference])]
   deriving Show
@@ -92,8 +92,8 @@ transpile program = case mainname st of
 
 transpileProcedure :: [C.SSMStm] -> Transpile [Stm]
 transpileProcedure xs = fmap concat $ flip mapM xs $ \x -> case x of
-    C.NewRef n e     -> return $ [NewRef n (C.Var (C.expType e) (C.getVarName n)) e]
-    C.GetRef n r     -> return $ [GetRef n (C.Var (C.dereference (C.refType r)) (C.getVarName n)) r]
+    C.NewRef n e     -> return $ [NewRef n (C.expType e) e]
+    C.GetRef n r     -> return $ [GetRef n (C.dereference (C.refType r)) r]
     C.SetRef r e     -> return $ [SetRef r e]
     C.SetLocal e1 e2 -> return $ [SetLocal e1 e2]
 
@@ -106,7 +106,7 @@ transpileProcedure xs = fmap concat $ flip mapM xs $ \x -> case x of
     C.While c bdy  -> transpileProcedure (C.runSSM bdy) >>= \bdy' -> return $ [While c bdy']
     
     C.After d r v -> return $ [After d r v]
-    C.Changed n r -> return $ [Changed n (C.Var C.TBool (C.getVarName n)) r]
+    C.Changed n r -> return $ [Changed n C.TBool r]
     C.Wait refs   -> return $ [Wait refs]
     C.Fork procs  -> do
       procs' <- mapM getCall procs
