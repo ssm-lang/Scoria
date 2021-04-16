@@ -24,6 +24,7 @@ import qualified Core as C
 import qualified Data.Map as Map
 import Control.Monad.State.Lazy
 
+-- TODO change this to hold a String and Type instead of the SSMExp, to represent the variables
 data Stm = NewRef C.Name C.SSMExp C.SSMExp
          | GetRef C.Name C.SSMExp C.Reference
          | SetRef C.Reference C.SSMExp
@@ -39,33 +40,55 @@ data Stm = NewRef C.Name C.SSMExp C.SSMExp
          | Fork [(String, [Either C.SSMExp C.Reference])]
   deriving Show
 
-data Procedure = Procedure { name      :: String
-                           , arguments :: [(String, C.Type)]
-                           , body      :: [Stm]
-                           }
+data Procedure = Procedure
+  { -- | Name of the procedure.
+    name      :: String
+    -- | Parameter names and types of the procedure.
+  , arguments :: [(String, C.Type)]
+    -- | Statements that make up this procedure.
+  , body      :: [Stm]
+  }
   deriving Show
 
 data Program = Program
-             { main :: [Stm]
-             , args :: [(String, C.Type)]
-             , funs :: Map.Map String Procedure
-             }
+  { -- | Name of the procedure that is the program entrypoint.
+    main :: String
+    -- | Arguments the entrypoint was applied to.
+  , args :: [Either C.SSMExp C.Reference]
+    -- | Map that associates procedure names with their definitions.
+  , funs :: Map.Map String Procedure
+  }
   deriving Show
 
 type Transpile a = State TranspileState a
 
 data TranspileState = TranspileState
-                    { procedures :: Map.Map String Procedure
-                    , generated  :: [String]
-                    , mainargs   :: [(String, C.Type)]
-                    }
+  { -- | Map that associate procedure names with their Procedure definition.
+    procedures  :: Map.Map String Procedure
+    -- | List of procedure names that have already been generated.
+  , generated   :: [String]
+    -- | Name of the procedure that was the program entrypoint?
+    -- This is the first that that will be populated in the state during execution.
+  , mainname    :: Maybe String
+    -- | Parameter names and types of the program entrypoint.
+  , mainargs    :: [(String, C.Type)]
+    -- | What values were the program entrypoint applied to?
+  , mainargvals :: [Either C.SSMExp C.Reference]
+  }
 
 transpile :: C.SSM () -> Program
-transpile program = let (main, st) = runState comp state
-                    in Program main (mainargs st) (procedures st)
+transpile program = case mainname st of
+
+    Nothing -> error $ "no name found for the program entrypoint - did you forget to use box?"
+
+    Just n  -> if n `elem` (Map.keys $ procedures st)
+      then Program n (mainargvals st) (procedures st)
+      else let p = (Procedure n (mainargs st) main)
+           in Program n (mainargvals st) $ Map.insert n p (procedures st)
   where
-      state = TranspileState Map.empty [] []
-      comp  = transpileProcedure $ C.runSSM program
+      (main,st) = runState comp state
+      state     = TranspileState Map.empty [] Nothing [] []
+      comp      = transpileProcedure $ C.runSSM program
 
 transpileProcedure :: [C.SSMStm] -> Transpile [Stm]
 transpileProcedure xs = fmap concat $ flip mapM xs $ \x -> case x of
@@ -74,23 +97,32 @@ transpileProcedure xs = fmap concat $ flip mapM xs $ \x -> case x of
     C.SetRef r e     -> return $ [SetRef r e]
     C.SetLocal e1 e2 -> return $ [SetLocal e1 e2]
 
-    C.If c thn els -> do thn' <- transpileProcedure (C.runSSM thn)
-                         els' <- case els of
-                             Just els' -> transpileProcedure (C.runSSM els')
-                             Nothing -> return $ [Skip]
-                         return $ [If c thn' els']
+    C.If c thn els -> do
+      thn' <- transpileProcedure (C.runSSM thn)
+      els' <- case els of
+                Just els' -> transpileProcedure (C.runSSM els')
+                Nothing -> return $ [Skip]
+      return $ [If c thn' els']
     C.While c bdy  -> transpileProcedure (C.runSSM bdy) >>= \bdy' -> return $ [While c bdy']
     
     C.After d r v -> return $ [After d r v]
     C.Changed n r -> return $ [Changed n (C.Var C.TBool (C.getVarName n)) r]
     C.Wait refs   -> return $ [Wait refs]
-    C.Fork procs  -> do procs' <- mapM getCall procs
-                        return $ [Fork procs']
+    C.Fork procs  -> do
+      procs' <- mapM getCall procs
+      return $ [Fork procs']
 
-    C.Procedure n    -> return []
-    C.Argument n x a -> do let arginfo = (x, either C.expType C.refType a)
-                           modify $ \st -> st { mainargs = mainargs st ++ [arginfo]}
-                           return []
+    C.Procedure n    -> do
+      -- Only update the mainname value if it is `Nothing`, otherwise keep
+      -- the previous value.
+      modify $ \st -> st { mainname = maybe (Just n) Just $ mainname st }
+      return []
+    C.Argument n x a -> do 
+      let arginfo = (x, either C.expType C.refType a)
+      modify $ \st -> st { mainargs    = mainargs st ++ [arginfo]
+                         , mainargvals = mainargvals st ++ [a]
+                         }
+      return []
     C.Result n       -> return []
   where
       {- | Converts a `SSM ()` computation to a description of the call, and if necessary,
