@@ -119,8 +119,9 @@ transpileProcedure xs = fmap concat $ flip mapM xs $ \x -> case x of
       return []
     C.Argument n x a -> do 
       let arginfo = (x, either C.expType C.refType a)
+      let a' = case a of Left e -> Left e; Right (r,t) -> Right (x,t)
       modify $ \st -> st { mainargs    = mainargs st ++ [arginfo]
-                         , mainargvals = mainargvals st ++ [a]
+                         , mainargvals = mainargvals st ++ [a']
                          }
       return []
     C.Result n       -> return []
@@ -137,10 +138,19 @@ transpileProcedure xs = fmap concat $ flip mapM xs $ \x -> case x of
           if name `elem` generated st
               then return ()
               else do put $ st { generated = name : generated st }
-                      nstmts <- transpileProcedure stmts
+                      nstmts <- recursive $ transpileProcedure stmts
                       let fun = Procedure name arginfo nstmts
-                      modify $ \st -> st { procedures = Map.insert name fun (procedures st)}
+                      modify $ \st -> st { procedures = Map.insert name fun (procedures st) }
           return (name, args)
+
+      recursive :: Transpile a -> Transpile a
+      recursive tr = do
+        old <- get
+        a <- tr
+        modify $ \st -> st { mainname    = mainname old
+                           , mainargs    = mainargs old
+                           , mainargvals = mainargvals old}
+        return a
 
       {-| Return a tuple where the first component contains information about name
       and type about the arguments, and the second compoment is a list of the actual arguments. -}

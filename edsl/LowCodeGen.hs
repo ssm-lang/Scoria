@@ -60,6 +60,8 @@ data IR
     IncPC Int
   | -- | `Return` == `return;`
     Return
+  | -- | Renders into a debug print statement "DEBUG_PRINT(x)"
+    DebugPrint String
 
   | -- | Initialize a variable of the specific base type.
     Initialize BaseType String
@@ -163,6 +165,12 @@ runTR tra = evalState tra st
   where
       st :: TRState
       st = TRState 0 0 0 []
+
+compile_ :: Bool -> Maybe Int -> Program -> String
+compile_ False _ p = compile p
+compile_ True c p  = let f = compile p
+                         m = generateC $ mainIR p c
+                     in unlines [f,m]
 
 -- | This function takes a `Program` and returns a string, which contains the content
 -- of the generated C file.
@@ -536,12 +544,13 @@ stepIR p = do
                     return (var,i)
                 return [Sensitize sensitizes]
             Fork calls -> do
+                let debugstr = unwords $ ["fork"] ++ (fst . unzip) calls
                 callstrings <- forM calls $ \(n,args) -> do
                     args' <- mapM compArg args
                     return (n, args')
                 return $ if length callstrings == 1
-                        then [Call (head callstrings)]
-                        else [ForkProcedures callstrings]
+                        then [DebugPrint debugstr, Call (head callstrings)]
+                        else [DebugPrint debugstr, ForkProcedures callstrings]
           
 
 -- | Returns a tuple where the first cell list contains the statements up to and including
@@ -553,6 +562,65 @@ untilBlock (x : xs) = case x of
   Wait _ -> ([x], xs)
   Fork _ -> ([x], xs)
   _      -> ([x],[]) <> untilBlock xs
+
+mainIR :: Program -> Maybe Int -> [IR]
+mainIR p c = [ Function Void "top_return" [("act", Pointer $ Act "")] [Return]
+             , Blank
+             , Function Void "main" [] bdy
+             ]
+  where
+      bdy :: [IR]
+      bdy = concat $ [ [Literal 4 $ "act_t top = { .step = top_return }"]
+                     , refinits
+                     , [Literal 4 $ concat $ ["fork_routine((act_t *) enter_", main p
+                                             ,"(", intercalate ", " entryargs, "))"]
+                     , Literal 4 "tick()"
+                     , debugprint 4
+                     , LiteralNoSemi 4 $ maybe "" (\i -> "int counter = " ++ show i ++ ";") c
+                     , LiteralNoSemi 4 $ maybe "while(1) {" (const "while(counter) {") c
+                     , Literal 8 "now = next_event_time()"
+                     , LiteralNoSemi 8 "if(now == NO_EVENT_SCHEDULED)"
+                     , Literal 12 "break"
+                     , Literal 8 "tick()"
+                     , debugprint 8
+                     , LiteralNoSemi 8 $ maybe "" (const "counter = counter - 1;") c
+                     , LiteralNoSemi 4 "}"]
+                     , printrefs
+                     ]
+
+      -- | The sequence of `IR` statements that represent the initialization of
+      -- the program input references.
+      refinits :: [IR]
+      refinits = concat $ mapRight (args p) $ \(r,t) ->
+          [ Literal 4 $ concat $ ["sv_", show (basetype_ t), "_t ", r]
+          , Literal 4 $ concat $ ["initialize_", show (basetype_ t), "(&", r, ")"]
+          , Literal 4 $ concat $ [r, ".value = ", defaultValue t]]
+
+      -- | Default value for references of different types.
+      defaultValue :: Type -> String
+      defaultValue TInt    = "0"
+      defaultValue TBool   = "false"
+      defaultValue (Ref t) = defaultValue t
+
+      -- | Map over a list of eithers and only keep the results obtained by mapping
+      -- a function over the `Right` elements.
+      mapRight :: [Either a b] -> (b -> c) -> [c]
+      mapRight [] _           = []
+      mapRight (Right a:xs) f = f a : mapRight xs f
+      mapRight (_:xs) f       = mapRight xs f
+
+      entryargs :: [String]
+      entryargs = [ "&top"
+                  , "PRIORITY_AT_ROOT"
+                  , "DEPTH_AT_ROOT"
+                  ] ++ map (either compLit ((++) "&" . fst)) (args p)
+
+      printrefs :: [IR]
+      printrefs = mapRight (args p) $ \(r,t) ->
+          Literal 4 $ concat ["printf(\"", r, " %u", "\\n\", ", r, ".value)"]
+
+      debugprint :: Int -> IR
+      debugprint i = Literal i $ concat ["printf(\"now %lu eventqueuesize %d\\n\", now, event_queue_len)"]
 
 {- ***************** Code generation *************** -}
 
@@ -608,6 +676,7 @@ irToC ir = flip mapM_ ir $ \x -> case x of
         emit "}"
     IncPC i         -> emit $ concat ["act->pc = ", show i, ";"]
     Return          -> emit "return;"
+    DebugPrint str  -> emit $ concat ["DEBUG_PRINT(\"", str, "\")"]
 
     Initialize bt var   ->
         emit $ concat ["initialize_", show bt, "(", var, ");"]
