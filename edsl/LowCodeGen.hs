@@ -510,9 +510,9 @@ stepIR p = do
                 init <- Initialize (basetype_ t) <$> compVar (n,t)
                 assi <- Assign (basetype_ t) <$> compVar (n,t) <*> compVal v
                 return $ [init, assi]
-            GetRef n t r   -> sequence [Assign (basetype_ t) <$> compVar (n,t) <*> compVal r]
-            SetRef r e     -> sequence [Assign (basetype r)  <$> compVar r <*> compVal e]
-            SetLocal e1 e2 -> sequence [Assign (basetype e1) <$> compVar e1 <*> compVal e2]
+            GetRef n t r    -> sequence [Assign (basetype_ t) <$> compVar (n,t) <*> compVal r]
+            SetRef r e      -> sequence [Assign (basetype r)  <$> compVar r     <*> compVal e]
+            SetLocal n t e2 -> sequence [Assign (basetype_ t) <$> compVar (n,t) <*> compVal e2]
 
             If c thn els -> do
                 l1 <- freshLabel

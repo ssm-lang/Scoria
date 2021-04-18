@@ -10,7 +10,7 @@ import BinderAnn.Monadic
 type Reference = (String, Type)
 data Name = Fresh String
           | Captured (String,Int,Int) String
-  deriving Show
+  deriving (Show, Eq)
 
 getVarName :: Name -> String
 getVarName (Fresh n)      = n

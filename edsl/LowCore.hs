@@ -28,7 +28,7 @@ import Control.Monad.State.Lazy
 data Stm = NewRef C.Name C.Type C.SSMExp
          | GetRef C.Name C.Type C.Reference
          | SetRef C.Reference C.SSMExp
-         | SetLocal C.SSMExp C.SSMExp
+         | SetLocal C.Name C.Type C.SSMExp
 
          | If C.SSMExp [Stm] [Stm]
          | While C.SSMExp [Stm]
@@ -38,7 +38,7 @@ data Stm = NewRef C.Name C.Type C.SSMExp
          | Changed C.Name C.Type C.Reference
          | Wait [C.Reference]
          | Fork [(String, [Either C.SSMExp C.Reference])]
-  deriving Show
+  deriving (Show, Eq)
 
 data Procedure = Procedure
   { -- | Name of the procedure.
@@ -48,7 +48,7 @@ data Procedure = Procedure
     -- | Statements that make up this procedure.
   , body      :: [Stm]
   }
-  deriving Show
+  deriving (Show, Eq)
 
 data Program = Program
   { -- | Name of the procedure that is the program entrypoint.
@@ -95,7 +95,8 @@ transpileProcedure xs = fmap concat $ flip mapM xs $ \x -> case x of
     C.NewRef n e     -> return $ [NewRef n (C.expType e) e]
     C.GetRef n r     -> return $ [GetRef n (C.dereference (C.refType r)) r]
     C.SetRef r e     -> return $ [SetRef r e]
-    C.SetLocal e1 e2 -> return $ [SetLocal e1 e2]
+    C.SetLocal (C.Var t n) e2 -> return $ [SetLocal (C.Fresh n) t e2]
+    C.SetLocal _ _ -> error "Trying to set a local variable that is not a variable"
 
     C.If c thn els -> do
       thn' <- transpileProcedure (C.runSSM thn)
