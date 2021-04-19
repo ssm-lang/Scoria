@@ -33,6 +33,7 @@ library
       CodeGen
       LowCodeGen
       Interpreter
+      LowInterpreter
       Frontend
       Pretty
       Fib
