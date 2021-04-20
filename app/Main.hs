@@ -1,5 +1,3 @@
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
 module Main where
 
 import Data.List
@@ -14,21 +12,10 @@ import qualified Interpreter as I1
 import qualified LowInterpreter as I2
 import Data.Time ( diffUTCTime, getCurrentTime )
 import System.IO
+import Criterion.Main
 
 main :: IO ()
-main = do
-    putStrLn "old interpreter time..."
-    start <- getCurrentTime
-    let output1 = I1.interpret $ myfib (int 15) inputIntRef
-    hPutStrLn stderr $ show output1
-    end <- getCurrentTime
-    print $ diffUTCTime end start
-    putStrLn "new interpreter time..."
-    start2 <- getCurrentTime
-    let output2 = I2.interpret $ LC.transpile $ myfib (int 15) inputIntRef
-    hPutStrLn stderr $ show output1
-    end2 <- getCurrentTime
-    print $ diffUTCTime end2 start2
---let output = interpret $ nonterminate inputIntRef
---    let output = I2.interpret $ LC.transpile $ myfib (int 15) inputIntRef
---    putStrLn $ intercalate "\n" $ map show output
+main = defaultMain
+  [ bench "old interpreter" $ nf I1.interpret                  $ myfib 15 inputIntRef
+  , bench "new interpreter" $ nf (I2.interpret . LC.transpile) $ myfib 15 inputIntRef
+  ]

@@ -2,7 +2,12 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module Core where
+
+import Control.DeepSeq
+import GHC.Generics
 
 import Control.Monad.State.Lazy
 import BinderAnn.Monadic
@@ -69,7 +74,7 @@ getProcedureName _             = error "not a procedure"
 data Type = TInt
           | TBool
           | Ref Type
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, NFData)
 
 class SSMType a where
     typeOf :: proxy a -> Type
@@ -112,7 +117,7 @@ data SSMExp = Var Type String               -- ^ Variables
             | Lit Type SSMLit               -- ^ Literals
             | UOp Type SSMExp UnaryOp       -- ^ Unary operators
             | BOp Type SSMExp SSMExp BinOp  -- ^ Binary operators
-  deriving (Eq)
+  deriving (Eq, Generic, NFData)
 
 instance Show SSMExp where
     show (Var _ n)        = n
@@ -123,7 +128,7 @@ instance Show SSMExp where
 -- | SSM literals
 data SSMLit = LInt Int    -- ^ Integer literals
             | LBool Bool  -- ^ Boolean literals
-  deriving (Eq)
+  deriving (Eq, Generic, NFData)
 
 instance Show SSMLit where
     show (LInt i)  = show i
@@ -131,7 +136,7 @@ instance Show SSMLit where
 
 {-- | SSM unary operators -}
 data UnaryOp = Neg  -- ^ negation
-  deriving (Show,Eq)
+  deriving (Show, Eq, Generic, NFData)
 
 {-- | SSM binary operators. We use phantom types to represent the two argument types and
 the result type of the operator. E.g OLT 2 3 :: BinOp Int Int Bool -}
@@ -140,7 +145,7 @@ data BinOp = OPlus   -- ^ addition
            | OTimes  -- ^ multiplication
            | OLT     -- ^ less-than
            | OEQ     -- ^ eq
-  deriving (Eq)
+  deriving (Eq, Generic, NFData)
 
 instance Show BinOp where
     show OPlus  = "+"

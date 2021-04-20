@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module Trace where
 
 import Data.Text
@@ -7,6 +9,8 @@ import Data.Void
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as Lexer
+import Control.DeepSeq
+import GHC.Generics
 
 import Core hiding (Result, Fork)
 
@@ -16,7 +20,7 @@ data OutputEntry = Instant Int Int      -- ^ now, size of eventqueue
                  | Event Int SSMExp     -- ^ now, new variable value
                  | Fork [String]        -- ^ Fork call, names of forked procedures
                  | Result String SSMExp -- ^ variable name and final value
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic, NFData)
 
 type Output = [OutputEntry]
 

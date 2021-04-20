@@ -43,6 +43,7 @@ library
       Example
       Manyrefs
       Generator
+      LowGenerator
       NonTerminate
   other-modules:
       Paths_ssm
@@ -60,6 +61,7 @@ library
     , text
     , megaparsec
     , parser-combinators
+    , deepseq
   default-language: Haskell2010
 
 executable ssm-exe
@@ -73,6 +75,7 @@ executable ssm-exe
       base >=4.7 && <5
     , ssm
     , time
+    , criterion
   default-language: Haskell2010
 
 test-suite ssm-test
