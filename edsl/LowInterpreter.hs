@@ -59,6 +59,9 @@ data Proc s = Proc
   }
   deriving Eq
 
+instance Show (Proc s) where
+    show p = show $ priority p
+
 instance Ord (Proc s) where
     p1 <= p2 = priority p1 <= priority p2
 
@@ -90,7 +93,7 @@ interpret p = runST interpret'
           fun <- case Map.lookup (main p) (funs p) of
               Just p'  -> return p'
               Nothing  -> error $ concat ["interpreter error - can not find function ", main p]
-          process <- Proc 0 128 0 Nothing <$> params p <#> Nothing <#> body fun
+          process <- Proc 0 32 0 Nothing <$> params p <#> Nothing <#> body fun
           let refs = Map.elems $ variables process
           execWriterT $ evalStateT run (St 0 [] [process] refs (funs p) process)
 
@@ -154,7 +157,9 @@ run = do tick
                     instant
     
       tick :: Interp s ()
-      tick = performEvents >> mainloop
+      tick = do
+          performEvents
+          mainloop
 
 -- | This function will keep popping processes off the ready queue, running them and then
 -- calling itself again until the ready queue is empty.
@@ -172,86 +177,82 @@ mainloop = do
 -- instructions left) or it should block (by evaluating a wait or fork instruction).
 runProcess :: Interp s ()
 runProcess = do
+    i <- popInstruction
     p <- gets process
-    let c = continuation p
-    if null c
+    case i of
 
-        -- this process should terminate and possibly enqueue its parent
-        then case parent p of
+        Nothing -> case parent p of
+            Nothing -> return ()
             Just p' -> do
                 par' <- lift' $ readSTRef p'
                 if runningChildren par' == 1
-                   then enqueue $ par' { runningChildren = 0 }
-                   else lift' $ writeSTRef p' $ par' { runningChildren = runningChildren par' - 1 }
-            Nothing -> return ()
+                    then enqueue $ par' { runningChildren = 0 }
+                    else lift' $ writeSTRef p' $ par' { runningChildren = runningChildren par' - 1 }
 
-        -- this process has instructions left and we should perform the next one
-        else case head c of
-      NewRef n _ e    -> do
-          newVar (getVarName n) e
-          nextInstruction
-      GetRef n t r    -> do
-          v <- readRef (fst r)
-          writeRef (getVarName n) v
-          nextInstruction
-      SetRef r e      -> do
-          writeRef (fst r) e
-          nextInstruction
-      SetLocal n t e2 -> do
-          writeRef (getVarName n) e2
-          nextInstruction
-      If c thn els    -> do
-          b <- getBool <$> eval c
-          p <- gets process
-          let (i:cont) = continuation p
-          if b
-              -- Here we can prepend the continuation with i (the current IF statement),
-              -- because it will immediately be popped by nextInstruction.
-              then modify $ \st -> st { process = p { continuation = i : thn ++ cont } }
-              else modify $ \st -> st { process = p { continuation = i : els ++ cont } }
-          nextInstruction
-      While c bdy     -> do
-          b <- getBool <$> eval c
-          p <- gets process
-          let whole@(i:_) = continuation p
-          if b
-              -- Prepend i also here, since it will immediately be popped by nextInstruction.
-              -- After executing the body we want to run the test again, so we keep the
-              -- whole continuation from the calling process.
-              then modify $ \st -> st { process = p { continuation = i : bdy ++ whole} }
-              else return ()
-          nextInstruction
-      Skip            -> nextInstruction
-      After d r v     -> do
-          ref  <- lookupRef (fst r)
-          d'   <- getInt <$> eval d
-          v'   <- eval v
-          now' <- gets now
-          -- TODO should not allow more than one event per variable to be outstanding
-          modify $ \st -> st { events = Event (now' + d') ref v' : events st }
-          nextInstruction
-      Changed n t r   -> do
-          b <- wasWritten (getVarName n)
-          writeRef (getVarName n) b
-          nextInstruction
+        Just stm -> case stm of
+            NewRef n _ e    -> do
+                newVar (getVarName n) e
+                runProcess
+            GetRef n t r    -> do
+                v <- readRef (fst r)
+                newVar (getVarName n) v
+--                writeRef (getVarName n) v
+                runProcess
+            SetRef r e      -> do
+                writeRef (fst r) e
+                runProcess
+            SetLocal n t e2 -> do
+                writeRef (getVarName n) e2
+                runProcess
+            If c thn els    -> do
+                b <- getBool <$> eval c
+                pushInstructions $ if b then thn else els
+                runProcess
+            While c bdy     -> do
+                b <- getBool <$> eval c
+                if b
+                    then pushInstructions $ bdy ++ [stm]
+                    else return ()
+                runProcess
+            Skip            -> runProcess
+            After d r v     -> do
+                ref  <- lookupRef (fst r)
+                d'   <- getInt <$> eval d
+                v'   <- eval v
+                now' <- gets now
+                -- TODO should not allow more than one event per variable to be outstanding
+                modify $ \st -> st { events = Event (now' + d') ref v' : events st }
+                runProcess
+            Changed n t r   -> do
+                b <- wasWritten (getVarName n)
+                newVar (getVarName n) b
+--                writeRef (getVarName n) b
+                runProcess
 
+            -- The statements below are blocking statements, so there is no nextInstruction
+            -- statements after them. Wait blocks until either of the specified references
+            -- received a new value, and fork blocks until all child processes have terminated.
+            Wait refs       -> do
+                wait refs
+                mapM_ (sensitize . fst) refs
+            Fork procs      -> do
+                tell [T.Fork $ map fst procs]
+                modify $ \st -> st { process = (process st) { runningChildren = length procs } }
+                p <- gets process
+                parent <- lift' $ newSTRef p
 
-      -- The statements below are blocking statements, so there is no nextInstruction
-      -- statements after them. Wait blocks until either of the specified references
-      -- received a new value, and fork blocks until all child processes have terminated.
-      Wait refs       -> mapM_ (sensitize . fst) refs
-      Fork procs      -> do
-          tell [T.Fork $ map fst procs]
-          modify $ \st -> st { process = (process st) { runningChildren = length procs } }
-          p <- gets process
-          parent <- lift' $ newSTRef p
+                pdeps <- pds (length procs)
+                forM_ (zip procs pdeps) $ \(f,(prio, dep)) -> do
+                    fork f prio dep parent
 
-          pdeps <- pds (length procs)
-          forM_ (zip procs pdeps) $ \(f,(prio, dep)) -> do
-              fork f prio dep parent
 
 lift' :: ST s a -> Interp s a
 lift' = lift . lift
+
+wait :: [Reference] -> Interp s ()
+wait refs = do
+    refs' <- mapM (lookupRef . fst) refs -- [Var s]
+    modify $ \st -> st { process = (process st) { waitingOn = Just refs' } }
 
 -- | Enqueue a new, forked process.
 fork :: (String, [Either SSMExp Reference])  -- ^ Procedure to fork (name and arguments)
@@ -271,17 +272,10 @@ fork (n,args) prio dep par = do
           st <- gets process
           m <- flip mapM (zip names args) $ \(n, a) ->
               case a of
-                  Left e  -> lift' (newVar' e) >>= \v   -> return (n, v)
+                  Left e  -> do v <- eval e
+                                lift' (newVar' v) >>= \v'   -> return (n, v')
                   Right r -> lookupRef (fst r) >>= \ref -> return (n, ref)
           return $ Map.fromList m
-
--- | Modify the continuation of the currently running process to point to the next
--- available instruction, and then run the process again.
-nextInstruction :: Interp s ()
-nextInstruction = do
-    p <- gets process
-    modify $ \st -> st { process = p { continuation = tail (continuation p)}}
-    runProcess
 
 writeRef :: String -> SSMExp -> Interp s ()
 writeRef r e = do
@@ -424,6 +418,22 @@ nextEventTime :: Interp s Int
 nextEventTime = do
     evs <- gets events
     return $ foldl max 0 (map at evs)
+
+-- | Return the next instruction of the current process if one exists.
+popInstruction :: Interp s (Maybe Stm)
+popInstruction = do
+    p <- gets process
+    case continuation p of
+        [] -> return Nothing
+        (x:xs) -> do modify $ \st -> st { process = p { continuation = xs } }
+                     return $ Just x
+
+-- | Push additional instructions onto a process. Used e.g when evaluating
+-- an if statement where one of the branches should be evaluated.
+pushInstructions :: [Stm] -> Interp s ()
+pushInstructions stmts = do
+    p <- gets process
+    modify $ \st -> st { process = p { continuation = stmts ++ continuation p } }
 
 eval :: SSMExp -> Interp s SSMExp
 eval e = do
