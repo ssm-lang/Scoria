@@ -1,12 +1,10 @@
 module LowGenerator where
-{-
+
 import Data.List
 import Data.Maybe
+import qualified Data.Map as Map
 
-import Pretty
-import Core
-
-import Frontend -- Need to import this because the instance of Res () is in here
+import LowCore
 
 import Test.QuickCheck
 import Test.QuickCheck.Gen.Unsafe ()
@@ -19,6 +17,122 @@ import CodeGen
 trace :: Show a => a -> a
 trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
+instance Arbitrary Type where
+    arbitrary = elements [TInt, TBool, Ref TInt, Ref TBool]
+
+type Procedures = [(String, [(String, Type)], [Stm])]
+type Variable = (Name, Type)
+type Ref     = (String, Type)
+
+-- | Generate a procedure body.
+arbProc :: Procedures     -- ^ All procedures in the program
+        -> [Variable]     -- ^ Variables in scope
+        -> [Ref]          -- ^ References in scope
+        -> Int            -- ^ Fresh name generator
+        -> Int            -- ^ Size parameter
+        -> Gen [Stm]
+arbProc funs vars refs c n = frequency $
+      [ (1, do t         <- elements [TInt, TBool]
+               e         <- choose (0,3) >>= arbExp t vars
+               (name,c') <- fresh c
+               let rt     = mkReference t
+               let stm    = NewRef name rt e
+               let ref    = (getVarName name, rt)
+               (:) stm <$> arbProc funs vars (ref:refs) c' (n-1) 
+        )
+      
+      , (1, do cond   <- choose (0,3) >>= arbExp TBool vars
+               thn    <- arbProc funs vars refs c (n `div` 2)
+               els    <- arbProc funs vars refs c (n `div` 2)
+               let stm = If cond thn els
+               (:) stm <$> arbProc funs vars refs c (n-1) -- TODO make better size
+        )
+      
+      --, (1, undefined {-while-}
+      --  )
+
+      , (1, do let forkable = elements funs `suchThat` canBeCalled refs
+               tofork      <- listOf forkable `suchThat` (not . null)
+               forks       <- mapM (applyFork vars refs) tofork
+               let stm      = Fork forks
+               (:) stm <$> arbProc funs vars refs c (n-1)
+        )
+      ] ++
+
+      (if null vars then [] else
+      [ (1, do (name,t) <- elements vars
+               e        <- choose (0,3) >>= arbExp t vars
+               let stm   = SetLocal name t e
+               (:) stm <$> arbProc funs vars refs c (n-1)
+        )]) ++
+
+      (if null refs then [] else
+      [ (1, do r@(_,t)   <- elements refs
+               (name,c') <- fresh c
+               let t'    = dereference t
+               let stm   = GetRef name t' r
+               (:) stm <$> arbProc funs ((name,t'):vars) refs c' (n-1)
+        )
+      
+      , (1, do r@(_,t) <- elements refs
+               e       <- choose (0,3) >>= arbExp (dereference t) vars
+               let stm = SetRef r e
+               (:) stm <$> arbProc funs vars refs c (n-1)
+        )
+      
+      , (1, do r@(_,t)  <- elements refs
+               v        <- choose (0,3) >>= arbExp (dereference t) vars
+               delay'   <- choose (0,3) >>= arbExp TInt vars
+               let delay = delay * delay + 1 -- hack to make it non negative and non zero
+               let stm   = After delay r v
+               (:) stm <$> arbProc funs vars refs c (n-1)
+        )
+      
+      , (1, do r         <- elements refs
+               (name,c') <- fresh c
+               let stm    = Changed name TBool r
+               (:) stm <$> arbProc funs ((name,TBool):vars) refs c' (n-1)
+        )
+      
+      , (1, do refs'  <- sublistOf refs
+               let stm = Wait refs'
+               (:) stm <$> arbProc funs vars refs c (n-1)
+        )
+      ])
+  where
+      -- | Generate a fresh name.
+      fresh :: Monad m => Int -> m (Name, Int)
+      fresh c = return $ (Fresh ("v" ++ show c), c+1)
+
+      -- | Take a procedure that should be forked and return the application of
+      -- that procedure to randomly generated arguments.
+      applyFork :: [Variable]
+                -> [Ref]
+                -> (String, [(String, Type)], [Stm])
+                -> Gen (String, [Either SSMExp Reference])
+      applyFork vars refs (n, types, _) = do
+          args <- forM types $ \(_,t) ->
+            if isReference t
+              then do let okrefs = filter ((==) t . snd) refs
+                      Right <$> elements okrefs
+              else Left <$> (choose (0,3) >>= arbExp t vars)
+          return (n, args)
+
+      -- | Predicate that returns True if the given procedure can be forked.
+      -- What determines this is what references we have in scope. If the procedure
+      -- requires a reference parameter that we do not have, we can not fork it.
+      canBeCalled :: [Ref] -> (String, [(String, Type)], [Stm]) -> Bool
+      canBeCalled inscope (_, types, _) =
+          let distinct = nub $ filter isReference $ map snd inscope
+          in all (`elem` distinct) $ filter isReference $ map snd types
+
+-- | Generate a SSMExp.
+arbExp :: Type        -- ^ Type of expression to generate (oneof TInt or TBool)
+       -> [Variable]  -- ^ Variables that are in scope that the expression can use
+       -> Int         -- ^ Size parameter
+       -> Gen SSMExp
+arbExp t vars n = undefined
+{-
 render :: Program -> Program
 render (Program ssm) = unsafePerformIO $ putStrLn (showSSM ssm) >> return (Program ssm)
 

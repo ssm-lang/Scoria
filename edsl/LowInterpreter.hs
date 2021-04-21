@@ -196,7 +196,6 @@ runProcess = do
             GetRef n t r    -> do
                 v <- readRef (fst r)
                 newVar (getVarName n) v
---                writeRef (getVarName n) v
                 runProcess
             SetRef r e      -> do
                 writeRef (fst r) e
@@ -226,7 +225,6 @@ runProcess = do
             Changed n t r   -> do
                 b <- wasWritten (getVarName n)
                 newVar (getVarName n) b
---                writeRef (getVarName n) b
                 runProcess
 
             -- The statements below are blocking statements, so there is no nextInstruction

@@ -16,6 +16,6 @@ import Criterion.Main
 
 main :: IO ()
 main = defaultMain
-  [ bench "old interpreter" $ nf I1.interpret                  $ myfib 15 inputIntRef
-  , bench "new interpreter" $ nf (I2.interpret . LC.transpile) $ myfib 15 inputIntRef
+  [ bench "new interpreter" $ nf (I2.interpret . LC.transpile) $ myfib 15 inputIntRef
+  , bench "old interpreter" $ nf I1.interpret                  $ myfib 15 inputIntRef
   ]
