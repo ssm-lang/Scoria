@@ -25,7 +25,7 @@ type Variable = (Name, Type)
 type Ref     = (String, Type)
 
 instance Arbitrary Program where
-  shrink = shrinkDefs
+  shrink p = shrinkRefs p ++ shrinkProcedures p
   arbitrary = do
     types <- arbitrary `suchThat` (not . null)
     let funs = [ ("fun" ++ show i, as) | (as,i) <- zip types [1..]]
@@ -227,17 +227,21 @@ testprogram1 = Program "fun1" [] $ Map.fromList [("fun1",
                            , Fork [("fun1",[]),("fun1",[]),("fun1",[])]]])]
 
 testprogram2 :: Program
-testprogram2 = Program "fun1" [] $ Map.fromList [("fun1",
-    Procedure "fun1" [] [ NewRef (Fresh "v0") (Ref TInt) (Lit TInt $ LInt 20)
-                        , If (Lit TBool $ LBool False)
-                            [ Fork [("fun1",[])]]
-                            [ NewRef (Fresh "v1") (Ref TInt) (Lit TInt $ LInt 5)
-                            , Wait [("v1", Ref TInt)]]
-                        , After (Lit TInt $ LInt 1) ("v0", Ref TInt) (Lit TInt $ LInt 10)
-                        ])]
+testprogram2 = Program "fun1" [] $ Map.fromList [
+  ("fun1", Procedure "fun1" [] [ NewRef (Fresh "v0") (Ref TInt) (Lit TInt $ LInt 20)
+                               , If (Lit TBool $ LBool False)
+                                   [ Fork [("fun1",[])]]
+                                   [ NewRef (Fresh "v1") (Ref TInt) (Lit TInt $ LInt 5)
+                               , Wait [("v1", Ref TInt)]]
+                               , Fork [("fun2",[])]
+                               , After (Lit TInt $ LInt 1) ("v0", Ref TInt) (Lit TInt $ LInt 10)
+                               ]
+  ),
+  ("fun2", Procedure "fun2" [] [NewRef (Fresh "v0") (Ref TInt) (Lit TInt $ LInt 20)])
+  ]
 
-shrinkDefs :: Program -> [Program]
-shrinkDefs p = let procedures = Map.toList $ funs p
+shrinkRefs :: Program -> [Program]
+shrinkRefs p = let procedures = Map.toList $ funs p
                   in concat $ flip map procedures $ \(n,pr) ->
   let ps = removeAllDeclaredRefs pr
   in map (\procedure -> p { funs = Map.insert n procedure (funs p)}) ps
@@ -349,3 +353,49 @@ allRefs p = refs $ body p
       If _ thn els -> refs thn ++ refs els
       While _ bdy  -> refs bdy
       _            -> []
+
+{-***** Removing entire procedures *****-}
+
+shrinkProcedures :: Program -> [Program]
+shrinkProcedures p = map fromJust $ filter isJust $ flip map toremove $ \fun ->
+    let p' = p { funs = Map.delete fun (funs p) }
+    in removeProcedure p' fun
+  where
+    toremove :: [String]
+    toremove = delete (main p) (Map.keys (funs p))
+
+removeProcedure :: Program -> String -> Maybe Program
+removeProcedure p fun = do
+  procedures <- sequence [ do pro' <- remove pro fun
+                              return (n,pro')
+                         | (n,pro) <- Map.toList (funs p)]
+  return $ p { funs = Map.fromList procedures}
+
+remove :: Procedure -> String -> Maybe Procedure
+remove p fun = let body' = newbody (body p) in
+               if body' /= (body p)
+                 then Just $ p { body = newbody (body p) }
+                 else Nothing
+  where
+    newbody :: [Stm] -> [Stm]
+    newbody []     = []
+    newbody (x:xs) = case x of
+      If c thn els ->
+        let stm = If c (newbody thn) (newbody els)
+        in stm : newbody xs
+
+      While c bdy  ->
+        let stm = While c $ newbody bdy
+        in stm : newbody xs
+      
+      Fork procs   -> let procs' = removeFork procs fun in
+        if null procs'
+          then newbody xs
+          else Fork procs' : newbody xs
+      
+      otherwise    -> otherwise : newbody xs
+    
+    removeFork :: [(String, [Either SSMExp Reference])]
+               -> String
+               -> [(String, [Either SSMExp Reference])]
+    removeFork procs fun = filter ((/=) fun . fst) procs
