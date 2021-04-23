@@ -45,6 +45,7 @@ library
       Generator
       LowGenerator
       NonTerminate
+      Buggy
   other-modules:
       Paths_ssm
   hs-source-dirs:

@@ -54,3 +54,52 @@ When I implemented the interpreter I did not consider a variable 'written' when 
 so if I create a reference r and then check @r, the result would be false. It appears that the
 RTS considers variables to be written to in the same instant where they are created, so I changed
 the interpreter to act accordingly.
+
+** Bugs I found after changing the AST to be more easily manipulated **
+
+7)
+
+I had forgotten to include a return statement in the generated enter function, resulting in the
+scheduler throwing an assertion error. Caught by a generated program.
+
+8)
+
+I had wrongly specified the output format of the generated c code program, so the result parser
+did not work properly.
+
+9)
+
+Bug in the code generator where returns where not inserter properly at all places. Whenever the program
+should block it needs to return, pending future rescheduling into the readyqueue. This is the program
+the produced the bug:
+
+Program {main = "fun2", args = [Right ("ref1",Ref TInt),Left (-1 < 1),Right ("ref3",Ref TBool)],
+
+funs = fromList [("fun1",
+
+Procedure {name = "fun1", arguments = [], body = [ If (3 == -1)
+                                                    [Fork [("fun1",[]),("fun1",[])]]
+                                                    [Fork [("fun1",[])]]
+                                                 , If ((1 - 1) < (- -1))
+                                                    [If (0 < 0) [] []]
+                                                    [If False 
+                                                      []
+                                                      []
+                                                    ]
+                                                 ]}),("fun2",
+Procedure {name = "fun2", arguments = [("ref1",Ref TInt),("var2",TBool),("ref3",Ref TBool)],
+      body = [ If ((1 * 3) < (-2 - 0))
+                 [NewRef (Fresh "v0") (Ref TBool) ((-3 == -1) == (0 < 2))]
+                 [Wait [("ref1",Ref TInt)]]
+             , After ((-3 * -3) + 1) ("ref3",Ref TBool) (-1 < 1)
+             , NewRef (Fresh "v1") (Ref TInt) ((- 3) * (-2 + 2))
+             ]})]}
+
+In fun2 the second branch in the if-statement is chosen, but rather than blocking there the codegenerator
+just kept on evaluating everything after the if. Clearly an issue.
+
+10)
+
+Found bug in the interpreter where I had forgotten to make the interpreter output the final result
+of the input variables once the program had finished executiing. The traces between the two different
+runs did not share the same suffix.

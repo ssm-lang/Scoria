@@ -95,7 +95,7 @@ interpret p = runST interpret'
               Nothing  -> error $ concat ["interpreter error - can not find function ", main p]
           process <- Proc 0 32 0 Nothing <$> params p <#> Nothing <#> body fun
           let refs = Map.elems $ variables process
-          execWriterT $ evalStateT run (St 0 [] [process] refs (funs p) process)
+          execWriterT $ evalStateT (run >> emitResult p) (St 0 [] [process] refs (funs p) process)
 
       -- | Creates the initial variable storage for the program. Expressions are just
       -- allocated in an STRef, while references are given a default value and then
@@ -108,7 +108,7 @@ interpret p = runST interpret'
           m <- flip mapM (zip (LowCore.arguments process) (args p)) $ \((n,t), a) ->
               case a of
                   Left e  -> newVar' e                >>= \v -> return (n,v)
-                  Right r -> newVar' (defaultValue t) >>= \v -> return (n,v)
+                  Right r -> newVar' (defaultValue (dereference t)) >>= \v -> return (n,v)
           return $ Map.fromList m
 
       -- | Names and types of arguments to the program entrypoint.
@@ -223,7 +223,7 @@ runProcess = do
                 modify $ \st -> st { events = Event (now' + d') ref v' : events st }
                 runProcess
             Changed n t r   -> do
-                b <- wasWritten (getVarName n)
+                b <- wasWritten $ fst r
                 newVar (getVarName n) b
                 runProcess
 
@@ -316,8 +316,10 @@ pds k = do
     let prio  = priority p                                  -- old prio
     let dep   = depth p                                     -- old dep
     let d'    = dep - ceiling (logBase 2 (fromIntegral k))  -- new dep
-    let prios = [ prio + i * (2^d') | i <- [0..k-1]]        -- new prios
-    return $ zip prios (repeat d')
+    if d' < 0
+        then error "negative exponent, ran out of recursion depth"
+    else do let prios = [ prio + i * (2^d') | i <- [0..k-1]]        -- new prios
+            return $ zip prios (repeat d')
 
 -- | Create a new variable with an initial value, and adds it to the current process's
 -- variable storage. When a variable is created it is considered written to.

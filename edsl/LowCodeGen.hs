@@ -60,6 +60,8 @@ data IR
     IncPC Int
   | -- | `Return` == `return;`
     Return
+  | -- | `ReturnEnter` == `return act;`
+    ReturnEnter
   | -- | Renders into a debug print statement "DEBUG_PRINT(x)"
     DebugPrint String
 
@@ -397,6 +399,8 @@ structIR p = do
           NewRef n t _  -> [ FieldDec (ScheduledVar (basetype_ t)) (getVarName n) ]
           GetRef n t _  -> [ FieldDec (ScheduledVar (basetype_ t)) (getVarName n) ]
           Changed n t _ -> [ FieldDec (ScheduledVar (basetype_ t)) (getVarName n) ]
+          If _ thn els  -> dynfields thn ++ dynfields els
+          While _ bdy   -> dynfields bdy
           _             -> []
     
       -- | Generate trigger declarations. The only variable thing in a trigger
@@ -417,6 +421,7 @@ enterIR p = do
     return $ fun $ concat [ [cast]
                           , assvar
                           , setuptrigs
+                          , [ReturnEnter]
                           ]
     
   where
@@ -457,49 +462,46 @@ stepIR :: Procedure -> TR IR
 stepIR p = do
     let fun = Function Void (concat ["step_", name p]) [("gen_act", Pointer $ Act "")]
     let cast = UpcastAct (Pointer $ Act $ name p) "gen_act"
-    cases <- stmts $ body p
-    let leave = Leave $ name p
-    return $ fun [ cast
-                 , Switch cases
-                 , leave
-                 ]
+    
+    switch <- flip createBlocks (Leave (name p)) <$> gencase (body p)
+--    (Switch cases) <- stmts $ body p
+--    let leave = Leave $ name p
+    return $ fun $ [ cast
+                   , switch
+--                   , Switch $ cases ++ [leave]
+                   ]
   where
       -- | Takes as input a sequence of `Stm` and returns a sequence of `IR` statements.
       -- The `IR` statements in the sequence will all be case blocks meant to go inside
       -- of a switch statement.
-      stmts :: [Stm] -> TR [IR]
-      stmts [] = return []
-      stmts xs = do
-          let (block, rest) = untilBlock xs
-          caseblock <- gencase block
-          block' <- nextcase <*> endcase caseblock
-          (:) block' <$> stmts rest
-
-      -- | This function will return a function that takes a sequence of `IR` statements
-      -- should be in a case block and returns a case block with the next case number
-      -- and those `IR` statements in its body.
-      nextcase :: TR ([IR] -> IR)
-      nextcase = do
-          i <- gets ncase
-          modify $ \st -> st { ncase = i + 1 }
-          return $ Case i
+--      stmts :: [Stm] -> IR -> TR IR
+--      stmts xs end = do ir <- gencase xs
+--                        return $ Switch $ (createBlocks ir) : [end]
     
       -- | Return a `IR` statement that increments the program counter to the next case.
       incpc :: TR IR
       incpc = do
           i <- gets ncase
-          return $ IncPC i
+          modify $ \st -> st { ncase = i + 1 }
+          return $ IncPC $ i + 1
 
-      -- | This function will take a sequence of `IR` statements and insert a pc increment and
-      -- return statement at the end. If the last `IR` statement is a `Call` statement the
-      -- program counter will be incremented before the `Call` instruction, as the `call`
-      -- method in C will immediately invoke the procedure rather than just scheduling it.
-      endcase :: [IR] -> TR [IR]
-      endcase xs = do
-          pc <- incpc
-          case last xs of
-            Call _ -> return $ concat [init xs, [pc, last xs, Return]]
-            _      -> return $ concat [xs, [pc, Return]]
+      -- | Put the step functions body in a switch expression, after turning it
+      -- into a sequence of cases.
+      createBlocks :: [IR] -> IR -> IR
+      createBlocks ir end = Switch $ (createBlocks' 0 ir) ++ [end]
+        where
+          -- | Create the case expressions.
+          createBlocks' :: Int -> [IR] -> [IR]
+          createBlocks' i ir = case untilRet ir of
+            ([],[]) -> [Case i []]
+            (b,xs)  -> Case i b : createBlocks' (i+1) xs
+
+          -- | Fetch instructions until and including the next return statement.
+          untilRet :: [IR] -> ([IR],[IR])
+          untilRet []     = ([],[])
+          untilRet (x:xs) = case x of
+            Return -> ([x],xs)
+            _      -> ([x],[]) <> untilRet xs
 
       -- | This function will generate a sequence of `IR` statements for each `Stm`.
       gencase :: [Stm] -> TR [IR]
@@ -553,15 +555,18 @@ stepIR p = do
                 sensitizes <- forM (zip refs [1..]) $ \(r,i) -> do
                     var <- compVar r
                     return (var,i)
-                return [Sensitize sensitizes]
+                pc <- incpc
+                desensitizes <- mapM (return . Desensitize . snd) sensitizes
+                return $ concat [[Sensitize sensitizes, pc, Return], desensitizes]
             Fork calls -> do
                 let debugstr = unwords (["fork"] ++ (fst . unzip) calls) ++ "\\n"
                 callstrings <- forM calls $ \(n,args) -> do
                     args' <- mapM compArg args
                     return (n, args')
+                pc <- incpc
                 return $ if length callstrings == 1
-                        then [DebugPrint debugstr, Call (head callstrings)]
-                        else [DebugPrint debugstr, ForkProcedures callstrings]
+                        then [DebugPrint debugstr, pc, Call (head callstrings), Return]
+                        else [DebugPrint debugstr, ForkProcedures callstrings, pc, Return]
           
 
 -- | Returns a tuple where the first cell list contains the statements up to and including
@@ -628,7 +633,11 @@ mainIR p c = [ Function Void "top_return" [("act", Pointer $ Act "")] [Return]
 
       printrefs :: [IR]
       printrefs = mapRight (args p) $ \(r,t) ->
-          Literal 4 $ concat ["printf(\"", r, " %u", "\\n\", ", r, ".value)"]
+          Literal 4 $ concat ["printf(\"result ", r, " ", formatter t, "\\n\", ", r, ".value)"]
+      
+      formatter :: Type -> String
+      formatter (Ref TInt)  = "int %u"
+      formatter (Ref TBool) = "bool %d"
 
       debugprint :: Int -> IR
       debugprint i = Literal i $ concat ["printf(\"now %lu eventqueuesize %d\\n\", now, event_queue_len)"]
@@ -682,11 +691,11 @@ irToC ir = flip mapM_ ir $ \x -> case x of
     Label lbl       -> emit $ concat [lbl, ":"]
     Goto lbl        -> emit $ concat ["goto ", lbl, ";"]
     Case i bdy      -> do
-        emit $ concat ["case ", show i, ": {"]
+        emit $ concat ["case ", show i, ":"]
         indent $ irToC bdy
-        emit "}"
     IncPC i         -> emit $ concat ["act->pc = ", show i, ";"]
     Return          -> emit "return;"
+    ReturnEnter     -> emit "return act;"
     DebugPrint str  -> emit $ concat ["DEBUG_PRINT(\"", str, "\")"]
 
     Initialize bt var   ->
@@ -698,7 +707,7 @@ irToC ir = flip mapM_ ir $ \x -> case x of
     Later bt t var val  ->
         emit $ concat ["later_", show bt, "(", var, ", now + ", t, ", ", val, ");"]
     EventOn res ref     -> do
-        let eventon = concat ["event_on((sv_t *) ", ref, ");"]
+        let eventon = concat ["event_on((sv_t *) ", ref, ")"]
         irToC [Assign (basetype_ TBool) res eventon]
     Sensitize waits     -> 
         forM_ waits $ \(v,i) -> do
@@ -706,7 +715,7 @@ irToC ir = flip mapM_ ir $ \x -> case x of
     Desensitize i       ->
         emit $ concat ["desensitize(&act->trig", show i, ");"]
     Call (fun,args)     ->
-        emit $ concat ["call((act_t *) ", enter_ fun "act->priority" "act_depth" args, ");"]
+        emit $ concat ["call((act_t *) ", enter_ fun "act->priority" "act->depth" args, ");"]
     ForkProcedures funs -> do
         emit "{"
         indent $ do

@@ -6,10 +6,9 @@ import System.Process
 import System.IO
 import Control.Exception
 
-import Core
-import Frontend ( SSM )
-import CodeGen (compile)
-import Interpreter (interpret)
+import LowCore
+import LowCodeGen
+import LowInterpreter
 import Trace
 
 data Report = Good                     -- ^ Test succeeded!
@@ -19,13 +18,13 @@ data Report = Good                     -- ^ Test succeeded!
             | ParseError String        -- ^ Error parsing output of running the program, with the output
             | ExecutionError String    -- ^ Error while running the compiled program
 
-getname :: SSM () -> String
-getname ssm = getProcedureName $ head $ runSSM ssm
+getname :: Program -> String
+getname ssm = main ssm
 
 {- | Given a SSM program, this function will create a new directory, compile the program in
 that directory and run it, producing some output in a txt-file. This output will then be read
 before the temporary directory is deleted. -}
-runCG :: SSM () -> IO Report --(Maybe Output)
+runCG :: Program -> IO Report --(Maybe Output)
 runCG program = do
     setupTestDir
     createTestFile program
@@ -87,16 +86,16 @@ runCG program = do
           return a
 
       -- | Compile the test program and write it to a c-file
-      createTestFile :: SSM () -> IO ()
+      createTestFile :: Program -> IO ()
       createTestFile program = do
           let name = getname program
-          let c = compile True Nothing program
+          let c = compile_ True Nothing program
 
           inDirectory testdir $ do
               writeFile (name ++ ".c") c
 
       -- | Compile and run a test
-      runTest :: SSM () -> IO (Either Report String)
+      runTest :: Program -> IO (Either Report String)
       runTest program = do
           let name = getname program
 
@@ -130,5 +129,5 @@ runCG program = do
           rest <- parseOutput xs
           return $ line : rest
 
-runInterpreter :: SSM () -> Output
+runInterpreter :: Program -> Output
 runInterpreter = interpret

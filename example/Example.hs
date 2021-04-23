@@ -5,8 +5,11 @@ import BinderAnn.Monadic
 import Core
 import Frontend
 
-
-
+f2 :: Ref Bool -> Ref Int -> SSM ()
+f2 = box "f2" ["ref1", "ref2"] $ \ref1 ref2 -> do
+  v0 <- deref ref1
+  v1 <- var $ negate ((negate 1) + 0 * (negate 1))
+  return ()
 
 f1 :: Ref Int -> SSM ()
 f1 = box "f1" ["r"] $ \r -> do
