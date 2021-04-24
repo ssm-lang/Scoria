@@ -84,12 +84,6 @@ testSingle program = do
                                    then return $ Bad trace1 trace2
                                    else return $ Good
         otherwise      -> return otherwise
-        
---        Just trace1 -> do let trace2 = take (length trace1) $ interpret program
---                          if trace1 /= trace2
---                              then return (Left (unlines (errorStr trace1 trace2)))
---                              else return $ Right ()
---        Nothing     -> return (Left "code generator failed")
 
 errorStr :: Output -> Output -> String
 errorStr xs ys = unlines $ zipWith (\x y -> padTo xsmax x ++ padTo ysmax y ++ indicate x y) xs' ys'

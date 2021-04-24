@@ -9,6 +9,7 @@ import LowCore
 import Test.QuickCheck
 import Test.QuickCheck.Gen.Unsafe ()
 import Control.Monad.Reader
+import Control.Monad.Writer
 
 import System.IO.Unsafe
 
@@ -25,7 +26,10 @@ type Variable = (Name, Type)
 type Ref     = (String, Type)
 
 instance Arbitrary Program where
-  shrink p = shrinkRefs p ++ shrinkProcedures p
+  shrink p = shrinkRefs p ++
+             shrinkProcedures p ++
+             shrinkIf p ++
+             shrinkForks p
   arbitrary = do
     types <- arbitrary `suchThat` (not . null)
     let funs = [ ("fun" ++ show i, as) | (as,i) <- zip types [1..]]
@@ -216,8 +220,6 @@ arbExp t vars n = case t of
 
 {-********** Shrinking **********-}
 
-{-****** Removing declared references *****-}
-
 testprogram1 :: Program
 testprogram1 = Program "fun1" [] $ Map.fromList [("fun1",
     Procedure "fun1" [] [If (BOp TBool (UOp TInt (Lit TInt (LInt 1)) Neg) (UOp TInt (Lit TInt (LInt 2)) Neg) OLT)
@@ -239,6 +241,17 @@ testprogram2 = Program "fun1" [] $ Map.fromList [
   ),
   ("fun2", Procedure "fun2" [] [NewRef (Fresh "v0") (Ref TInt) (Lit TInt $ LInt 20)])
   ]
+
+testprogram3 :: Program
+testprogram3 = Program "fun1" [] $ Map.fromList [("fun1",
+    Procedure "fun1" [] [ While (Lit TBool $ LBool True)
+                            [If (Lit TBool $ LBool True)
+                              [ NewRef (Fresh "v0") (Ref TInt) (Lit TInt $ LInt 5)]
+                              [ NewRef (Fresh "v1") (Ref TInt) (Lit TInt $ LInt 10)]]
+                        , Wait [("ref1", Ref TInt)]
+                        ])]
+
+{-****** Removing declared references *****-}
 
 shrinkRefs :: Program -> [Program]
 shrinkRefs p = let procedures = Map.toList $ funs p
@@ -399,3 +412,64 @@ remove p fun = let body' = newbody (body p) in
                -> String
                -> [(String, [Either SSMExp Reference])]
     removeFork procs fun = filter ((/=) fun . fst) procs
+
+{-***** Shrinking/flattening if statements *****-}
+
+shrinkIf :: Program -> [Program]
+shrinkIf p = [ p { funs = Map.insert n proc' (funs p) } | (n,fun) <- Map.toList (funs p)
+                                                        , proc' <- shrinkIfProcedure fun]
+
+shrinkIfProcedure :: Procedure -> [Procedure]
+shrinkIfProcedure p = let bodys = execWriter $ shrinkIfStm ([], body p)
+                      in flip map bodys $ \bdy -> p { body = bdy }
+
+shrinkIfStm :: ([Stm],[Stm]) -> Writer [[Stm]] ()
+shrinkIfStm (_,[])          = return ()
+shrinkIfStm (front, (x:xs)) = case x of
+  If c thn els -> do tell [front ++ thn ++ xs, front ++ els ++ xs]
+                     shrinkIfStm (front ++ [x], xs)
+  -- I am not sure about this step. Is it small enough? Ask Koen!
+  While c bdy -> do let w = execWriter $ shrinkIfStm ([], bdy)
+                    sequence_ [ let while = While c w'
+                                in do tell [front ++ [while] ++ xs]
+                                      shrinkIfStm (front ++ [while], xs)
+                              | w' <- w]
+  _ -> shrinkIfStm (front ++ [x], xs)
+
+{-***** Shrinking wait instructions *****-}
+
+shrinkWait :: Program -> [Program]
+shrinkWait p = undefined
+
+shrinkgWaitProcedure :: Procedure -> Maybe [Procedure]
+shrinkgWaitProcedure p = undefined
+
+shrinkWaitStm :: [Stm] -> [[Stm]]
+shrinkWaitStm stm = undefined
+
+{-***** Shrinking fork sizes *****-}
+
+shrinkForks :: Program -> [Program]
+shrinkForks p =  [ p { funs = Map.insert n f' (funs p) }
+                 | (n,f) <- Map.toList (funs p), f' <- shrinkForksProcedure f]
+
+shrinkForksProcedure :: Procedure -> [Procedure]
+shrinkForksProcedure p = let bdys = execWriter $ shrinkForkStm ([], body p)
+                         in map (\bdy -> p { body = bdy } ) bdys
+
+shrinkForkStm :: ([Stm], [Stm]) -> Writer [[Stm]] ()
+shrinkForkStm (_, [])         = return ()
+shrinkForkStm (front, (x:xs)) = case x of
+  -- don't need to take care of if here I think, because the shrinking if step
+  -- will make sure that the shrinking algorithm considers shrinking forks in ifs?
+  While c bdy  -> do let bdys = execWriter $ shrinkForkStm ([], bdy)
+                     sequence_ [ do tell [front ++ [While c bdy'] ++ xs]
+                                    shrinkForkStm (front ++ [While c bdy'], xs)
+                               | bdy' <- bdys]
+  Fork procs   -> do
+    let procss = filter (not . null) $ map (\f -> delete f procs) procs
+    tell $ map (\ps -> front ++ [Fork ps] ++ xs) procss
+    shrinkForkStm (front ++ [x], xs)
+  _ -> shrinkForkStm (front ++ [x], xs)
+
+{-***** Shrinking procedure arity *****-}
