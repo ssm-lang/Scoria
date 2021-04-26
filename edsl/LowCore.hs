@@ -21,6 +21,8 @@ module LowCore
 
 import qualified Core as C
 
+import Data.List
+
 import qualified Data.Map as Map
 import Control.Monad.State.Lazy
 
@@ -48,7 +50,11 @@ data Procedure = Procedure
     -- | Statements that make up this procedure.
   , body      :: [Stm]
   }
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show Procedure where
+  show p = unlines $ concat [name p, "(", intercalate ", " (map show (arguments p)), ")"]
+                     : map ((++) "  " . show) (body p)
 
 data Program = Program
   { -- | Name of the procedure that is the program entrypoint.
@@ -58,7 +64,13 @@ data Program = Program
     -- | Map that associates procedure names with their definitions.
   , funs :: Map.Map String Procedure
   }
-  deriving Show
+
+instance Show Program where
+  show p = unlines [ "Program:"
+                   , "  entrypoint: " ++ main p
+                   , "  arguments: [" ++ intercalate ", " (map show (args p)) ++ "]"
+                   , ""
+                   ] ++ intercalate "" (map show (Map.elems (funs p)))
 
 type Transpile a = State TranspileState a
 

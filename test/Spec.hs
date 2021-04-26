@@ -23,7 +23,7 @@ main = do
 --        Left err -> putStrLn err
 --        Right _  -> putStrLn "test OK"
 
-    quickCheck prop_correct
+    quickCheck (verboseShrinking prop_correct)
 
 prop_correct :: Program -> Property
 prop_correct p = monadicIO $ do

@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 module LowGenerator where
 
 import Data.List
@@ -10,6 +12,7 @@ import Test.QuickCheck
 import Test.QuickCheck.Gen.Unsafe ()
 import Control.Monad.Reader
 import Control.Monad.Writer
+import Control.Monad.State
 
 import System.IO.Unsafe
 
@@ -17,6 +20,9 @@ import CodeGen
 
 trace :: Show a => a -> a
 trace x = unsafePerformIO $ putStrLn (show x) >> return x
+
+for :: [a] -> (a -> b) -> [b]
+for = flip map
 
 instance Arbitrary Type where
     arbitrary = elements [TInt, TBool, Ref TInt, Ref TBool]
@@ -26,10 +32,13 @@ type Variable = (Name, Type)
 type Ref     = (String, Type)
 
 instance Arbitrary Program where
-  shrink p = shrinkRefs p ++
-             shrinkProcedures p ++
-             shrinkIf p ++
-             shrinkForks p
+  shrink p = concat [ shrinkProcedures p  -- Shrink number of functions
+                    , shrinkArity p       -- Shrink procedure arity (writing this right now)
+                    , shrinkIf p          -- Flatten if's (every if becomes two new programs)
+                    , shrinkForks p       -- Shrink fork statements
+                    , shrinkRefs p        -- Shrink number of declared refs
+                    , shrinkWait p        -- Shrink wait statements
+                    ]
   arbitrary = do
     types <- arbitrary `suchThat` (not . null)
     let funs = [ ("fun" ++ show i, as) | (as,i) <- zip types [1..]]
@@ -251,11 +260,46 @@ testprogram3 = Program "fun1" [] $ Map.fromList [("fun1",
                         , Wait [("ref1", Ref TInt)]
                         ])]
 
+testprogram4 :: Program
+testprogram4 = Program "fun1" [ Left (Lit TBool (LInt 5))
+                              , Right ("dummy", Ref TBool)] $ Map.fromList [("fun1",
+    Procedure "fun1" [ ("var1", TInt)
+                     , ("ref2", Ref TBool)
+                     ]
+                     
+                     [ Changed (Fresh "v0") TBool ("ref2", Ref TBool)
+                     , If (Lit TBool (LBool True))
+                         [ GetRef (Fresh "v1") TBool ("ref2", Ref TBool)]
+                         [ Fork [("fun1", [ Left (Lit TInt (LInt 5))
+                                          , Right ("ref2", Ref TBool)
+                                          ]
+                                 )
+                                ]
+                         ]
+                     ]
+    )]
+
+testprogram5 :: Program
+testprogram5 = Program "fun1" [ Left (Lit TBool (LInt 5))
+                              , Right ("dummy", Ref TBool)] $ Map.fromList [("fun1",
+    Procedure "fun1" [ ("var1", TInt)
+                     , ("ref2", Ref TBool)
+                     ]
+                     
+                     [ Changed (Fresh "v0") TBool ("ref2", Ref TBool)
+                     , Fork [("fun1", [ Left (Lit TInt (LInt 5))
+                                      , Right ("ref2", Ref TBool)
+                                      ]
+                             )
+                            ]
+                     ]
+    )]
+
 {-****** Removing declared references *****-}
 
 shrinkRefs :: Program -> [Program]
 shrinkRefs p = let procedures = Map.toList $ funs p
-                  in concat $ flip map procedures $ \(n,pr) ->
+                  in concat $ for procedures $ \(n,pr) ->
   let ps = removeAllDeclaredRefs pr
   in map (\procedure -> p { funs = Map.insert n procedure (funs p)}) ps
 
@@ -266,7 +310,7 @@ removeAllDeclaredRefs :: Procedure -> [Procedure]
 removeAllDeclaredRefs p = let refs = allRefs p in removeRefs p refs
 
 removeRefs :: Procedure -> [Ref] -> [Procedure]
-removeRefs p refs =  map fromJust $ filter isJust $ flip map refs $ \ref -> do
+removeRefs p refs =  map fromJust $ filter isJust $ for refs $ \ref -> do
     let initialrefs = filter (isReference . snd) $ arguments p
     body' <- removeRef' ref [] initialrefs (body p)
     return $ p { body = body' }
@@ -341,7 +385,7 @@ removeRefs p refs =  map fromJust $ filter isJust $ flip map refs $ \ref -> do
         removeRefFromFork :: (String, [Either SSMExp Reference])
                           -> Maybe (String, [Either SSMExp Reference])
         removeRefFromFork (n, args) = do
-          args' <- sequence $ flip map args $ \a -> case a of
+          args' <- sequence $ for args $ \a -> case a of
                 Left e  -> Just $ Left $ deleteVars vars e
                 Right r -> if r == ref
                              then replaceRef $ snd r
@@ -361,7 +405,7 @@ allRefs :: Procedure -> [(String, Type)]
 allRefs p = refs $ body p
   where
     refs :: [Stm] -> [(String, Type)]
-    refs xs = concat $ flip map xs $ \x -> case x of
+    refs xs = concat $ for xs $ \x -> case x of
       NewRef n t e -> [(getVarName n,t)]
       If _ thn els -> refs thn ++ refs els
       While _ bdy  -> refs bdy
@@ -370,7 +414,7 @@ allRefs p = refs $ body p
 {-***** Removing entire procedures *****-}
 
 shrinkProcedures :: Program -> [Program]
-shrinkProcedures p = map fromJust $ filter isJust $ flip map toremove $ \fun ->
+shrinkProcedures p = map fromJust $ filter isJust $ for toremove $ \fun ->
     let p' = p { funs = Map.delete fun (funs p) }
     in removeProcedure p' fun
   where
@@ -421,7 +465,7 @@ shrinkIf p = [ p { funs = Map.insert n proc' (funs p) } | (n,fun) <- Map.toList 
 
 shrinkIfProcedure :: Procedure -> [Procedure]
 shrinkIfProcedure p = let bodys = execWriter $ shrinkIfStm ([], body p)
-                      in flip map bodys $ \bdy -> p { body = bdy }
+                      in for bodys $ \bdy -> p { body = bdy }
 
 shrinkIfStm :: ([Stm],[Stm]) -> Writer [[Stm]] ()
 shrinkIfStm (_,[])          = return ()
@@ -429,23 +473,35 @@ shrinkIfStm (front, (x:xs)) = case x of
   If c thn els -> do tell [front ++ thn ++ xs, front ++ els ++ xs]
                      shrinkIfStm (front ++ [x], xs)
   -- I am not sure about this step. Is it small enough? Ask Koen!
-  While c bdy -> do let w = execWriter $ shrinkIfStm ([], bdy)
-                    sequence_ [ let while = While c w'
-                                in do tell [front ++ [while] ++ xs]
-                                      shrinkIfStm (front ++ [while], xs)
-                              | w' <- w]
+  While c bdy -> do let bdys = execWriter $ shrinkIfStm ([], bdy)
+                    sequence_ [ tell [front ++ [While c bdy'] ++ xs]
+                              | bdy' <- bdys]
+                    shrinkIfStm (front ++ [x], xs)
   _ -> shrinkIfStm (front ++ [x], xs)
 
 {-***** Shrinking wait instructions *****-}
 
 shrinkWait :: Program -> [Program]
-shrinkWait p = undefined
+shrinkWait p = [ p { funs = Map.insert n proc' (funs p) } | (n,fun) <- Map.toList (funs p)
+                                                          , proc' <- shrinkWaitProcedure fun]
 
-shrinkgWaitProcedure :: Procedure -> Maybe [Procedure]
-shrinkgWaitProcedure p = undefined
+shrinkWaitProcedure :: Procedure -> [Procedure]
+shrinkWaitProcedure p = let bodys = execWriter $ shrinkWaitStm ([], body p)
+                         in for bodys $ \bdy -> p { body = bdy }
 
-shrinkWaitStm :: [Stm] -> [[Stm]]
-shrinkWaitStm stm = undefined
+shrinkWaitStm :: ([Stm], [Stm]) -> Writer [[Stm]] ()
+shrinkWaitStm (_, [])         = return ()
+shrinkWaitStm (front, (x:xs)) = case x of
+  While c bdy -> do let bdys = execWriter $ shrinkWaitStm ([], bdy)
+                    sequence_ [ tell [front ++ [While c bdy'] ++ xs]
+                              | bdy' <- bdys]
+                    shrinkWaitStm (front ++ [x], xs)
+  
+  Wait refs -> do let sublists = filter (not . null) $ map (\r -> delete r refs) refs
+                  forM_ sublists $ \sublist -> tell [front ++ [Wait sublist] ++ xs]
+                  shrinkWaitStm (front ++ [x], xs)
+ 
+  _ -> shrinkWaitStm (front ++ [x], xs)
 
 {-***** Shrinking fork sizes *****-}
 
@@ -460,12 +516,11 @@ shrinkForksProcedure p = let bdys = execWriter $ shrinkForkStm ([], body p)
 shrinkForkStm :: ([Stm], [Stm]) -> Writer [[Stm]] ()
 shrinkForkStm (_, [])         = return ()
 shrinkForkStm (front, (x:xs)) = case x of
-  -- don't need to take care of if here I think, because the shrinking if step
-  -- will make sure that the shrinking algorithm considers shrinking forks in ifs?
   While c bdy  -> do let bdys = execWriter $ shrinkForkStm ([], bdy)
-                     sequence_ [ do tell [front ++ [While c bdy'] ++ xs]
-                                    shrinkForkStm (front ++ [While c bdy'], xs)
+                     sequence_ [ tell [front ++ [While c bdy'] ++ xs]
                                | bdy' <- bdys]
+                     shrinkForkStm (front ++ [x], xs)
+
   Fork procs   -> do
     let procss = filter (not . null) $ map (\f -> delete f procs) procs
     tell $ map (\ps -> front ++ [Fork ps] ++ xs) procss
@@ -473,3 +528,173 @@ shrinkForkStm (front, (x:xs)) = case x of
   _ -> shrinkForkStm (front ++ [x], xs)
 
 {-***** Shrinking procedure arity *****-}
+
+-- | For every procedure in the program, create n new programs where n is the arity
+-- of that procedure. Each mutation has arity (n-1).
+shrinkArity :: Program -> [Program]
+shrinkArity p = 
+        -- newproc = procedure with 1 less argument
+  [ let newproc  = proc' { arguments = delete arg (arguments proc')
+                         , body      = shrinkProcedureBody (name proc') a i (body proc')
+                         }
+
+        -- compute the rest of the procedure-bodies, where the arity in
+        -- fork calls to the changed procedure are altered.
+        withoutn = Map.toList $ Map.delete n (funs p)
+        newfuns  = for withoutn $ \(f,pr) ->
+                     (f, pr { body = removeArityFromCalls n i (body pr)})
+
+        -- new funs map for the program
+        funs'    = Map.insert n newproc $ Map.fromList newfuns
+
+        -- construct the new program.
+    in p { args = if (main p) == n then removeNth i (args p) else (args p)
+         , funs = funs'
+         }
+
+  | (n,proc') <- Map.toList (funs p)
+  , (arg@(a,t),i) <- zip (arguments proc') [0..]
+  ]
+
+-- | If we have removed the i:th argument from a procedure this function will
+-- traverse a program and remove the i:th argument from any fork-point where
+-- the mutated process is forked.
+removeArityFromCalls :: String -> Int -> [Stm] -> [Stm]
+removeArityFromCalls _ _ []     = []
+removeArityFromCalls n i (x:xs) = case x of
+  If c thn els -> If c
+                    (removeArityFromCalls n i thn)
+                    (removeArityFromCalls n i els) : removeArityFromCalls n i xs
+
+  While c bdy -> While c (removeArityFromCalls n i bdy) : removeArityFromCalls n i xs
+
+  Fork procs -> let procs' = for procs $ \(n',args) ->
+                                if n' == n then (n, removeNth i args) else (n,args)
+                in Fork procs' : removeArityFromCalls n i xs
+
+  _ -> x : removeArityFromCalls n i xs
+
+
+type ShrinkM a = Reader ShrinkSt a
+data ShrinkSt = St { procname :: String    -- ^ Name of the procedure we are shrinking
+                   , toremove :: String    -- ^ Name of argument to remove
+                   , ordinal  :: Int       -- ^ Number the argument was
+                   , badvars  :: [String]  -- ^ Variables that are not valid
+                   }
+
+class Named a where
+  getName :: a -> String
+
+instance Named Name where
+  getName n = getVarName n
+
+instance Named Ref where
+  getName (r,t) = r
+
+shrinkProcedureBody :: String -> String -> Int -> [Stm] -> [Stm]
+shrinkProcedureBody f n i xs = runReader (shrinkArityStm xs) (St f n i [])
+  where
+     shrinkArityStm :: [Stm] -> ShrinkM [Stm]
+     shrinkArityStm []     = return []
+     shrinkArityStm (x:xs) = case x of
+       NewRef n t e -> do
+         e' <- alterExp e
+         (:) (NewRef n t e') <$> shrinkArityStm xs
+
+       GetRef n t r -> do
+         b <- isOK r
+         if b
+           then (:) x <$> shrinkArityStm xs
+           else tag n $ shrinkArityStm xs
+
+       SetRef r e -> do
+         b <- isOK r
+         if b
+           then do e' <- alterExp e
+                   (:) (SetRef r e') <$> shrinkArityStm xs
+           else shrinkArityStm xs
+
+       SetLocal n t e -> do
+         b <- isOK n
+         if b
+           then do e' <- alterExp e
+                   (:) (SetLocal n t e') <$> shrinkArityStm xs
+           else tag n $ shrinkArityStm xs
+
+       If c thn els -> do
+         c' <- alterExp c
+         thn' <- shrinkArityStm thn
+         els' <- shrinkArityStm els
+         (:) (If c' thn' els') <$> shrinkArityStm xs
+
+       While c bdy -> do
+         c' <- alterExp c
+         bdy' <- shrinkArityStm bdy
+         (:) (While c' bdy') <$> shrinkArityStm xs
+
+       Skip -> (:) Skip <$> shrinkArityStm xs
+
+       After d r v -> do
+         b <- isOK r
+         if b
+           then do d' <- alterExp d
+                   v' <- alterExp v
+                   (:) (After d' r v') <$> shrinkArityStm xs
+           else shrinkArityStm xs
+
+       Changed n t r -> do
+         b <- isOK r
+         if b
+           then (:) (Changed n t r) <$> shrinkArityStm xs
+           else tag n $ shrinkArityStm xs
+
+       Wait references -> do
+         references' <- filterM isOK references
+         if null references'
+           then shrinkArityStm xs
+           else (:) (Wait references') <$> shrinkArityStm xs
+
+       Fork procs -> do
+         procs' <- forM procs fork
+         (:) (Fork procs') <$> shrinkArityStm xs
+
+     alterExp :: SSMExp -> ShrinkM SSMExp
+     alterExp e = case e of
+       Var t n        -> do bads <- asks badvars
+                            if n `elem` bads
+                              then return $ defaultVal t
+                              else return $ Var t n
+       UOp t e op     -> do
+         e' <- alterExp e
+         return $ UOp t e' op
+       BOp t e1 e2 op -> do
+         e1' <- alterExp e1
+         e2' <- alterExp e2
+         return $ BOp t e1' e2' op
+       _              -> return e
+
+     defaultVal :: Type -> SSMExp
+     defaultVal TInt  = Lit TInt $ LInt 1
+     defaultVal TBool = Lit TBool $ LBool True
+
+     fork :: (String, [Either SSMExp Reference])
+          -> ShrinkM (String, [Either SSMExp Reference])
+     fork (n, args) = do
+       n' <- asks procname
+       if n' == n
+         then do num <- asks ordinal
+                 return (n, removeNth num args)
+         else return (n, args)
+
+     isOK :: Named a => a -> ShrinkM Bool
+     isOK a = do
+       bad <- asks toremove
+       return $ bad /= (getName a)
+
+     tag :: Named a => a -> ShrinkM b -> ShrinkM b
+     tag a ma = local (\st -> st { badvars = getName a : badvars st }) ma
+
+removeNth :: Show a => Int -> [a] -> [a]
+removeNth 0 []     = error "can not remove from empty list"
+removeNth 0 (_:xs) = xs
+removeNth n (x:xs) = x : removeNth (n-1) xs
