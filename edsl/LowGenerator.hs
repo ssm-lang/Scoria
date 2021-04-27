@@ -293,7 +293,19 @@ testprogram5 = Program "fun1" [ Left (Lit TBool (LInt 5))
                              )
                             ]
                      ]
-    )]
+    ),("fun2",
+    Procedure "fun2" [("var1", TInt)] [ NewRef (Fresh "v0") (Ref TInt) (Lit TInt (LInt 5))
+                                      , Fork [("fun1", [ Left (Var TInt "var1")
+                                                       , Right ("v0", Ref TInt)])]])]
+
+testbdy :: [Stm]
+testbdy = [ NewRef (Fresh "v0") (Ref TInt) (Lit TInt (LInt 5))
+          , Fork [("fun1", [ Left (Var TInt "var1")
+                           , Right ("v0", Ref TInt)
+                           ]
+                  )
+                 ]
+          ]
 
 {-****** Removing declared references *****-}
 
@@ -569,11 +581,24 @@ removeArityFromCalls n i (x:xs) = case x of
   While c bdy -> While c (removeArityFromCalls n i bdy) : removeArityFromCalls n i xs
 
   Fork procs -> let procs' = for procs $ \(n',args) ->
-                                if n' == n then (n, removeNth i args) else (n,args)
+                      if n' == n
+                        then (n, sanitizeArgs $ removeNth i args)
+                        else (n, sanitizeArgs args)
                 in Fork procs' : removeArityFromCalls n i xs
 
   _ -> x : removeArityFromCalls n i xs
-
+  where
+    sanitizeArgs :: [Either SSMExp Reference] -> [Either SSMExp Reference]
+    sanitizeArgs args = for args $ \a -> case a of
+      Left e  -> Left $ mapExp e
+      Right r -> Right r
+    
+    mapExp :: SSMExp -> SSMExp
+    mapExp e = case e of
+      Var t name     -> if name == n then defaultVal t else e
+      Lit t l        -> Lit t l
+      UOp t e op     -> UOp t (mapExp e) op
+      BOp t e1 e2 op -> BOp t (mapExp e1) (mapExp e2) op
 
 type ShrinkM a = Reader ShrinkSt a
 data ShrinkSt = St { procname :: String    -- ^ Name of the procedure we are shrinking
@@ -591,7 +616,12 @@ instance Named Name where
 instance Named Ref where
   getName (r,t) = r
 
-shrinkProcedureBody :: String -> String -> Int -> [Stm] -> [Stm]
+-- | This function rewrites a procedure body to account for a removed procedure argument.
+shrinkProcedureBody :: String  -- ^ Name of the function we are rewriting.
+                    -> String  -- ^ Name of the argument we removed.
+                    -> Int     -- ^ Position of the argument in the argument list.
+                    -> [Stm]   -- ^ Procedure body to rewrite.
+                    -> [Stm]
 shrinkProcedureBody f n i xs = runReader (shrinkArityStm xs) (St f n i [])
   where
      shrinkArityStm :: [Stm] -> ShrinkM [Stm]
@@ -655,13 +685,18 @@ shrinkProcedureBody f n i xs = runReader (shrinkArityStm xs) (St f n i [])
            else (:) (Wait references') <$> shrinkArityStm xs
 
        Fork procs -> do
-         procs' <- forM procs fork
-         (:) (Fork procs') <$> shrinkArityStm xs
+         procs' <- (map fromJust . filter isJust) <$> mapM fork procs
+         if null procs'
+           then shrinkArityStm xs
+           else (:) (Fork procs') <$> shrinkArityStm xs
 
+     -- | Traverse an expression replace all usages of invalid variables with
+     -- new default values.
      alterExp :: SSMExp -> ShrinkM SSMExp
      alterExp e = case e of
        Var t n        -> do bads <- asks badvars
-                            if n `elem` bads
+                            tor  <- asks toremove
+                            if n `elem` bads || n == tor
                               then return $ defaultVal t
                               else return $ Var t n
        UOp t e op     -> do
@@ -673,28 +708,54 @@ shrinkProcedureBody f n i xs = runReader (shrinkArityStm xs) (St f n i [])
          return $ BOp t e1' e2' op
        _              -> return e
 
-     defaultVal :: Type -> SSMExp
-     defaultVal TInt  = Lit TInt $ LInt 1
-     defaultVal TBool = Lit TBool $ LBool True
-
+     -- | Convert a fork-call to the same one but where the i:th argument has
+     -- been removed. Which argument should be removed is known in the state
+     -- of the monadic compuation.
      fork :: (String, [Either SSMExp Reference])
-          -> ShrinkM (String, [Either SSMExp Reference])
+          -> ShrinkM (Maybe (String, [Either SSMExp Reference]))
      fork (n, args) = do
        n' <- asks procname
-       if n' == n
-         then do num <- asks ordinal
-                 return (n, removeNth num args)
-         else return (n, args)
+       args' <- alterArgs args
+       case args' of
+         Just newargs -> do
+           if n' == n
+             then asks ordinal >>= \i -> return $ Just (n, removeNth i newargs)
+             else return $ Just $ (n, newargs)
+         Nothing      -> return Nothing
 
+     alterArgs :: [Either SSMExp Reference] -> ShrinkM (Maybe [Either SSMExp Reference])
+     alterArgs xs = do
+       xs' <- mapM alterArg xs
+       if all isJust xs'
+         then return $ Just $ map fromJust xs'
+         else return Nothing
+
+     alterArg :: Either SSMExp Reference -> ShrinkM (Maybe (Either SSMExp Reference))
+     alterArg (Left e)  = (Just . Left) <$> alterExp e
+     alterArg (Right r) = do
+       tor <- asks toremove
+       if fst r == tor
+         then return Nothing
+         else return $ Just $ Right r
+
+     -- | Is the named entity okay to keep? The entity is either a variable of
+     -- a reference.
      isOK :: Named a => a -> ShrinkM Bool
      isOK a = do
        bad <- asks toremove
        return $ bad /= (getName a)
 
+     -- | Extend the environment with the name of a as a bad variable name.
      tag :: Named a => a -> ShrinkM b -> ShrinkM b
      tag a ma = local (\st -> st { badvars = getName a : badvars st }) ma
 
+-- | Remove the n:th element from a list, with the first element being indexed as 0.
 removeNth :: Show a => Int -> [a] -> [a]
 removeNth 0 []     = error "can not remove from empty list"
 removeNth 0 (_:xs) = xs
 removeNth n (x:xs) = x : removeNth (n-1) xs
+
+-- | Returns a default value for a type. Does not work for reference types.
+defaultVal :: Type -> SSMExp
+defaultVal TInt  = Lit TInt $ LInt 1
+defaultVal TBool = Lit TBool $ LBool True
