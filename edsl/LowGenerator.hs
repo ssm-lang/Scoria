@@ -298,15 +298,34 @@ testprogram5 = Program "fun1" [ Left (Lit TBool (LInt 5))
                                       , Fork [("fun1", [ Left (Var TInt "var1")
                                                        , Right ("v0", Ref TInt)])]])]
 
-testbdy :: [Stm]
-testbdy = [ NewRef (Fresh "v0") (Ref TInt) (Lit TInt (LInt 5))
-          , Fork [("fun1", [ Left (Var TInt "var1")
-                           , Right ("v0", Ref TInt)
-                           ]
-                  )
-                 ]
-          ]
+testprogram6 :: Program
+testprogram6 = Program "fun2" [] $ Map.fromList
+                              [ ("fun1", Procedure "fun1"
+                                          []
+                                          [Fork [("fun2", [])]]
+                                )
+                              , ("fun2", Procedure "fun2"
+                                          []
+                                          [Fork [("fun1", []), ("fun2", [])]]
+                                )
+                              ]
 
+testprogram7 :: Program
+testprogram7 = Program "fun1" [Right ("dummy", Ref TInt)] $ Map.fromList
+                              [("fun1", Procedure "fun1" [("ref3", Ref TInt)]
+                                                         [ GetRef (Fresh "v0") TInt ("ref3", Ref TInt)
+                                                         , SetLocal (Fresh "v0") TInt (Lit TInt $ LInt 5)
+                                                         , After (Lit TInt $ LInt 20) ("ref3", Ref TInt) (Lit TInt $ LInt 5)
+                                                         ])]
+
+{- need another program with
+
+f(a&)
+  v0 <- deref a
+  v0 <~ 5
+  after 5 a 10
+
+-}
 {-****** Removing declared references *****-}
 
 shrinkRefs :: Program -> [Program]
@@ -582,8 +601,8 @@ removeArityFromCalls n i (x:xs) = case x of
 
   Fork procs -> let procs' = for procs $ \(n',args) ->
                       if n' == n
-                        then (n, sanitizeArgs $ removeNth i args)
-                        else (n, sanitizeArgs args)
+                        then (n', sanitizeArgs $ removeNth i args)
+                        else (n', sanitizeArgs args)
                 in Fork procs' : removeArityFromCalls n i xs
 
   _ -> x : removeArityFromCalls n i xs
@@ -742,8 +761,9 @@ shrinkProcedureBody f n i xs = runReader (shrinkArityStm xs) (St f n i [])
      -- a reference.
      isOK :: Named a => a -> ShrinkM Bool
      isOK a = do
-       bad <- asks toremove
-       return $ bad /= (getName a)
+       bad  <- asks toremove
+       bads <- asks badvars
+       return $ not $ getName a `elem` bad:bads
 
      -- | Extend the environment with the name of a as a bad variable name.
      tag :: Named a => a -> ShrinkM b -> ShrinkM b
