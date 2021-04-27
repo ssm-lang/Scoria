@@ -34,8 +34,10 @@ type Ref     = (String, Type)
 instance Arbitrary Program where
   shrink p = concat [ shrinkProcedures p  -- Shrink number of functions
                     , shrinkArity p       -- Shrink procedure arity (writing this right now)
+                    , shrinkAllStmts p    -- Shrink by removing statements that effectively
+                                          -- have type () (fork, wait etc).
+                    , shrinkForks p       -- Shrink fork statements (fork less things)
                     , shrinkIf p          -- Flatten if's (every if becomes two new programs)
-                    , shrinkForks p       -- Shrink fork statements
                     , shrinkRefs p        -- Shrink number of declared refs
                     , shrinkWait p        -- Shrink wait statements
                     ]
@@ -300,13 +302,9 @@ testprogram5 = Program "fun1" [ Left (Lit TBool (LInt 5))
 
 testprogram6 :: Program
 testprogram6 = Program "fun2" [] $ Map.fromList
-                              [ ("fun1", Procedure "fun1"
+                              [ ("fun2", Procedure "fun2"
                                           []
-                                          [Fork [("fun2", [])]]
-                                )
-                              , ("fun2", Procedure "fun2"
-                                          []
-                                          [Fork [("fun1", []), ("fun2", [])]]
+                                          [Fork [("fun2", []), ("fun2", [])]]
                                 )
                               ]
 
@@ -779,3 +777,45 @@ removeNth n (x:xs) = x : removeNth (n-1) xs
 defaultVal :: Type -> SSMExp
 defaultVal TInt  = Lit TInt $ LInt 1
 defaultVal TBool = Lit TBool $ LBool True
+
+{-***** Remove unit-statements *****-}
+
+-- | Return a list of new programs that are smaller by removing statements.
+shrinkAllStmts :: Program -> [Program]
+shrinkAllStmts p = [ p { funs = Map.insert n proc'' (funs p) }
+                   | (n,proc') <- Map.toList (funs p)
+                   , proc''    <- shrinkAllStmtsProcedure proc']
+
+-- | Return a list of new procedures where the procedure is mutated by removing
+-- statements.
+shrinkAllStmtsProcedure :: Procedure -> [Procedure]
+shrinkAllStmtsProcedure p = [ p { body = bdy } 
+                            | bdy <- execWriter $ shrinkBody ([], body p)]
+
+-- | Shrink the statements of a procedure body. SetRef, SetLocal, If, While, Skip,
+-- After, Wait and Fork can be 'safely' removed, where safely means that the rest of
+-- the program is still type safe.
+shrinkBody :: ([Stm], [Stm]) -> Writer [[Stm]] ()
+shrinkBody (_, [])         = return ()
+shrinkBody (front, (x:xs)) = case x of
+  SetRef _ _     -> emitPartial >> continue
+  SetLocal _ _ _ -> emitPartial >> continue
+  If c thn els   -> let thns = execWriter $ shrinkBody ([], thn)
+                        elss = execWriter $ shrinkBody ([], els)
+                    in do sequence [ tell [front ++ [If c thn' els] ++ xs] | thn' <- thns ]
+                          sequence [ tell [front ++ [If c thn els'] ++ xs] | els' <- elss ]
+                          continue
+  While c bdy    -> let bdys = execWriter $ shrinkBody ([], bdy)
+                    in do sequence [ tell [front ++ [While c bdy'] ++ xs] | bdy' <- bdys ]
+                          continue
+  Skip           -> continue
+  After _ _ _    -> emitPartial >> continue
+  Wait _         -> emitPartial >> continue
+  Fork _         -> emitPartial >> continue
+  _              -> continue
+  where
+    emitPartial :: Writer [[Stm]] ()
+    emitPartial = tell [front ++ xs]
+
+    continue :: Writer [[Stm]] ()
+    continue = shrinkBody (front ++ [x], xs)
