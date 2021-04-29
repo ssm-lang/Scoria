@@ -636,7 +636,7 @@ mainIR p c = [ Function Void "top_return" [("act", Pointer $ Act "")] [Return]
           Literal 4 $ concat ["printf(\"result ", r, " ", formatter t, "\\n\", ", r, ".value)"]
       
       formatter :: Type -> String
-      formatter (Ref TInt)  = "int %u"
+      formatter (Ref TInt)  = "int %d"
       formatter (Ref TBool) = "bool %d"
 
       debugprint :: Int -> IR
