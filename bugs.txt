@@ -103,3 +103,11 @@ just kept on evaluating everything after the if. Clearly an issue.
 Found bug in the interpreter where I had forgotten to make the interpreter output the final result
 of the input variables once the program had finished executiing. The traces between the two different
 runs did not share the same suffix.
+
+11)
+
+Found a bug in the interpreter where it did not print the outputreferences in the end properly. It
+only worked if the process the program started evaluating first was also the last one to be
+evaluated before the program terminated. If the last statement executed by any process in the
+program is a blocking one, and the entrypoint was not in the readyqueue, it would not print the
+state of the inputreferences properly.
