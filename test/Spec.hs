@@ -1,6 +1,6 @@
-
+{-# LANGUAGE ScopedTypeVariables #-}
 import Evaluation
-import Frontend
+--import Frontend
 --import Interpreter
 import LowCore hiding (main)
 import Trace
@@ -11,9 +11,20 @@ import LowCodeGen
 import Fib
 import NonTerminate
 
+import Control.Exception hiding (assert)
+import Control.Concurrent.Async
+import System.Timeout
+import Data.IORef
 import Data.List
+import Data.Maybe
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
+import System.IO.Unsafe
+
+trace :: Show a => a -> a
+trace x = unsafePerformIO $ putStrLn (show x) >> return x
+
+
 
 main :: IO ()
 main = do
@@ -79,7 +90,7 @@ testSingle :: Program -> IO Report
 testSingle program = do
     report1   <- runCG program
     case report1 of
-        Generated trace1 -> do let trace2 = take (length trace1) $ runInterpreter program
+        Generated trace1 -> do trace2 <- take (length trace1) <$> safeInterpreter program
                                if trace1 /= trace2
                                    then return $ Bad trace1 trace2
                                    else return $ Good
@@ -102,3 +113,65 @@ errorStr xs ys = unlines $ zipWith (\x y -> padTo xsmax x ++ padTo ysmax y ++ in
               then "" 
               else " <----- different" 
           else ""
+
+
+safeInterpreter :: Program -> IO Output
+safeInterpreter p = do
+    timeoutEval $ runInterpreter p
+
+timeoutEval :: Output -> IO Output
+timeoutEval xs = do
+    ref <- newIORef []
+    xs' <- timeout 5000000 $ try $ eval xs ref
+    case xs' of
+        Just (Left (e :: SomeException)) -> modifyIORef ref (Crash :)
+        _ -> return ()
+    reverse <$> readIORef ref
+
+eval :: [a] -> IORef [a] -> IO ()
+eval [] ref     = return ()
+eval (x:xs) ref = do
+    y <- evaluate x
+    modifyIORef ref (y :)
+    eval xs ref
+    
+{-
+    case ys of
+        Left (e :: SomeException) -> return () -- TODO signal error 
+        Right []     -> return ()
+        Right (x:xs) -> do y <- try $ evaluate x
+                           case y of
+                               Left (e :: SomeException) -> return () -- TODO signal error
+                               Right y' -> do ys <- eval xs
+                                              modifyIORef (y' :) ref
+-}
+
+{-
+
+safeInterpreter :: Program -> IO Output
+safeInterpreter p = do
+    ref <- newIORef []
+    h   <- async $ tout ref p
+    wait h
+    readIORef ref
+  where
+      loop :: Output -> IORef Output -> IO ()
+      loop [] _   = return ()
+      loop xs ref = do
+          catch (do modifyIORef ref (\res -> res ++ take 10 xs)
+                    loop (drop 10 xs) ref)
+                (\(e :: SomeException) -> return ())
+        
+      tout ref p = do timeout 500000 $ let xs = runInterpreter p
+                                       in loop xs ref
+                      return ()
+                      -}
+
+{-
+
+forkafter:
+  - forkafter måste ha dummy parent
+  - forkfter64 - forkandcontinue
+  - Kolla om det går att göra det generellt, annars hårdkoda continue-and-fork-after-64
+
+-}

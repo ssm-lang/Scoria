@@ -20,6 +20,7 @@ data OutputEntry = Instant Int Int      -- ^ now, size of eventqueue
                  | Event Int SSMExp     -- ^ now, new variable value
                  | Fork [String]        -- ^ Fork call, names of forked procedures
                  | Result String SSMExp -- ^ variable name and final value
+                 | Crash
   deriving (Show, Eq, Generic, NFData)
 
 type Output = [OutputEntry]
