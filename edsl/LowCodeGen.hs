@@ -696,7 +696,7 @@ irToC ir = flip mapM_ ir $ \x -> case x of
     IncPC i         -> emit $ concat ["act->pc = ", show i, ";"]
     Return          -> emit "return;"
     ReturnEnter     -> emit "return act;"
-    DebugPrint str  -> emit $ concat ["DEBUG_PRINT(\"", str, "\")"]
+    DebugPrint str  -> emit $ concat ["DEBUG_PRINT(\"", str, "\");"]
 
     Initialize bt var   ->
         emit $ concat ["initialize_", show bt, "(", var, ");"]
@@ -721,6 +721,10 @@ irToC ir = flip mapM_ ir $ \x -> case x of
         indent $ do
             let new_depth = ceiling (logBase 2 (fromIntegral (length funs)))
             emit $ concat ["uint8_t new_depth = act->depth - ", show new_depth,";"]
+            emit "if((int8_t) new_depth < 0) {"
+            indent $ do irToC $ [DebugPrint "crash\\n"]
+                        emit "exit(1);"
+            emit "}"
             emit "uint32_t pinc = 1 << new_depth;"
             emit "uint32_t new_priority = act->priority;"
             intercalateM (emit "new_priority += pinc;") $ flip map funs $ \(fun,args) -> do

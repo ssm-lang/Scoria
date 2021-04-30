@@ -53,7 +53,7 @@ parseLine inp = toMaybe $ parse (choice [pEvent, pInstant, pResult, pFork]) "" (
       toMaybe (Right b) = Just b
 
 pTrace :: Parser Output
-pTrace = many $ choice [pEvent, pInstant, pResult, pFork]
+pTrace = many $ choice [pEvent, pInstant, pResult, pFork, pCrash]
 
 pFork :: Parser OutputEntry
 pFork = do
@@ -63,6 +63,13 @@ pFork = do
     procs <- some (try pIdent)
     pSpace
     return $ Fork procs
+
+pCrash :: Parser OutputEntry
+pCrash = do
+    pSpace
+    pSymbol "crash"
+    pSpace
+    return Crash
 
 pEvent :: Parser OutputEntry
 pEvent = do
@@ -104,6 +111,7 @@ pIdent = do
       keywords :: [String]
       keywords = [ "event"
                  , "fork"
+                 , "crash"
                  , "now"
                  , "result"
                  , "eventqueuesize"
