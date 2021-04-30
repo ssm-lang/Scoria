@@ -12,7 +12,6 @@ import Fib
 import NonTerminate
 
 import Control.Exception hiding (assert)
-import Control.Concurrent.Async
 import System.Timeout
 import Data.IORef
 import Data.List
