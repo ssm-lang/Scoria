@@ -145,3 +145,18 @@ fun3()
 
 It is easy to see that it should first perform the update at time 2, and then the update at time 5. The
 interpreter did it in the other order, meaning there's a bug in the interpreter.
+
+The bug was in the nextEventTime function, which is supposed to return the time of the next event scheduled
+to happen.
+
+This is the old version:
+-- | Inspects the eventqueue and returns the next event time.
+nextEventTime :: Interp s Int
+nextEventTime = do
+    evs <- gets events
+    return $ foldl max 0 (map at evs)
+
+Clearly it does the exact opposite, which is proof that there is more than an insignificant amount of
+neanderthal DNA in me. The fix is to get the minimum instead.
+
+return $ foldl min maxBound (map at evs)
