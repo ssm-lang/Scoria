@@ -111,3 +111,8 @@ only worked if the process the program started evaluating first was also the las
 evaluated before the program terminated. If the last statement executed by any process in the
 program is a blocking one, and the entrypoint was not in the readyqueue, it would not print the
 state of the inputreferences properly.
+
+12)
+
+Found a bug in the codegenerator where the state of the inputreferences to the program was printed
+incorrectly. Integers were printed with the formatter %u while it should have been %d.
