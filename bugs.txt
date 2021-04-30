@@ -116,3 +116,32 @@ state of the inputreferences properly.
 
 Found a bug in the codegenerator where the state of the inputreferences to the program was printed
 incorrectly. Integers were printed with the formatter %u while it should have been %d.
+
+13)
+
+It managed to shrink a true monster of a program down to this very short one that produced a bug:
+
+Program:
+  entrypoint: fun17
+  arguments: [Right ("ref9",Ref TBool)]
+
+fun17(("ref9",Ref TBool))
+  NewRef (Fresh "v5") (Ref TBool) ((1 < -9) == (1 == 1))
+  After ((((- 1) * (1 + 1)) * ((- 1) * (1 + 1))) + 1) ("ref9",Ref TBool) (1 < 1)
+  After (((1 * 1) * (1 * 1)) + 1) ("v5",Ref TBool) (1 < 1)
+fun3()
+
+After rewriting the expressions to a more readable format we get:
+
+Program:
+  entrypoint: fun17
+  arguments: [Right ("ref9",Ref TBool)]
+
+fun17(("ref9",Ref TBool))
+  NewRef (Fresh "v5") (Ref TBool) false
+  After 5 ("ref9",Ref TBool) false
+  After 2 ("v5",Ref TBool) false
+fun3()
+
+It is easy to see that it should first perform the update at time 2, and then the update at time 5. The
+interpreter did it in the other order, meaning there's a bug in the interpreter.

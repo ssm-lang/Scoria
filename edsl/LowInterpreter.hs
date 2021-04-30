@@ -427,7 +427,7 @@ enqueue p = modify $ \st -> st { readyQueue = insert p (readyQueue st)}
 nextEventTime :: Interp s Int
 nextEventTime = do
     evs <- gets events
-    return $ foldl max 0 (map at evs)
+    return $ foldl min maxBound (map at evs)
 
 -- | Return the next instruction of the current process if one exists.
 popInstruction :: Interp s (Maybe Stm)

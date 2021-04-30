@@ -316,13 +316,37 @@ testprogram7 = Program "fun1" [Right ("dummy", Ref TInt)] $ Map.fromList
                                                          , After (Lit TInt $ LInt 20) ("ref3", Ref TInt) (Lit TInt $ LInt 5)
                                                          ])]
 
-{- need another program with
+testprogram8 :: Program
+testprogram8 = Program "fun1" [Right ("ref1", Ref TBool)] $ Map.fromList
+    [("fun1", Procedure "fun1" [("ref1", Ref TBool)] [])]
 
-f(a&)
-  v0 <- deref a
-  v0 <~ 5
-  after 5 a 10
+testprogram9 :: Program
+testprogram9 = Program "fun3" [Right ("ref1", Ref TInt)] $ Map.fromList $
+    [ ("fun3", Procedure "fun3" [("ref1", Ref TInt)] [ Fork [("fun5", [Right ("ref1", Ref TInt)])] ])
+    , ("fun5", Procedure "fun5" [("ref2", Ref TInt)] [ Wait [("ref2", Ref TInt)] ])
+    ]
 
+testprogram10 :: Program
+testprogram10 = Program "fun17" [Right ("ref9", Ref TBool)] $ Map.fromList
+                  [ ("fun17", Procedure "fun17" [("ref9", Ref TBool)]
+                                                [ NewRef (Fresh "v5") (Ref TBool) (Lit TBool (LBool False))
+                                                , After (Lit TInt (LInt 5)) ("ref9", Ref TBool) (Lit TBool (LBool False))
+                                                , After (Lit TInt (LInt 2)) ("v5", Ref TBool) (Lit TBool (LBool False))
+                                                ])
+                  , ("fun3",  Procedure "fun3" [] [])
+                  ]
+
+{-
+
+Program:
+  entrypoint: fun17
+  arguments: [Right ("ref9",Ref TBool)]
+
+fun17(("ref9",Ref TBool))
+  NewRef (Fresh "v5") (Ref TBool) false
+  After 5 ("ref9",Ref TBool) false
+  After 2 ("v5",Ref TBool) false
+fun3()
 -}
 {-****** Removing declared references *****-}
 
