@@ -521,16 +521,18 @@ shrinkIfProcedure p = let bodys = execWriter $ shrinkIfStm ([], body p)
                       in for bodys $ \bdy -> p { body = bdy }
 
 shrinkIfStm :: ([Stm],[Stm]) -> Writer [[Stm]] ()
-shrinkIfStm (_,[])          = return ()
-shrinkIfStm (front, (x:xs)) = case x of
-  If c thn els -> do tell [front ++ thn ++ xs, front ++ els ++ xs]
-                     shrinkIfStm (front ++ [x], xs)
+shrinkIfStm (_,[])           = return ()
+shrinkIfStm (rfront, (x:xs)) = case x of
+  If c thn els -> do let front = reverse rfront
+                     tell [front ++ thn ++ xs, front ++ els ++ xs]
+                     shrinkIfStm (x : rfront, xs)
   -- I am not sure about this step. Is it small enough? Ask Koen!
   While c bdy -> do let bdys = execWriter $ shrinkIfStm ([], bdy)
+                    let front = reverse rfront
                     sequence_ [ tell [front ++ [While c bdy'] ++ xs]
                               | bdy' <- bdys]
-                    shrinkIfStm (front ++ [x], xs)
-  _ -> shrinkIfStm (front ++ [x], xs)
+                    shrinkIfStm (x : rfront, xs)
+  _ -> shrinkIfStm (x : rfront, xs)
 
 {-***** Shrinking wait instructions *****-}
 
@@ -543,18 +545,20 @@ shrinkWaitProcedure p = let bodys = execWriter $ shrinkWaitStm ([], body p)
                          in for bodys $ \bdy -> p { body = bdy }
 
 shrinkWaitStm :: ([Stm], [Stm]) -> Writer [[Stm]] ()
-shrinkWaitStm (_, [])         = return ()
-shrinkWaitStm (front, (x:xs)) = case x of
+shrinkWaitStm (_, [])          = return ()
+shrinkWaitStm (rfront, (x:xs)) = case x of
   While c bdy -> do let bdys = execWriter $ shrinkWaitStm ([], bdy)
+                    let front = reverse rfront
                     sequence_ [ tell [front ++ [While c bdy'] ++ xs]
                               | bdy' <- bdys]
-                    shrinkWaitStm (front ++ [x], xs)
+                    shrinkWaitStm (x : rfront, xs)
   
   Wait refs -> do let sublists = filter (not . null) $ map (\r -> delete r refs) refs
+                  let front = reverse rfront
                   forM_ sublists $ \sublist -> tell [front ++ [Wait sublist] ++ xs]
-                  shrinkWaitStm (front ++ [x], xs)
+                  shrinkWaitStm (x : rfront, xs)
  
-  _ -> shrinkWaitStm (front ++ [x], xs)
+  _ -> shrinkWaitStm (x : rfront, xs)
 
 {-***** Shrinking fork sizes *****-}
 
@@ -567,18 +571,20 @@ shrinkForksProcedure p = let bdys = execWriter $ shrinkForkStm ([], body p)
                          in map (\bdy -> p { body = bdy } ) bdys
 
 shrinkForkStm :: ([Stm], [Stm]) -> Writer [[Stm]] ()
-shrinkForkStm (_, [])         = return ()
-shrinkForkStm (front, (x:xs)) = case x of
+shrinkForkStm (_, [])          = return ()
+shrinkForkStm (rfront, (x:xs)) = case x of
   While c bdy  -> do let bdys = execWriter $ shrinkForkStm ([], bdy)
+                     let front = reverse rfront
                      sequence_ [ tell [front ++ [While c bdy'] ++ xs]
                                | bdy' <- bdys]
-                     shrinkForkStm (front ++ [x], xs)
+                     shrinkForkStm (x : rfront, xs)
 
   Fork procs   -> do
     let procss = filter (not . null) $ map (\f -> delete f procs) procs
+    let front = reverse rfront
     tell $ map (\ps -> front ++ [Fork ps] ++ xs) procss
-    shrinkForkStm (front ++ [x], xs)
-  _ -> shrinkForkStm (front ++ [x], xs)
+    shrinkForkStm (x : rfront, xs)
+  _ -> shrinkForkStm (x : rfront, xs)
 
 {-***** Shrinking procedure arity *****-}
 
@@ -820,16 +826,18 @@ shrinkAllStmtsProcedure p = [ p { body = bdy }
 -- After, Wait and Fork can be 'safely' removed, where safely means that the rest of
 -- the program is still type safe.
 shrinkBody :: ([Stm], [Stm]) -> Writer [[Stm]] ()
-shrinkBody (_, [])         = return ()
-shrinkBody (front, (x:xs)) = case x of
+shrinkBody (_, [])          = return ()
+shrinkBody (rfront, (x:xs)) = case x of
   SetRef _ _     -> emitPartial >> continue
   SetLocal _ _ _ -> emitPartial >> continue
   If c thn els   -> let thns = execWriter $ shrinkBody ([], thn)
                         elss = execWriter $ shrinkBody ([], els)
+                        front = reverse rfront
                     in do sequence [ tell [front ++ [If c thn' els] ++ xs] | thn' <- thns ]
                           sequence [ tell [front ++ [If c thn els'] ++ xs] | els' <- elss ]
                           continue
   While c bdy    -> let bdys = execWriter $ shrinkBody ([], bdy)
+                        front = reverse rfront
                     in do sequence [ tell [front ++ [While c bdy'] ++ xs] | bdy' <- bdys ]
                           continue
   Skip           -> continue
@@ -839,7 +847,7 @@ shrinkBody (front, (x:xs)) = case x of
   _              -> continue
   where
     emitPartial :: Writer [[Stm]] ()
-    emitPartial = tell [front ++ xs]
+    emitPartial = tell [reverse rfront ++ xs]
 
     continue :: Writer [[Stm]] ()
-    continue = shrinkBody (front ++ [x], xs)
+    continue = shrinkBody (x : rfront, xs)
