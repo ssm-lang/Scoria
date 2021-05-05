@@ -50,7 +50,7 @@ runCGValgrind p = do
                       return b
   where
       wrapValgrind :: Maybe (String -> (String, [String]))
-      wrapValgrind = Just $ \cmd -> ("valgrind", ["--error-exitcode=1", cmd])
+      wrapValgrind = Just $ \cmd -> ("valgrind", ["--error-exitcode=123", cmd])
 
 {-********** Utility functions for generating code and running tests **********-}
 
@@ -151,9 +151,12 @@ runExecutableCheckCode exec m = do
     let cmd'        = "./" ++ exec
     let (cmd, args) = maybe (cmd, []) (\f -> f cmd') m
     inDirectory testdir $ do
-        (_,_,_,p) <- createProcess (proc cmd args)
+        (_,_,_,p) <- createProcess (proc cmd args) { std_out = CreatePipe
+                                                   , std_err = CreatePipe
+                                                   }
         ex        <- waitForProcess p
-        return $ not $ ex == (ExitFailure 1)
+        print ex
+        return $ not $ ex == (ExitFailure 123)
 
 -- | Compile and run a test
 runTest :: Program -> IO (Either Report String)

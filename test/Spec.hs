@@ -33,7 +33,7 @@ main = do
 --        Left err -> putStrLn err
 --        Right _  -> putStrLn "test OK"
 
-    quickCheck (verboseShrinking prop_correct)
+--    quickCheck (verboseShrinking prop_correct)
     quickCheck (verboseShrinking prop_valgrind_ok)
 
 prop_correct :: Program -> Property

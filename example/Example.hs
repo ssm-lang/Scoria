@@ -32,3 +32,7 @@ testafter :: Ref Int -> SSM ()
 testafter = box "testafter" ["r"] $ \r -> do
   after 2 r 5
   after 3 r 10
+
+forktest :: Ref Int -> SSM ()
+forktest = box "forktest" ["r"] $ \r -> do
+  fork [ forktest r, forktest r]
