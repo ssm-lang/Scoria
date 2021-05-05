@@ -825,8 +825,9 @@ removeNth n (x:xs) = x : removeNth (n-1) xs
 
 -- | Returns a default value for a type. Does not work for reference types.
 defaultVal :: Type -> SSMExp
-defaultVal TInt  = Lit TInt $ LInt 1
-defaultVal TBool = Lit TBool $ LBool True
+defaultVal TInt   = Lit TInt $ LInt 1
+defaultVal TInt64 = Lit TInt64 $ LInt64 1
+defaultVal TBool  = Lit TBool $ LBool True
 
 {-***** Remove unit-statements *****-}
 
