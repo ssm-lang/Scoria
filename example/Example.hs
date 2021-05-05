@@ -27,3 +27,8 @@ example = box "example" ["r"] $ \r -> do
   after 1 r (v + 1)
   wait [r]
   fork [example r]
+
+testafter :: Ref Int -> SSM ()
+testafter = box "testafter" ["r"] $ \r -> do
+  after 2 r 5
+  after 3 r 10

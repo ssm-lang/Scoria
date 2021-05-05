@@ -206,6 +206,8 @@ compile p = unlines code
       header = [ "#include \"peng-platform.h\""
                , "#include \"peng.h\""
                , "#include <stdio.h>"
+               , "#include <pthread.h>"
+               , "#include <unistd.h>"
                , ""
                , "#ifdef DEBUG"
                , "#define DEBUG_PRINT(x) printf(x);"
@@ -580,13 +582,19 @@ untilBlock (x : xs) = case x of
   _      -> ([x],[]) <> untilBlock xs
 
 mainIR :: Program -> Maybe Int -> [IR]
-mainIR p c = [ Function Void "top_return" [("act", Pointer $ Act "")] [Return]
+mainIR p c = [ Function (Pointer Void) "sleeper" [("arg", Pointer Void)] [ Literal 4 "sleep(0.5)"
+                                                                         , Literal 4 "exit(0)"]
+             , Function Void "top_return" [("act", Pointer $ Act "")] [Return]
              , Blank
              , Function Void "main" [] bdy
              ]
   where
       bdy :: [IR]
-      bdy = concat $ [ [Literal 4 $ "act_t top = { .step = top_return }"]
+      bdy = concat $ [ [
+                       Literal 4 "pthread_t sleep_thread"
+                     , Literal 4 "pthread_create(&sleep_thread, NULL, &sleeper, NULL)"
+                     , Blank
+                     , Literal 4 $ "act_t top = { .step = top_return }"]
                      , refinits
                      , [Literal 4 $ concat $ ["fork_routine((act_t *) enter_", main p
                                              ,"(", intercalate ", " entryargs, "))"]

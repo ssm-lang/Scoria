@@ -36,7 +36,9 @@ data Event s = Event
     -- | The value this reference will assume at time at
   , val :: SSMExp
   }
-  deriving Eq
+
+instance Eq (Event s) where
+    e1 == e2 = ref e1 == ref e2
 
 -- | State of a single process. Equivalent to the struct in C.
 data Proc s = Proc
@@ -229,8 +231,9 @@ runProcess = do
                 d'   <- getInt <$> eval d
                 v'   <- eval v
                 now' <- gets now
+                schedule_event $ Event (now' + d') ref v'
                 -- TODO should not allow more than one event per variable to be outstanding
-                modify $ \st -> st { events = Event (now' + d') ref v' : events st }
+                --modify $ \st -> st { events = Event (now' + d') ref v' : events st }
                 runProcess
             Changed n t r   -> do
                 b <- wasWritten $ fst r
@@ -253,6 +256,13 @@ runProcess = do
                 forM_ (zip procs pdeps) $ \(f,(prio, dep)) -> do
                     fork f prio dep parent
 
+schedule_event :: Event s -> Interp s ()
+schedule_event e = do
+    evs <- gets events
+    if any ((==) e) evs
+        then let evs' = delete e evs
+             in modify $ \st -> st { events = e : evs' }
+        else    modify $ \st -> st { events = e : evs  }
 
 lift' :: ST s a -> Interp s a
 lift' = lift . lift

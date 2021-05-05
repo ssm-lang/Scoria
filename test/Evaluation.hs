@@ -3,6 +3,7 @@ module Evaluation where
 
 import System.Directory
 import System.Process
+import System.Exit
 import System.IO
 import Control.Exception
 
@@ -21,10 +22,10 @@ data Report = Good                     -- ^ Test succeeded!
 getname :: Program -> String
 getname ssm = main ssm
 
-{- | Given a SSM program, this function will create a new directory, compile the program in
-that directory and run it, producing some output in a txt-file. This output will then be read
-before the temporary directory is deleted. -}
-runCG :: Program -> IO Report --(Maybe Output)
+-- | This function runs a program by creating a temporary directory, copying the
+-- runtime system there, compiling the program and then running the executable.
+-- It will parse the output of the program and return a report.
+runCG :: Program -> IO Report
 runCG program = do
     setupTestDir
     createTestFile program
@@ -35,99 +36,152 @@ runCG program = do
         Right out   -> case parseOutput $ lines out of
             Just trace -> return $ Generated trace
             Nothing    -> return $ ParseError out
+
+runCGValgrind :: Program -> IO Bool
+runCGValgrind p = do
+    setupTestDir
+    createTestFile p
+    c <- tryCompile p False
+    case c of
+        Left _  -> do removeTestDir
+                      return False
+        Right _ -> do b <- runExecutableCheckCode (getname p) wrapValgrind
+                      removeTestDir
+                      return b
   where
-      -- | Name of temporary test directory
-      testdir :: String
-      testdir = "tmpdir/"
+      wrapValgrind :: Maybe (String -> (String, [String]))
+      wrapValgrind = Just $ \cmd -> ("valgrind", ["--error-exitcode=1", cmd])
 
-      -- | Location of the RTS
-      rtsloc :: String
-      rtsloc = "runtime/"
+{-********** Utility functions for generating code and running tests **********-}
 
-      -- | The command that compiles the test-file
-      gcc :: String -> (String, [String])
-      gcc execname = ("gcc", ["-o",execname,execname ++ ".c"] ++ flags)
-        where
-            flags :: [String]
-            flags = [ rtssrc ++ "peng-scheduler.c"
-                    , rtssrc ++ "peng-int.c"
-                    , rtssrc ++ "peng-bool.c"
-                    , "-I" ++ rtsloc ++ "include"
-                    , "-I" ++ rtsloc ++ "linux/include"
-                    , "-DDEBUG"]
+-- | Name of temporary test directory
+testdir :: String
+testdir = "tmpdir/"
 
-            rtssrc :: String
-            rtssrc = rtsloc ++ "src/"
+-- | Location of the RTS
+rtsloc :: String
+rtsloc = "runtime/"
 
-      -- | Command that copies the RTS to the temporary test directory
-      cprts :: String
-      cprts = concat ["cp -r ", rtsloc, " ", testdir]
+-- | The command that compiles the test-file
+gcc :: String -> Bool -> (String, [String])
+gcc execname debug = ("gcc", ["-o",execname,execname ++ ".c"] ++ flags)
+  where
+      flags :: [String]
+      flags = [ rtssrc ++ "peng-scheduler.c"
+              , rtssrc ++ "peng-int.c"
+              , rtssrc ++ "peng-bool.c"
+              , "-I" ++ rtsloc ++ "include"
+              , "-I" ++ rtsloc ++ "linux/include"
+              , "-g"
+              , "-pthread"
+              ] ++ if debug then ["-DDEBUG"] else []
 
-      -- | Set up the temporary test directory by creating the directory and copying the RTS there
-      setupTestDir :: IO ()
-      setupTestDir = do
-          createDirectory testdir
-          callProcess "cp" ["-r",rtsloc,testdir]
-          return ()
+      rtssrc :: String
+      rtssrc = rtsloc ++ "src/"
 
-      -- | Remove the temporary test directory
-      removeTestDir :: IO ()
-      removeTestDir = do
-          callProcess "rm" ["-r",testdir]
-          return ()
+-- | Command that copies the RTS to the temporary test directory
+cprts :: String
+cprts = concat ["cp -r ", rtsloc, " ", testdir]
 
-      -- | Utility function that is given a directory in which it should execute the IO action
-      inDirectory :: FilePath -> IO a -> IO a
-      inDirectory fp ma = do
-          current <- getCurrentDirectory
-          setCurrentDirectory fp
-          a <- ma
-          setCurrentDirectory current
-          return a
+-- | Set up the temporary test directory by creating the directory and copying the RTS there
+setupTestDir :: IO ()
+setupTestDir = do
+    createDirectory testdir
+    callProcess "cp" ["-r",rtsloc,testdir]
+    return ()
 
-      -- | Compile the test program and write it to a c-file
-      createTestFile :: Program -> IO ()
-      createTestFile program = do
-          let name = getname program
-          let c = compile_ True Nothing program
+-- | Remove the temporary test directory
+removeTestDir :: IO ()
+removeTestDir = do
+    callProcess "rm" ["-r",testdir]
+    return ()
 
-          inDirectory testdir $ do
-              writeFile (name ++ ".c") c
+-- | Utility function that is given a directory in which it should execute the IO action
+inDirectory :: FilePath -> IO a -> IO a
+inDirectory fp ma = do
+    current <- getCurrentDirectory
+    setCurrentDirectory fp
+    a <- ma
+    setCurrentDirectory current
+    return a
 
-      -- | Compile and run a test
-      runTest :: Program -> IO (Either Report String)
-      runTest program = do
-          let name = getname program
+-- | Compile the test program and write it to a c-file
+createTestFile :: Program -> IO ()
+createTestFile program = do
+    let name = getname program
+    let c = compile_ True Nothing program
 
-          inDirectory testdir $ do
-              let (cmd,args) = gcc name
-              --callProcess cmd args
-              (_,_,Just gccerr,_) <- createProcess (proc cmd args) {std_err = CreatePipe}
-              c <- hGetContents gccerr
-              if null c
-                  then do (_, Just hout, Just herr, _) <- createProcess
-                                        (proc "timeout" [show timeout ++ "s", "./" ++ name])
-                                        { std_out = CreatePipe
-                                        , std_err = CreatePipe
-                                        }
-                          err <- hGetContents herr
-                          if null err
-                              then Right <$> hGetContents hout
-                              else return $ Left $ ExecutionError err
-                  else return $ Left $ CompilationError c
-        where
-            timeout :: Double
-            timeout = 0.2
-    
-      -- | Parse the output, but discard the last line. The call to timeout might have cut it
-      -- off short so that it would not be parsed properly.
-      parseOutput :: [String] -> Maybe Output
-      parseOutput []     = Just []
-      parseOutput [_]    = Just []
-      parseOutput (x:xs) = do
-          line <- parseLine x
-          rest <- parseOutput xs
-          return $ line : rest
+    inDirectory testdir $ do
+        writeFile (name ++ ".c") c
+
+-- | Try to compile a program in the test directory. The bool signifies if the
+-- debug flag should be enabled while compiling. Without the flag the executable is
+-- much less verbose about what it is doing.
+tryCompile :: Program -> Bool -> IO (Either String ())
+tryCompile p debug = inDirectory testdir $ do
+    let name = getname p
+    let (cmd, args) = gcc name debug
+    (_,_,Just gccerr,_) <- createProcess (proc cmd args) {std_err = CreatePipe }
+    c <- hGetContents gccerr
+    if null c
+        then return $ Right ()
+        else putStrLn c >> return (Left c)
+
+-- | Tries to run an executable. The Maybe (String -> String) is a function that
+-- takes the execute-call as a parameter and wraps it in another call, e.g timeout,
+-- valgrind etc, and gives potential arguments.
+runExecutable :: String -> Maybe (String -> (String,[String])) -> IO (Either String String)
+runExecutable exec m = do
+    let cmd'        = "./" ++ exec
+    let (cmd, args) = maybe (cmd, []) (\f -> f cmd') m
+    inDirectory testdir $ do
+        (_,Just hout, Just herr, _) <- createProcess (proc cmd args) { std_out = CreatePipe
+                                                                     , std_err = CreatePipe
+                                                                     }
+        err <- hGetContents herr
+        if null err
+            then Right <$> hGetContents hout
+            else return $ Left err
+
+-- | Intended to be used with valgrind. Arguments are the same as the function above this
+-- one, and the result is True if the error code that is returned is not equal to 1 (the
+-- error code we ask valgrind to return if it finds error), and otherwise false.
+runExecutableCheckCode :: String -> Maybe (String -> (String, [String])) -> IO Bool
+runExecutableCheckCode exec m = do
+    let cmd'        = "./" ++ exec
+    let (cmd, args) = maybe (cmd, []) (\f -> f cmd') m
+    inDirectory testdir $ do
+        (_,_,_,p) <- createProcess (proc cmd args)
+        ex        <- waitForProcess p
+        return $ not $ ex == (ExitFailure 1)
+
+-- | Compile and run a test
+runTest :: Program -> IO (Either Report String)
+runTest program = do
+    let name = getname program
+
+    comp <- tryCompile program True
+    case comp of
+        Left c  -> return $ Left $ CompilationError c
+        Right _ -> do
+            let f = Just (\cmd -> ("timeout", [show timeout ++ "s",cmd]))
+            res <- runExecutable name f
+            case res of
+                Left c  -> return $ Left $ ExecutionError c
+                Right s -> return $ Right s
+  where
+      timeout :: Double
+      timeout = 0.2
+
+-- | Parse the output, but discard the last line. The call to timeout might have cut it
+-- off short so that it would not be parsed properly.
+parseOutput :: [String] -> Maybe Output
+parseOutput []     = Just []
+parseOutput [_]    = Just []
+parseOutput (x:xs) = do
+    line <- parseLine x
+    rest <- parseOutput xs
+    return $ line : rest
 
 runInterpreter :: Program -> Output
 runInterpreter = interpret

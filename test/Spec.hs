@@ -34,6 +34,7 @@ main = do
 --        Right _  -> putStrLn "test OK"
 
     quickCheck (verboseShrinking prop_correct)
+    quickCheck (verboseShrinking prop_valgrind_ok)
 
 prop_correct :: Program -> Property
 prop_correct p = monadicIO $ do
@@ -82,6 +83,17 @@ prop_correct p = monadicIO $ do
                                             putStrLn "writing parseerror.ssm"
                                             writeFile "parseerror.ssm" $ show p)
                                  assert False
+
+-- myafter prop. Given any program, convert all after statements to
+-- use myafter and make sure that they are working as they should.
+
+-- valgrind prop
+-- for every generated program, valgrind will be happy
+
+prop_valgrind_ok :: Program -> Property
+prop_valgrind_ok p = monadicIO $ do
+    b <- run $ runCGValgrind p
+    assert b
 
 {- | Tests a fully applied SSM program by evaluating both the interpreter and running
 the C code and comparing the output. -}
