@@ -30,9 +30,7 @@ library
       Trace
       Core
       LowCore
-      CodeGen
       LowCodeGen
-      Interpreter
       LowInterpreter
       Frontend
       Pretty
@@ -42,10 +40,10 @@ library
       Examp2
       Example
       Manyrefs
-      Generator
       LowGenerator
       NonTerminate
       Buggy
+      Example64bit
   other-modules:
       Paths_ssm
   hs-source-dirs:

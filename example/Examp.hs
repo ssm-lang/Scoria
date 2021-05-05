@@ -10,7 +10,7 @@ examp = box "examp" ["a"] $ \a -> do
     wait [a]
 
     loc <~ int 42
-    after (int 10) a (int 43)
+    after (uint64 10) a (int 43)
     
     dloc <- deref loc
     fork [foo (int 42) dloc]

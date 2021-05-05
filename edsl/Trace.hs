@@ -11,13 +11,14 @@ import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as Lexer
 import Control.DeepSeq
 import GHC.Generics
+import Data.Int
 
 import Core hiding (Result, Fork)
 
 type Parser a = Parsec Void Text a
 
-data OutputEntry = Instant Int Int      -- ^ now, size of eventqueue
-                 | Event Int SSMExp     -- ^ now, new variable value
+data OutputEntry = Instant Int64 Int      -- ^ now, size of eventqueue
+                 | Event Int64 SSMExp     -- ^ now, new variable value
                  | Fork [String]        -- ^ Fork call, names of forked procedures
                  | Result String SSMExp -- ^ variable name and final value
                  | Crash
@@ -160,7 +161,7 @@ pEventqueuesize = do
     pSpace
     return num
 
-pNow :: Parser Int
+pNow :: Parser Int64
 pNow = do
     pSymbol "now"
     pSpace

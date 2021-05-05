@@ -9,6 +9,9 @@ module Core where
 import Control.DeepSeq
 import GHC.Generics
 
+import Data.Int
+import qualified Data.Typeable as T
+
 import Control.Monad.State.Lazy
 import BinderAnn.Monadic
 
@@ -72,6 +75,7 @@ getProcedureName (Procedure n) = n
 getProcedureName _             = error "not a procedure"
 
 data Type = TInt
+          | TInt64
           | TBool
           | Ref Type
   deriving (Eq, Show, Generic, NFData)
@@ -84,6 +88,9 @@ instance SSMType Int where
 
 instance SSMType Bool where
     typeOf _ = TBool
+
+instance SSMType Int64 where
+    typeOf _ = TInt64
 
 expType :: SSMExp -> Type
 expType (Var t _)     = t
@@ -109,7 +116,9 @@ instance Num SSMExp where
   e1 + e2       = BOp (expType e1) e1 e2 OPlus
   e1 * e2       = BOp (expType e1) e1 e2 OTimes
   e1 - e2       = BOp (expType e1) e1 e2 OMinus
-  fromInteger i = Lit TInt $ LInt $ fromInteger i
+  fromInteger i = if T.typeOf i == T.typeOf (1 :: Int)
+                    then Lit TInt   $ LInt   $ fromInteger i
+                    else Lit TInt64 $ LInt64 $ fromInteger i
   negate e      = UOp (expType e) e Neg
 
 -- | SSM expressions
@@ -126,13 +135,15 @@ instance Show SSMExp where
     show (BOp _ e1 e2 op) = "(" ++ show e1 ++ " " ++ show op ++ " " ++ show e2 ++ ")"
 
 -- | SSM literals
-data SSMLit = LInt Int    -- ^ Integer literals
-            | LBool Bool  -- ^ Boolean literals
+data SSMLit = LInt Int      -- ^ Integer literals
+            | LInt64 Int64  -- ^ 64bit Integer literals
+            | LBool Bool    -- ^ Boolean literals
   deriving (Eq, Generic, NFData)
 
 instance Show SSMLit where
-    show (LInt i)  = show i
-    show (LBool b) = show b
+    show (LInt i)   = show i
+    show (LInt64 i) = show i
+    show (LBool b)  = show b
 
 {-- | SSM unary operators -}
 data UnaryOp = Neg  -- ^ negation

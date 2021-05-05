@@ -12,9 +12,9 @@ ex = box "ex" ["a"] $ \a -> do
     c <- deref loc
     if' (b <. c)
       (wait [a])
-      (Just (do after (int 2) a (int 5)
+      (Just (do after (uint64 2) a (int 5)
                 wait [a]))
-    after (int 5) a (int 10)
+    after (uint64 5) a (int 10)
 
 ex2 :: Ref Int -> SSM ()
 ex2 = box "ex2" ["a"] $ \a -> do
@@ -25,7 +25,7 @@ ex2 = box "ex2" ["a"] $ \a -> do
     if' (b <. c)
       (wait [a])
       Nothing
-    after (int 5) a (int 10)
+    after (uint64 5) a (int 10)
 
 ex3 :: Ref Int -> SSM ()
 ex3 = box "ex3" ["a"] $ \a -> do
@@ -38,4 +38,4 @@ ex3 = box "ex3" ["a"] $ \a -> do
         (wait [loc]) 
         (Just (wait [a])))
       (Just (wait [loc]))
-    after (int 5) a (int 10)
+    after (uint64 5) a (int 10)

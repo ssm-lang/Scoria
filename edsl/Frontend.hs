@@ -7,6 +7,7 @@ module Frontend
      ( Ref(..)
      , Exp(..)
      , inputIntRef
+     , inputInt64Ref
      , inputBoolRef
      , (+.)
      , (-.)
@@ -16,6 +17,7 @@ module Frontend
      , (<~)
      , neg
      , int
+     , uint64
      , true'
      , false'
      , deref
@@ -28,11 +30,14 @@ module Frontend
      , while'
      , SSM -- reexport so we don't need to import Core and get all the constructors
      , Box(..)
+     , Int64(..)
 ) where
 
 import Control.Monad.Writer.Lazy
 import Control.Monad.State.Lazy
 import BinderAnn.Monadic
+
+import Data.Int
 
 import Core
 
@@ -106,6 +111,9 @@ instance Res () where
 inputIntRef :: Ref Int
 inputIntRef = Ptr ("dummyintref", Ref TInt)
 
+inputInt64Ref :: Ref Int64
+inputInt64Ref = Ptr ("dummyint64ref", Ref TInt64)
+
 inputBoolRef :: Ref Bool
 inputBoolRef = Ptr ("dummyboolref", Ref TBool)
 
@@ -140,6 +148,9 @@ neg e@(Exp e') = Exp $ UOp (typeOf e) e' Neg
 int :: Int -> Exp Int
 int i = Exp $ Lit TInt $ LInt i
 
+uint64 :: Int64 -> Exp Int64
+uint64 i = Exp $ Lit TInt64 $ LInt64 i
+
 true' :: Exp Bool
 true' = Exp $ Lit TBool $ LBool True
 
@@ -162,7 +173,7 @@ wait :: [Ref a] -> SSM ()
 wait r = emit $ Wait (map (\(Ptr r') -> r') r)
 
 -- | Delayed assignment
-after :: Exp Int -> Ref a -> Exp a -> SSM ()
+after :: Exp Int64 -> Ref a -> Exp a -> SSM ()
 after (Exp e) (Ptr r) (Exp v) = emit $ After e r v
 
 fork :: [SSM ()] -> SSM ()
@@ -181,3 +192,28 @@ if' (Exp c) thn els = emit $ If c thn els
 
 while' :: Exp Bool -> SSM () -> SSM ()
 while' (Exp c) bdy = emit $ While c bdy
+
+waitSingle :: Ref a -> SSM ()
+waitSingle = box "waitSingle" ["r"] $ \r -> wait [r]
+
+waitAll :: [Ref a] -> SSM ()
+waitAll refs = fork $ map waitSingle refs
+
+{-
+limit :: Exp Int64
+limit = undefined
+
+after64 :: Exp Int64 -> Ref a -> Exp a -> SSM ()
+after64 = box "after64" ["delay","r","v"] $ \delay r v -> do
+    r <- var 0
+
+    while' (delay <. limit) $ do
+      after limit r 1
+      wait [r]
+      delay <~ (delay - limit)
+    
+    after delay r v
+
+unsafeForkAndContinue :: SSM () -> SSM ()
+unsafeForkAndContinue ssm = undefined
+-}

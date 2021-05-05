@@ -104,12 +104,14 @@ type Label = String
 
 data BaseType
   = CInt
+  | CUInt64
   | -- | from stdbool.h
     CBool
 
 instance Show BaseType where
-    show CInt  = "int"
-    show CBool = "bool"
+    show CInt    = "int"
+    show CUInt64 = "int64"
+    show CBool   = "bool"
 
 -- | Types recognized (not exhaustive) by the runtime system.
 data RTSType
@@ -119,6 +121,7 @@ data RTSType
     Act String
   | -- | Signed integers, size not necessary
     SInt
+  | SInt64
   | -- | Unsigned integers, specify the size from [8, 16, 32, 64]
     UInt Int
   | -- | Booleans
@@ -136,6 +139,7 @@ instance Show RTSType where
                                then "act_t"
                                else concat ["act_", name, "_t"]
     show SInt              = "int"
+    show SInt64            = "int64"
     show UBool             = "bool"
     show (UInt i)          = concat ["uint", show i, "_t"]
     show Trigger           = "trigger_t"
@@ -231,14 +235,16 @@ compileProcedure p = (structTR, enterTR, stepTR)
 -- | Returns the base type of a type. If the type is a reference it will unwrap the reference
 -- to find the underlying basetype.
 basetype_ :: Type -> BaseType
-basetype_ TInt = CInt
-basetype_ TBool = CBool
+basetype_ TInt    = CInt
+basetype_ TInt64  = CUInt64
+basetype_ TBool   = CBool
 basetype_ (Ref t) = basetype_ t
 
 -- | `paramtype t` returns the RTSType a parameter to a function, whose type in the
 -- SSM EDSL is t, would have. E.g `Ref Int` would be `sv_int_t*`, `Exp Int` would be `int`.
 paramtype :: Type -> RTSType
 paramtype TInt    = SInt
+paramtype TInt64  = SInt64
 paramtype TBool   = UBool
 paramtype (Ref t) = Pointer $ ScheduledVar $ basetype_ t
 
@@ -258,7 +264,7 @@ class CType a where
   compVal :: a -> TR String
 
   -- | compVar returns the string that symbolises a value of type sv_type_t*.
-  -- This is used when we need a value of type sv_type_t* to pass to alter_type,
+  -- This is used when we need a value of type sv_type_t* to pass to later_type,
   -- assign_type, initialize_type etc.
   compVar :: a -> TR String
 
@@ -325,6 +331,8 @@ compLit e = case e of
   
   Lit _ l -> case l of
     LInt i      -> if i >= 0 then show i else "(" ++ show i ++ ")"
+    LInt64 i    -> let lit = show i ++ "UL" in
+                   if i >= 0 then lit else "(" ++ lit ++ ")"
     LBool True  -> "true"
     LBool False -> "false"
   
@@ -623,6 +631,7 @@ mainIR p c = [ Function (Pointer Void) "sleeper" [("arg", Pointer Void)] [ Liter
       -- | Default value for references of different types.
       defaultValue :: Type -> String
       defaultValue TInt    = "0"
+      defaultValue TInt64  = "0UL"
       defaultValue TBool   = "false"
       defaultValue (Ref t) = defaultValue t
 
@@ -644,8 +653,9 @@ mainIR p c = [ Function (Pointer Void) "sleeper" [("arg", Pointer Void)] [ Liter
           Literal 4 $ concat ["printf(\"result ", r, " ", formatter t, "\\n\", ", r, ".value)"]
       
       formatter :: Type -> String
-      formatter (Ref TInt)  = "int %d"
-      formatter (Ref TBool) = "bool %d"
+      formatter (Ref TInt)   = "int %d"
+      formatter (Ref TInt64) = "int64 %lu"
+      formatter (Ref TBool)  = "bool %d"
 
       debugprint :: Int -> IR
       debugprint i = Literal i $ concat ["printf(\"now %lu eventqueuesize %d\\n\", now, event_queue_len)"]

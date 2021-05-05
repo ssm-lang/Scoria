@@ -16,8 +16,6 @@ import Control.Monad.State
 
 import System.IO.Unsafe
 
-import CodeGen
-
 trace :: Show a => a -> a
 trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
@@ -25,7 +23,7 @@ for :: [a] -> (a -> b) -> [b]
 for = flip map
 
 instance Arbitrary Type where
-    arbitrary = elements [TInt, TBool, Ref TInt, Ref TBool]
+    arbitrary = elements [TInt, TInt64, TBool, Ref TInt, Ref TInt64, Ref TBool]
 
 type Procedures = [(String, [(String, Type)], [Stm])]
 type Variable = (Name, Type)
@@ -141,7 +139,7 @@ arbProc funs vars refs c n = frequency $
       
       , (1, do r@(_,t)  <- elements refs
                v        <- choose (0,3) >>= arbExp (dereference t) vars
-               delay'   <- choose (0,3) >>= arbExp TInt vars
+               delay'   <- choose (0,3) >>= arbExp TInt64 vars
                (rest,c') <- arbProc funs vars refs c (n-1)
                let delay = delay' * delay' + 1 -- hack to make it non negative and non zero
                let stm   = After delay r v
@@ -201,15 +199,26 @@ arbExp t vars 0 = oneof $ litGen : varGen
     -- | Generator of SSMExp literals.
     litGen :: Gen SSMExp
     litGen = case t of
-      TInt  -> return . Lit TInt  . LInt =<< arbitrary
-      TBool -> return . Lit TBool . LBool =<< arbitrary
+      TInt   -> return . Lit TInt   . LInt =<< arbitrary
+      TInt64 -> return . Lit TInt64 . LInt64 =<< arbitrary
+      TBool  -> return . Lit TBool  . LBool =<< arbitrary
     
     -- | Generator that returns a randomly selected variable from the set of variables.
     varGen :: [Gen SSMExp]
     varGen = [ return (Var t' (getVarName n)) | (n,t') <- vars, t == t']
 
 arbExp t vars n = case t of
-  TInt -> frequency [ (1, do e <- arbExp t vars (n-1)
+  TBool -> oneof [ do e1 <- arbExp TInt vars (n `div` 2)
+                      e2 <- arbExp TInt vars (n `div` 2)
+                      return $ BOp t e1 e2 OLT
+                 , do typ <- elements [TInt, TBool]
+                      e1 <- arbExp typ vars (n `div` 2)
+                      e2 <- arbExp typ vars (n `div` 2)
+                      return $ BOp TBool e1 e2 OEQ
+                 ]
+-- catch-all case for numeric expressions right now, as int and int64 are generated
+-- the same way
+  _ ->    frequency [ (1, do e <- arbExp t vars (n-1)
                              return $ negate e
                       )
                     , (7, do e1 <- arbExp t vars (n `div` 2)
@@ -220,14 +229,6 @@ arbExp t vars n = case t of
                                       ]
                       )
                     ]
-  TBool -> oneof [ do e1 <- arbExp TInt vars (n `div` 2)
-                      e2 <- arbExp TInt vars (n `div` 2)
-                      return $ BOp t e1 e2 OLT
-                 , do typ <- elements [TInt, TBool]
-                      e1 <- arbExp typ vars (n `div` 2)
-                      e2 <- arbExp typ vars (n `div` 2)
-                      return $ BOp TBool e1 e2 OEQ
-                 ]
 
 {-********** Shrinking **********-}
 

@@ -8,6 +8,7 @@ import Data.STRef.Lazy
 import Data.List
 import Data.Maybe
 import qualified Data.Map as Map
+import Data.Int
 
 import System.IO.Unsafe
 
@@ -30,7 +31,7 @@ type Var s = STRef s
 -- | The type of events.
 data Event s = Event
   { -- | The time when this even should occur
-    at  :: Int
+    at  :: Int64
     -- | The reference variable that gets the new value
   , ref :: Var s
     -- | The value this reference will assume at time at
@@ -70,7 +71,7 @@ instance Ord (Proc s) where
 -- | The interpreter state.
 data St s = St
   { -- | Current time
-    now        :: Int
+    now        :: Int64
   -- | Outstanding events
   , events     :: [Event s]
   -- | Processes ready to run, should be a priority queue
@@ -228,7 +229,7 @@ runProcess = do
             Skip            -> runProcess
             After d r v     -> do
                 ref  <- lookupRef (fst r)
-                d'   <- getInt <$> eval d
+                d'   <- getInt64 <$> eval d
                 v'   <- eval v
                 now' <- gets now
                 schedule_event $ Event (now' + d') ref v'
@@ -434,7 +435,7 @@ enqueue p = modify $ \st -> st { readyQueue = insert p (readyQueue st)}
                             else p2 : insert p1 ps
 
 -- | Inspects the eventqueue and returns the next event time.
-nextEventTime :: Interp s Int
+nextEventTime :: Interp s Int64
 nextEventTime = do
     evs <- gets events
     return $ foldl min maxBound (map at evs)
@@ -466,34 +467,57 @@ eval e = do
         Lit _ l -> return e
         UOp _ e Neg -> do
             e' <- eval e
-            let Lit _ (LInt i) = e'
-            return $ Lit TInt $ LInt (-i)
+            return $ neg e'
         BOp TInt e1 e2 op -> do
-            i1 <- getInt <$> eval e1
-            i2 <- getInt <$> eval e2
+            i1 <- eval e1
+            i2 <- eval e2
             case op of
-                OPlus  -> return $ Lit TInt  $ LInt  (i1 + i2)
-                OMinus -> return $ Lit TInt  $ LInt  (i1 - i2)
-                OTimes -> return $ Lit TInt  $ LInt  (i1 * i2)
-        -- Not sure what I thought here, there has to be a more straightforward way
+                OPlus  -> return $ addition i1 i2
+                OMinus -> return $ LowInterpreter.subtract i1 i2
+                OTimes -> return $ multiply i1 i2
         BOp TBool e1 e2 op -> do
             l1 <- eval e1
             l2 <- eval e2
             case op of
-                OLT -> let i1 = getInt l1
-                           i2 = getInt l2
-                       in return $ Lit TBool $ LBool (i1 < i2)
-                OEQ -> case (expType e1) of
-                    TInt  -> let i1 = getInt l1
-                                 i2 = getInt l2
-                             in return $ Lit TBool $ LBool (i1 == i2)
-                    TBool -> let b1 = getBool l1
-                                 b2 = getBool l2
-                             in return $ Lit TBool $ LBool (b1 == b2)
+                OLT -> return $ lessthan l1 l2
+                OEQ -> return $ equals l1 l2
+
+neg :: SSMExp -> SSMExp
+neg (Lit _ (LInt i))   = Lit TInt   $ LInt (-i)
+neg (Lit _ (LInt64 i)) = Lit TInt64 $ LInt64 (-i)
+
+lessthan :: SSMExp -> SSMExp -> SSMExp
+lessthan (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TBool $ LBool $ i1 < i2
+lessthan _ _ = error "can only order numerical values"
+
+equals :: SSMExp -> SSMExp -> SSMExp
+equals (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LBool b1))  (Lit _ (LBool b2))  = Lit TBool $ LBool $ b1 == b2
+
+addition :: SSMExp -> SSMExp -> SSMExp
+addition (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TInt   $ LInt   $ i1 + i2
+addition (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ i1 + i2
+addition _ _ = error "can only add numerical values"
+
+subtract :: SSMExp -> SSMExp -> SSMExp
+subtract (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TInt   $ LInt   $ i1 - i2
+subtract (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ i1 - i2
+subtract _ _ = error "can only subtract numerical values"
+
+multiply :: SSMExp -> SSMExp -> SSMExp
+multiply (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TInt   $ LInt   $ i1 * i2
+multiply (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ i1 * i2
+multiply _ _ = error "can only multiply numerical values"
 
 getInt :: SSMExp -> Int
 getInt (Lit _ (LInt i)) = i
 getInt e                = error $ "not an integer: " ++ show e
+
+getInt64 :: SSMExp -> Int64
+getInt64 (Lit _ (LInt64 i)) = i
+getInt64 e                  = error $ "not an integer: " ++ show e
 
 getBool :: SSMExp -> Bool
 getBool (Lit _ (LBool b)) = b

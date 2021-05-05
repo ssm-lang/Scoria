@@ -69,6 +69,7 @@ gcc execname debug = ("gcc", ["-o",execname,execname ++ ".c"] ++ flags)
       flags :: [String]
       flags = [ rtssrc ++ "peng-scheduler.c"
               , rtssrc ++ "peng-int.c"
+              , rtssrc ++ "peng-int64.c"
               , rtssrc ++ "peng-bool.c"
               , "-I" ++ rtsloc ++ "include"
               , "-I" ++ rtsloc ++ "linux/include"
