@@ -28,6 +28,7 @@ type Output = [OutputEntry]
 
 testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "event 1 value bool 1"
+                             , "result a int64 2343546543245"
                              , "event 2 value int (-1)"
                              , "now 3 eventqueuesize 3"
                              , "now 5 eventqueuesize 5"
@@ -36,6 +37,7 @@ testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "result x int 1"
                              , "fork mywait"
                              , "result y bool 0"
+                             , "result zt int64 3423523234"
                              , "result z bool 1"
                              ]
 
@@ -117,11 +119,12 @@ pIdent = do
                  , "result"
                  , "eventqueuesize"
                  , "int"
+                 , "int64"
                  , "bool"]
 pRes :: Parser SSMExp
 pRes = do
     -- add more variants here as we add more types
-    choice [pInt, pBool]
+    choice [pInt64, pInt, pBool]
   where
       pInt :: Parser SSMExp
       pInt = do
@@ -131,16 +134,15 @@ pRes = do
           num <- choice [try (parens signed), signed]
           pSpace
           return $ Lit TInt . LInt $ num
-        where
-            parens :: Parser a -> Parser a
-            parens p = do
-                char '('
-                res <- p
-                char ')'
-                return res
 
-            signed :: Parser Int
-            signed = Lexer.signed pSpace Lexer.decimal
+      pInt64 :: Parser SSMExp
+      pInt64 = do
+          pSpace
+          pSymbol "int64"
+          pSpace
+          num <- choice [ try (parens signed), signed]
+          pSpace
+          return $ Lit TInt64 $ LInt64 $ num
 
       pBool :: Parser SSMExp
       pBool = do
@@ -151,6 +153,16 @@ pRes = do
           case b of
               0 -> return $ Lit TBool $ LBool False
               _ -> return $ Lit TBool $ LBool True
+
+      parens :: Parser a -> Parser a
+      parens p = do
+          char '('
+          res <- p
+          char ')'
+          return res
+
+      signed :: (Integral a, Num a) => Parser a
+      signed = Lexer.signed pSpace Lexer.decimal
 
 pEventqueuesize :: Parser Int
 pEventqueuesize = do
