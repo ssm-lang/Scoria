@@ -125,8 +125,9 @@ interpret p = runST interpret'
 
       -- | Default values for SSM types.
       defaultValue :: Type -> SSMExp
-      defaultValue TInt  = Lit TInt $ LInt 0
-      defaultValue TBool = Lit TBool $ LBool False
+      defaultValue TInt   = Lit TInt $ LInt 0
+      defaultValue TInt64 = Lit TInt64 $ LInt64 0
+      defaultValue TBool  = Lit TBool $ LBool False
 
       getReferences :: Program -> Map.Map String (Var s) -> [(String, Var s)]
       getReferences p m = case Map.lookup (main p) (funs p) of

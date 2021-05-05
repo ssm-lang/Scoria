@@ -346,14 +346,30 @@ testprogram11 = Program "fun2" [Right ("ref1", Ref TInt64)] $ Map.fromList
                               ])
   ]
 
-{-Program:
+testprogram12 :: Program
+testprogram12 = Program "fun2" [Right ("ref3", Ref TInt64)] $ Map.fromList
+  [ ("fun1", Procedure "fun1" [] [])
+  , ("fun2", Procedure "fun2" [("ref3", Ref TInt64)]
+                              [ GetRef (Fresh "v0") TInt64 ("ref3", Ref TInt64)
+                              , After (BOp TInt64 (BOp TInt64 t t OTimes) (Lit TInt64 $ LInt64 1) OPlus) ("ref3", Ref TInt64) (BOp TInt64 (Var TInt64 "v0") (Lit TInt64 $ LInt64 1) OPlus)
+                              , GetRef (Fresh "v3") TInt64 ("ref3", Ref TInt64)
+                              ])
+  ]
+
+t = BOp TInt64 (BOp TInt64 (Var TInt64 "v0") (Var TInt64 "v0") OTimes) (BOp TInt64 (UOp TInt64 (Lit TInt64 $ LInt64 8) Neg) (UOp TInt64 (Lit TInt64 $ LInt64 8) Neg) OPlus) OMinus
+
+{-
+Program:
   entrypoint: fun2
-  arguments: [Right ("ref1",Ref TInt64)]
+  arguments: [Right ("ref3",Ref TInt64)]
 
 fun1()
-fun2(("ref1",Ref TInt64))
-  GetRef (Fresh "v0") TInt64 ("ref1",Ref TInt64)
-  After ((1 * 1) + 1) ("ref1",Ref TInt64) ((- 2) + (-2 - -1))
+fun2(("ref3",Ref TInt64))
+  GetRef (Fresh "v0") TInt64 ("ref3",Ref TInt64)
+  After ((((v0 * v0) - (-8 + -8)) * ((v0 * v0) - (-8 + -8))) + 1) ("ref3",Ref TInt64) (v0 + 1)
+  GetRef (Fresh "v3") TInt64 ("ref3",Ref TInt64)
+
+
 -}
 
 {-
