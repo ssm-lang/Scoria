@@ -1,3 +1,8 @@
 .stack-work/
 stack.yaml.lock
 *~
+
+/testdir
+/runtest
+/zephyr-code/ssm-zephyr/peng/
+/zephyr-code/ssm-zephyr/build/
