@@ -337,6 +337,25 @@ testprogram10 = Program "fun17" [Right ("ref9", Ref TBool)] $ Map.fromList
                   , ("fun3",  Procedure "fun3" [] [])
                   ]
 
+testprogram11 :: Program
+testprogram11 = Program "fun2" [Right ("ref1", Ref TInt64)] $ Map.fromList
+  [ ("fun1", Procedure "fun1" [] [])
+  , ("fun2", Procedure "fun2" [("ref1", Ref TInt64)]
+                              [ GetRef (Fresh "v0") TInt64 ("ref1", Ref TInt64)
+                              , After (BOp TInt64 (BOp TInt64 (Lit TInt64 $ LInt64 1) (Lit TInt64 $ LInt64 1) OTimes) (Lit TInt64 $ LInt64 1) OPlus) ("ref1", Ref TInt64) (BOp TInt64 (UOp TInt64 (Lit TInt64 $ LInt64 2) Neg) (BOp TInt64 (UOp TInt64 (Lit TInt64 $ LInt64 2) Neg) (UOp TInt64 (Lit TInt64 $ LInt64 1) Neg) OMinus) OPlus)
+                              ])
+  ]
+
+{-Program:
+  entrypoint: fun2
+  arguments: [Right ("ref1",Ref TInt64)]
+
+fun1()
+fun2(("ref1",Ref TInt64))
+  GetRef (Fresh "v0") TInt64 ("ref1",Ref TInt64)
+  After ((1 * 1) + 1) ("ref1",Ref TInt64) ((- 2) + (-2 - -1))
+-}
+
 {-
 
 Program:

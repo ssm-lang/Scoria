@@ -468,19 +468,19 @@ eval e = do
         UOp _ e Neg -> do
             e' <- eval e
             return $ neg e'
-        BOp TInt e1 e2 op -> do
-            i1 <- eval e1
-            i2 <- eval e2
-            case op of
-                OPlus  -> return $ addition i1 i2
-                OMinus -> return $ LowInterpreter.subtract i1 i2
-                OTimes -> return $ multiply i1 i2
         BOp TBool e1 e2 op -> do
             l1 <- eval e1
             l2 <- eval e2
             case op of
                 OLT -> return $ lessthan l1 l2
                 OEQ -> return $ equals l1 l2
+        BOp _ e1 e2 op -> do
+            i1 <- eval e1
+            i2 <- eval e2
+            case op of
+                OPlus  -> return $ addition i1 i2
+                OMinus -> return $ LowInterpreter.subtract i1 i2
+                OTimes -> return $ multiply i1 i2
 
 neg :: SSMExp -> SSMExp
 neg (Lit _ (LInt i))   = Lit TInt   $ LInt (-i)
