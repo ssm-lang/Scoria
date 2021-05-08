@@ -1,0 +1,14 @@
+/ {
+     aliases {
+          ssm-button0 = &user_button;
+	  ssm-timer   = &timers3; /* not working */
+
+	  ssm-led0    = &led0;
+	  
+     };
+};
+
+&timers3 {
+	 status = "okay";
+};
+

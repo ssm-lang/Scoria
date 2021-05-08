@@ -25,7 +25,10 @@
 /* ********** */
 /*   TIMER    */
 
-#define TIMER DT_LABEL(DT_NODELABEL(timer4))
+#define TIMER DT_LABEL(DT_ALIAS(ssm_timer))
+/* Not sure how to do the similar thing on the STM32 yet. */
+
+
 struct  counter_alarm_cfg alarm_cfg;
 
 const struct device *counter_dev = NULL;
@@ -44,21 +47,18 @@ act_t top = { .step = top_return };
 /* hw_tick                                                      */
 /* ************************************************************ */
 
-struct k_mbox tick_mbox;
+#define MAX_MESSAGES  100
+#define MSG_ALIGNMENT 1
+
+
+K_MSGQ_DEFINE(tick_msgq, 1, MAX_MESSAGES,MSG_ALIGNMENT);
 
 void hw_tick(const struct device *dev, uint8_t chan, uint32_t ticks, void *user_data) {
 
   /* Put a tick on the messagebox */
-  struct k_mbox_msg send_msg;
-
-  send_msg.info = 101;
-  send_msg.size = 0;
-  send_msg.tx_data = NULL;
-  send_msg.tx_target_thread = K_ANY;
-
-  /* third argument in async put is a semaphore
-     that can be set to NULL if not "needed" _*/
-  k_mbox_async_put(&tick_mbox, &send_msg, NULL);
+  uint8_t msg = 1;
+  k_msgq_put(&tick_msgq, &msg, K_NO_WAIT);
+  /* this can fail to send the message. then what? */
 }
 
 
@@ -72,8 +72,6 @@ void tick_thread_main(void * a, void* b, void *c) {
   (void)b;
   (void)c;
 
-  struct k_mbox_msg recv_msg;
-
   //sv_int_t r;
   initialize_int(&r);
   r.value = 0;
@@ -82,33 +80,20 @@ void tick_thread_main(void * a, void* b, void *c) {
   initialize_int(&led);
   led.value = 0;
 
+  uint8_t recv_msg;
+
   //PRINT("forking myfib\r\n");
   //fork_routine( (act_t *) enter_myfib(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT, 4, &r) );
 
   PRINT("forking blinky\r\n");
   fork_routine( (act_t *) enter_main(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT, &led) );
 
-
-
   PRINT("Waiting for ticks\r\n");
   int i = 0;
   while (1) {
-    recv_msg.size = 0;
-    recv_msg.rx_source_thread = K_ANY;
-
-    //PRINT("step[%d]: r = %d\r\n", i, r.value);
-    /* PRINT("now: %llu\r\n", now); */
-    /* PRINT("next: %llu\r\n",next_event_time()); */
-    /* PRINT("Events queued: %d\r\n", event_queue_len); */
-
-    /* PRINT("step[%d]: led = %d\r\n", i, led.value); */
-    /* PRINT("now: %llu\r\n", now); */
-    /* PRINT("next: %llu\r\n",next_event_time()); */
-    /* PRINT("Events queued: %d\r\n", event_queue_len); */
-
 
     /* get a data item, waiting as long as needed */
-    k_mbox_get(&tick_mbox, &recv_msg, NULL, K_FOREVER);
+    k_msgq_get(&tick_msgq, &recv_msg, K_FOREVER);
 
     uint32_t count;
     counter_get_value(counter_dev, &count);
@@ -192,12 +177,6 @@ void main(void) {
 
   PRINT("Init Blinky\r\n");
   init_blinky();
-
-  /* ********** */
-  /* MESSAGEBOX */
-  PRINT("Creating messagebox\n");
-  k_mbox_init(&tick_mbox);
-
 
   /* ************************* */
   /* Hardware timer experiment */
