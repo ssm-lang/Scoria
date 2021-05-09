@@ -104,13 +104,15 @@ type Label = String
 
 data BaseType
   = CInt
+  | CInt64
   | CUInt64
   | -- | from stdbool.h
     CBool
 
 instance Show BaseType where
     show CInt    = "int"
-    show CUInt64 = "int64"
+    show CInt64  = "int64"
+    show CUInt64 = "uint64"
     show CBool   = "bool"
 
 -- | Types recognized (not exhaustive) by the runtime system.
@@ -122,6 +124,7 @@ data RTSType
   | -- | Signed integers, size not necessary
     SInt
   | SInt64
+  | UInt64
   | -- | Unsigned integers, specify the size from [8, 16, 32, 64]
     UInt Int
   | -- | Booleans
@@ -140,6 +143,7 @@ instance Show RTSType where
                                else concat ["act_", name, "_t"]
     show SInt              = "int"
     show SInt64            = "int64"
+    show UInt64            = "uint64"
     show UBool             = "bool"
     show (UInt i)          = concat ["uint", show i, "_t"]
     show Trigger           = "trigger_t"
@@ -236,7 +240,8 @@ compileProcedure p = (structTR, enterTR, stepTR)
 -- to find the underlying basetype.
 basetype_ :: Type -> BaseType
 basetype_ TInt    = CInt
-basetype_ TInt64  = CUInt64
+basetype_ TInt64  = CInt64
+basetype_ TUInt64  = CUInt64
 basetype_ TBool   = CBool
 basetype_ (Ref t) = basetype_ t
 
@@ -245,6 +250,7 @@ basetype_ (Ref t) = basetype_ t
 paramtype :: Type -> RTSType
 paramtype TInt    = SInt
 paramtype TInt64  = SInt64
+paramtype TUInt64  = UInt64
 paramtype TBool   = UBool
 paramtype (Ref t) = Pointer $ ScheduledVar $ basetype_ t
 
@@ -631,7 +637,8 @@ mainIR p c = [ Function (Pointer Void) "sleeper" [("arg", Pointer Void)] [ Liter
       -- | Default value for references of different types.
       defaultValue :: Type -> String
       defaultValue TInt    = "0"
-      defaultValue TInt64  = "0UL"
+      defaultValue TInt64  = "0L"
+      defaultValue TUInt64  = "0UL"
       defaultValue TBool   = "false"
       defaultValue (Ref t) = defaultValue t
 
@@ -654,7 +661,8 @@ mainIR p c = [ Function (Pointer Void) "sleeper" [("arg", Pointer Void)] [ Liter
       
       formatter :: Type -> String
       formatter (Ref TInt)   = "int %d"
-      formatter (Ref TInt64) = "int64 %lu"
+      formatter (Ref TInt64) = "int64 %ld"
+      formatter (Ref TUInt64) = "uint64 %lu"
       formatter (Ref TBool)  = "bool %d"
 
       debugprint :: Int -> IR

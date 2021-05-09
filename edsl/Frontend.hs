@@ -8,6 +8,7 @@ module Frontend
      , Exp(..)
      , inputIntRef
      , inputInt64Ref
+     , inputUInt64Ref
      , inputBoolRef
      , (+.)
      , (-.)
@@ -31,6 +32,7 @@ module Frontend
      , SSM -- reexport so we don't need to import Core and get all the constructors
      , Box(..)
      , Int64(..)
+     , Word64(..)
 ) where
 
 import Control.Monad.Writer.Lazy
@@ -38,6 +40,7 @@ import Control.Monad.State.Lazy
 import BinderAnn.Monadic
 
 import Data.Int
+import Data.Word
 
 import Core
 
@@ -114,6 +117,9 @@ inputIntRef = Ptr ("dummyintref", Ref TInt)
 inputInt64Ref :: Ref Int64
 inputInt64Ref = Ptr ("dummyint64ref", Ref TInt64)
 
+inputUInt64Ref :: Ref Word64
+inputUInt64Ref = Ptr ("dummyuint64ref", Ref TUInt64)
+
 inputBoolRef :: Ref Bool
 inputBoolRef = Ptr ("dummyboolref", Ref TBool)
 
@@ -148,8 +154,11 @@ neg e@(Exp e') = Exp $ UOp (typeOf e) e' Neg
 int :: Int -> Exp Int
 int i = Exp $ Lit TInt $ LInt i
 
-uint64 :: Int64 -> Exp Int64
-uint64 i = Exp $ Lit TInt64 $ LInt64 i
+int64 :: Int64 -> Exp Int64
+int64 i = Exp $ Lit TInt64 $ LInt64 i
+
+uint64 :: Word64 -> Exp Word64
+uint64 i = Exp $ Lit TUInt64 $ LUInt64 i
 
 true' :: Exp Bool
 true' = Exp $ Lit TBool $ LBool True
@@ -173,7 +182,7 @@ wait :: [Ref a] -> SSM ()
 wait r = emit $ Wait (map (\(Ptr r') -> r') r)
 
 -- | Delayed assignment
-after :: Exp Int64 -> Ref a -> Exp a -> SSM ()
+after :: Exp Word64 -> Ref a -> Exp a -> SSM ()
 after (Exp e) (Ptr r) (Exp v) = emit $ After e r v
 
 fork :: [SSM ()] -> SSM ()
