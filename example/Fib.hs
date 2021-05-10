@@ -10,9 +10,7 @@ mywait = box "mywait" ["r"] $ \r -> do
 
 mysum :: Ref Int -> Ref Int -> Ref Int -> SSM ()
 mysum = box "mysum" ["r1", "r2", "r"] $ \r1 r2 r -> do
-    fork [ mywait r1
-         , mywait r2
-         ]
+    waitAll [r1,r2]
     v1 <- deref r1
     v2 <- deref r2
     after (uint64 1) r (v1 +. v2)

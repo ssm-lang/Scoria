@@ -34,6 +34,7 @@ library
       LowInterpreter
       Frontend
       Pretty
+      HughesList
       Fib
       Foo
       Examp
@@ -44,6 +45,7 @@ library
       NonTerminate
       Buggy
       Example64bit
+      Exampleuint8
   other-modules:
       Paths_ssm
   hs-source-dirs:

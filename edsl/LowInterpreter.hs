@@ -19,7 +19,6 @@ import qualified Trace as T
 trace :: Show a => a -> a
 trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
--- TODO add written :: Bool here
 type Var s = STRef s
   ( -- Reference pointing to the actual value of the variable.
     STRef s SSMExp
@@ -129,6 +128,7 @@ interpret p = runST interpret'
       defaultValue TInt   = Lit TInt $ LInt 0
       defaultValue TInt64 = Lit TInt64 $ LInt64 0
       defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
+      defaultValue TUInt8 = Lit TUInt8 $ LUInt8 0
       defaultValue TBool  = Lit TBool $ LBool False
 
       getReferences :: Program -> Map.Map String (Var s) -> [(String, Var s)]
@@ -490,33 +490,38 @@ neg (Lit _ (LInt i))   = Lit TInt   $ LInt (-i)
 neg (Lit _ (LInt64 i)) = Lit TInt64 $ LInt64 (-i)
 
 lessthan :: SSMExp -> SSMExp -> SSMExp
-lessthan (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TBool $ LBool $ i1 < i2
-lessthan (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LInt i1))   (Lit _ (LInt i2))     = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TBool $ LBool $ i1 < i2
 lessthan (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TBool $ LBool $ i1 < i2
 lessthan _ _ = error "can only order numerical values"
 
 equals :: SSMExp -> SSMExp -> SSMExp
-equals (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TBool $ LBool $ i1 == i2
-equals (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LInt i1))   (Lit _ (LInt i2))     = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TBool $ LBool $ i1 == i2
 equals (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TBool $ LBool $ i1 == i2
-equals (Lit _ (LBool b1))  (Lit _ (LBool b2))  = Lit TBool $ LBool $ b1 == b2
+equals (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LBool b1))  (Lit _ (LBool b2))    = Lit TBool $ LBool $ b1 == b2
 
 addition :: SSMExp -> SSMExp -> SSMExp
-addition (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TInt   $ LInt   $ i1 + i2
-addition (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ i1 + i2
+addition (Lit _ (LInt i1))   (Lit _ (LInt i2))     = Lit TInt   $ LInt     $ i1 + i2
+addition (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TInt64 $ LInt64   $ i1 + i2
 addition (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 + i2
+addition (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TUInt8 $ LUInt8   $ i1 + i2
 addition _ _ = error "can only add numerical values"
 
 subtract :: SSMExp -> SSMExp -> SSMExp
-subtract (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TInt   $ LInt   $ i1 - i2
-subtract (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ i1 - i2
+subtract (Lit _ (LInt i1))   (Lit _ (LInt i2))     = Lit TInt   $ LInt     $ i1 - i2
+subtract (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TInt64 $ LInt64   $ i1 - i2
 subtract (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 - i2
+subtract (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TUInt8 $ LUInt8   $ i1 - i2
 subtract _ _ = error "can only subtract numerical values"
 
 multiply :: SSMExp -> SSMExp -> SSMExp
 multiply (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TInt   $ LInt   $ i1 * i2
 multiply (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ i1 * i2
 multiply (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 * i2
+multiply (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) = Lit TUInt8 $ LUInt8 $ i1 * i2
 multiply _ _ = error "can only multiply numerical values"
 
 getInt :: SSMExp -> Int

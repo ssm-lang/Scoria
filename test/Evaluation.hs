@@ -18,6 +18,7 @@ data Report = Good                     -- ^ Test succeeded!
             | CompilationError String  -- ^ Error compiling the program, with the c-file
             | ParseError String        -- ^ Error parsing output of running the program, with the output
             | ExecutionError String    -- ^ Error while running the compiled program
+  deriving Show
 
 getname :: Program -> String
 getname ssm = main ssm
@@ -28,7 +29,7 @@ getname ssm = main ssm
 runCG :: Program -> IO Report
 runCG program = do
     setupTestDir
-    createTestFile program
+    createTestFile program True Nothing
     output <- runTest program
     removeTestDir
     case output of
@@ -37,10 +38,14 @@ runCG program = do
             Just trace -> return $ Generated trace
             Nothing    -> return $ ParseError out
 
+-- | For running valgrind, we need to stay away from the linux timeout call, as it will mask
+-- the memory behavior of the program we are inspection. Instead we use the second argument to
+-- compile to indicate for how many seconds the program will run, and it will generate a thread
+-- that terminates the thread after that time.
 runCGValgrind :: Program -> IO Bool
 runCGValgrind p = do
     setupTestDir
-    createTestFile p
+    createTestFile p True (Just 0.5)
     c <- tryCompile p False
     case c of
         Left _  -> do removeTestDir
@@ -70,6 +75,7 @@ gcc execname debug = ("gcc", ["-o",execname,execname ++ ".c"] ++ flags)
       flags = [ rtssrc ++ "peng-scheduler.c"
               , rtssrc ++ "peng-int.c"
               , rtssrc ++ "peng-int64.c"
+              , rtssrc ++ "peng-uint8.c"
               , rtssrc ++ "peng-bool.c"
               , "-I" ++ rtsloc ++ "include"
               , "-I" ++ rtsloc ++ "linux/include"
@@ -107,10 +113,10 @@ inDirectory fp ma = do
     return a
 
 -- | Compile the test program and write it to a c-file
-createTestFile :: Program -> IO ()
-createTestFile program = do
+createTestFile :: Program -> Bool -> Maybe Double -> IO ()
+createTestFile program b d = do
     let name = getname program
-    let c = compile_ True Nothing program
+    let c = compile_ b d program
 
     inDirectory testdir $ do
         writeFile (name ++ ".c") c

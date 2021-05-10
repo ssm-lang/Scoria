@@ -9,6 +9,7 @@ module Frontend
      , inputIntRef
      , inputInt64Ref
      , inputUInt64Ref
+     , inputWord8Ref
      , inputBoolRef
      , (+.)
      , (-.)
@@ -19,11 +20,13 @@ module Frontend
      , neg
      , int
      , uint64
+     , word8
      , true'
      , false'
      , deref
      , var
      , wait
+     , waitAll
      , after
      , fork
      , changed
@@ -114,6 +117,9 @@ instance Res () where
 inputIntRef :: Ref Int
 inputIntRef = Ptr ("dummyintref", Ref TInt)
 
+inputWord8Ref :: Ref Word8
+inputWord8Ref = Ptr ("dummyword8ref", Ref TUInt8)
+
 inputInt64Ref :: Ref Int64
 inputInt64Ref = Ptr ("dummyint64ref", Ref TInt64)
 
@@ -159,6 +165,9 @@ int64 i = Exp $ Lit TInt64 $ LInt64 i
 
 uint64 :: Word64 -> Exp Word64
 uint64 i = Exp $ Lit TUInt64 $ LUInt64 i
+
+word8 :: Word8 -> Exp Word8
+word8 i = Exp $ Lit TUInt8 $ LUInt8 i
 
 true' :: Exp Bool
 true' = Exp $ Lit TBool $ LBool True
