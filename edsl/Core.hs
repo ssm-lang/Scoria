@@ -79,6 +79,7 @@ getProcedureName _             = error "not a procedure"
 data Type = TInt
           | TUInt8
           | TInt64
+          | TUInt64
           | TBool
           | Ref Type
   deriving (Eq, Show, Generic, NFData)
@@ -97,6 +98,9 @@ instance SSMType Word8 where
 
 instance SSMType Int64 where
     typeOf _ = TInt64
+
+instance SSMType Word64 where
+    typeOf _ = TUInt64
 
 expType :: SSMExp -> Type
 expType (Var t _)     = t
@@ -147,16 +151,18 @@ instance Show SSMExp where
     show (BOp _ e1 e2 op) = "(" ++ show e1 ++ " " ++ show op ++ " " ++ show e2 ++ ")"
 
 -- | SSM literals
-data SSMLit = LInt Int      -- ^ Integer literals
-            | LUInt8 Word8  -- ^ 8bit unsigned integers
-            | LInt64 Int64  -- ^ 64bit Integer literals
-            | LBool Bool    -- ^ Boolean literals
+data SSMLit = LInt Int        -- ^ Integer literals
+            | LUInt8 Word8    -- ^ 8bit unsigned integers
+            | LInt64 Int64    -- ^ 64bit integer literals
+            | LUInt64 Word64  -- ^ 64bit unsigned integer literals
+            | LBool Bool      -- ^ Boolean literals
   deriving (Eq, Generic, NFData)
 
 instance Show SSMLit where
     show (LInt i)   = show i
     show (LUInt8 i) = show i
     show (LInt64 i) = show i
+    show (LUInt64 i) = show i
     show (LBool b)  = show b
 
 {-- | SSM unary operators -}

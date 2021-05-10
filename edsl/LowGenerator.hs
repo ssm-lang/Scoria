@@ -27,7 +27,7 @@ for :: [a] -> (a -> b) -> [b]
 for = flip map
 
 instance Arbitrary Type where
-    arbitrary = elements [TInt, TInt64, {-TUInt8,-} TBool, Ref TInt, Ref TInt64, Ref TBool{-, Ref TUInt8-}]
+  arbitrary = elements [TInt, TInt64, TBool, TUInt64, Ref TInt, Ref TInt64, Ref TUInt64, Ref TBool]
 
 type Procedures = [(String, [(String, Type)], [Stm])]
 type Variable = (Name, Type)
@@ -145,7 +145,7 @@ arbProc funs vars refs c n = frequency $
       
       , (1, do r@(_,t)  <- elements refs
                v        <- choose (0,3) >>= arbExp (dereference t) vars
-               delay'   <- choose (0,3) >>= arbExp TInt64 vars
+               delay'   <- choose (0,3) >>= arbExp TUInt64 vars
                (rest,c') <- arbProc funs vars refs c (n-1)
                let delay = delay' * delay' + 1 -- hack to make it non negative and non zero
                let stm   = After delay r v
@@ -205,9 +205,9 @@ arbExp t vars 0 = oneof $ litGen : varGen
     -- | Generator of SSMExp literals.
     litGen :: Gen SSMExp
     litGen = case t of
-      TInt   -> return . Lit TInt   . LInt =<< (arbitrary :: Gen Int)
-      --TUInt8 -> return . Lit TUInt8 . LUInt8 =<< (arbitrary :: Gen Word8)
-      TInt64 -> return . Lit TInt64 . LInt64 =<< (arbitrary :: Gen Int64)
+      TInt   -> return . Lit TInt   . LInt =<< arbitrary
+      TInt64 -> return . Lit TInt64 . LInt64 =<< arbitrary
+      TUInt64 -> return . Lit TUInt64 . LUInt64 =<< arbitrary
       TBool  -> return . Lit TBool  . LBool =<< arbitrary
 
     -- | Generator that returns a randomly selected variable from the set of variables.
@@ -943,6 +943,7 @@ removeNth n (x:xs) = x : removeNth (n-1) xs
 defaultVal :: Type -> SSMExp
 defaultVal TInt   = Lit TInt $ LInt 1
 defaultVal TInt64 = Lit TInt64 $ LInt64 1
+defaultVal TUInt64 = Lit TUInt64 $ LUInt64 1
 defaultVal TBool  = Lit TBool $ LBool True
 
 {-***** Remove unit-statements *****-}

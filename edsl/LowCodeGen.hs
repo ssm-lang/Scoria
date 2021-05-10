@@ -105,6 +105,7 @@ type Label = String
 
 data BaseType
   = CInt
+  | CInt64
   | CUInt64
   | CUInt8
   | -- | from stdbool.h
@@ -112,8 +113,9 @@ data BaseType
 
 instance Show BaseType where
     show CInt    = "int"
+    show CInt64  = "int64"
+    show CUInt64 = "uint64"
     show CUInt8  = "uint8"
-    show CUInt64 = "int64"
     show CBool   = "bool"
 
 -- | Types recognized (not exhaustive) by the runtime system.
@@ -125,6 +127,7 @@ data RTSType
   | -- | Signed integers, size not necessary
     SInt
   | SInt64
+  | UInt64
   | UInt8
   | -- | Unsigned integers, specify the size from [8, 16, 32, 64]
     UInt Int
@@ -144,6 +147,7 @@ instance Show RTSType where
                                else concat ["act_", name, "_t"]
     show SInt              = "int"
     show SInt64            = "int64"
+    show UInt64            = "uint64"
     show UInt8             = "uint8"
     show UBool             = "bool"
     show (UInt i)          = concat ["uint", show i, "_t"]
@@ -241,8 +245,9 @@ compileProcedure p = (structTR, enterTR, stepTR)
 -- to find the underlying basetype.
 basetype_ :: Type -> BaseType
 basetype_ TInt    = CInt
+basetype_ TInt64  = CInt64
+basetype_ TUInt64 = CUInt64
 basetype_ TUInt8  = CUInt8
-basetype_ TInt64  = CUInt64
 basetype_ TBool   = CBool
 basetype_ (Ref t) = basetype_ t
 
@@ -252,6 +257,7 @@ paramtype :: Type -> RTSType
 paramtype TInt    = SInt
 paramtype TUInt8  = UInt8
 paramtype TInt64  = SInt64
+paramtype TUInt64  = UInt64
 paramtype TBool   = UBool
 paramtype (Ref t) = Pointer $ ScheduledVar $ basetype_ t
 
@@ -338,9 +344,10 @@ compLit e = case e of
   
   Lit _ l -> case l of
     LInt i      -> if i >= 0 then show i else "(" ++ show i ++ ")"
-    LUInt8 i    -> show i
-    LInt64 i    -> let lit = show i ++ "UL" in
+    LInt64 i    -> let lit = show i ++ "L" in
                    if i >= 0 then lit else "(" ++ lit ++ ")"
+    LUInt64 i   -> show i ++ "UL"
+    LUInt8 i    -> show i
     LBool True  -> "true"
     LBool False -> "false"
   
@@ -642,8 +649,9 @@ mainIR p c = [ maybe Blank (\f -> Function (Pointer Void) "sleeper"
       -- | Default value for references of different types.
       defaultValue :: Type -> String
       defaultValue TInt    = "0"
+      defaultValue TInt64  = "0L"
+      defaultValue TUInt64  = "0UL"
       defaultValue TUInt8  = "0"
-      defaultValue TInt64  = "0UL"
       defaultValue TBool   = "false"
       defaultValue (Ref t) = defaultValue t
 
@@ -665,10 +673,11 @@ mainIR p c = [ maybe Blank (\f -> Function (Pointer Void) "sleeper"
           Literal 4 $ concat ["printf(\"result ", r, " ", formatter t, "\\n\", ", r, ".value)"]
       
       formatter :: Type -> String
-      formatter (Ref TInt)   = "int %d"
-      formatter (Ref TUInt8) = "uint8 %u"
-      formatter (Ref TInt64) = "int64 %lu"
-      formatter (Ref TBool)  = "bool %d"
+      formatter (Ref TInt)    = "int %d"
+      formatter (Ref TInt64)  = "int64 %ld"
+      formatter (Ref TUInt64) = "uint64 %lu"
+      formatter (Ref TUInt8)  = "uint8 %u"
+      formatter (Ref TBool)   = "bool %d"
 
       debugprint :: Int -> IR
       debugprint i = Literal i $ concat ["printf(\"now %lu eventqueuesize %d\\n\", now, event_queue_len)"]
