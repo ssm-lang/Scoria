@@ -346,7 +346,7 @@ compLit e = case e of
     LInt i      -> if i >= 0 then show i else "(" ++ show i ++ ")"
     LInt64 i    -> let lit = show i ++ "L" in
                    if i >= 0 then lit else "(" ++ lit ++ ")"
-    LUInt64 i   -> let lit = show i ++ "UL" in
+    LUInt64 i   -> show i ++ "UL"
     LUInt8 i    -> show i
     LBool True  -> "true"
     LBool False -> "false"
