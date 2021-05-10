@@ -6,11 +6,7 @@
 module Frontend
      ( Ref(..)
      , Exp(..)
-     , inputIntRef
-     , inputInt64Ref
-     , inputUInt64Ref
-     , inputWord8Ref
-     , inputBoolRef
+     , inputref
      , (+.)
      , (-.)
      , (*.)
@@ -44,6 +40,7 @@ import BinderAnn.Monadic
 
 import Data.Int
 import Data.Word
+import Data.Proxy
 
 import Core
 
@@ -114,20 +111,10 @@ instance Arg (Ref a) where
 instance Res () where
     result name () = emit $ Result name
 
-inputIntRef :: Ref Int
-inputIntRef = Ptr ("dummyintref", Ref TInt)
-
-inputWord8Ref :: Ref Word8
-inputWord8Ref = Ptr ("dummyword8ref", Ref TUInt8)
-
-inputInt64Ref :: Ref Int64
-inputInt64Ref = Ptr ("dummyint64ref", Ref TInt64)
-
-inputUInt64Ref :: Ref Word64
-inputUInt64Ref = Ptr ("dummyuint64ref", Ref TUInt64)
-
-inputBoolRef :: Ref Bool
-inputBoolRef = Ptr ("dummyboolref", Ref TBool)
+-- | When interpreting or compiling a SSM program that requires input references,
+-- supply this value instead.
+inputref :: forall a. SSMType a => Ref a
+inputref = Ptr ("dummy", Ref (typeOf (Proxy @a)))
 
 class Assignable a b where
     (<~) :: a -> b -> SSM ()
