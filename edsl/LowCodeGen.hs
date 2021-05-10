@@ -9,6 +9,7 @@ import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.List
 import LowCore
+import HughesList
 
 import System.IO.Unsafe
 
@@ -105,11 +106,13 @@ type Label = String
 data BaseType
   = CInt
   | CUInt64
+  | CUInt8
   | -- | from stdbool.h
     CBool
 
 instance Show BaseType where
     show CInt    = "int"
+    show CUInt8  = "uint8"
     show CUInt64 = "int64"
     show CBool   = "bool"
 
@@ -122,6 +125,7 @@ data RTSType
   | -- | Signed integers, size not necessary
     SInt
   | SInt64
+  | UInt8
   | -- | Unsigned integers, specify the size from [8, 16, 32, 64]
     UInt Int
   | -- | Booleans
@@ -140,6 +144,7 @@ instance Show RTSType where
                                else concat ["act_", name, "_t"]
     show SInt              = "int"
     show SInt64            = "int64"
+    show UInt8             = "uint8"
     show UBool             = "bool"
     show (UInt i)          = concat ["uint", show i, "_t"]
     show Trigger           = "trigger_t"
@@ -172,7 +177,7 @@ runTR tra = evalState tra st
       st :: TRState
       st = TRState 0 0 0 []
 
-compile_ :: Bool -> Maybe Int -> Program -> String
+compile_ :: Bool -> Maybe Double -> Program -> String
 compile_ False _ p = compile p
 compile_ True c p  = let f = compile p
                          m = generateC $ mainIR p c
@@ -236,6 +241,7 @@ compileProcedure p = (structTR, enterTR, stepTR)
 -- to find the underlying basetype.
 basetype_ :: Type -> BaseType
 basetype_ TInt    = CInt
+basetype_ TUInt8  = CUInt8
 basetype_ TInt64  = CUInt64
 basetype_ TBool   = CBool
 basetype_ (Ref t) = basetype_ t
@@ -244,6 +250,7 @@ basetype_ (Ref t) = basetype_ t
 -- SSM EDSL is t, would have. E.g `Ref Int` would be `sv_int_t*`, `Exp Int` would be `int`.
 paramtype :: Type -> RTSType
 paramtype TInt    = SInt
+paramtype TUInt8  = UInt8
 paramtype TInt64  = SInt64
 paramtype TBool   = UBool
 paramtype (Ref t) = Pointer $ ScheduledVar $ basetype_ t
@@ -331,6 +338,7 @@ compLit e = case e of
   
   Lit _ l -> case l of
     LInt i      -> if i >= 0 then show i else "(" ++ show i ++ ")"
+    LUInt8 i    -> show i
     LInt64 i    -> let lit = show i ++ "UL" in
                    if i >= 0 then lit else "(" ++ lit ++ ")"
     LBool True  -> "true"
@@ -338,7 +346,7 @@ compLit e = case e of
   
   UOp _ e op -> case op of
     Neg -> "(-" ++ compLit e ++ ")"
-  
+
   BOp _ e1 e2 op -> case op of
     OPlus  -> "(" ++ compLit e1 ++ " + " ++ compLit e2 ++ ")"
     OMinus -> "(" ++ compLit e1 ++ " - " ++ compLit e2 ++ ")"
@@ -589,18 +597,23 @@ untilBlock (x : xs) = case x of
   Fork _ -> ([x], xs)
   _      -> ([x],[]) <> untilBlock xs
 
-mainIR :: Program -> Maybe Int -> [IR]
-mainIR p c = [ Function (Pointer Void) "sleeper" [("arg", Pointer Void)] [ Literal 4 "sleep(0.5)"
-                                                                         , Literal 4 "exit(0)"]
-             , Function Void "top_return" [("act", Pointer $ Act "")] [Return]
+mainIR :: Program -> Maybe Double -> [IR]
+mainIR p c = [ maybe Blank (\f -> Function (Pointer Void) "sleeper"
+                                          [("arg", Pointer Void)]
+                                          [ Literal 4 $ concat ["sleep(", show f, ")"]
+                                          , Literal 4 "exit(0)"
+                                          ]) c
+             , Function Void "top_return"
+                       [("act", Pointer $ Act "")]
+                       [Return]
              , Blank
              , Function Void "main" [] bdy
              ]
   where
       bdy :: [IR]
       bdy = concat $ [ [
-                       Literal 4 "pthread_t sleep_thread"
-                     , Literal 4 "pthread_create(&sleep_thread, NULL, &sleeper, NULL)"
+                       LiteralNoSemi 4 $ maybe "" (const "pthread_t sleep_thread;") c
+                     , LiteralNoSemi 4 $ maybe "" (const "pthread_create(&sleep_thread, NULL, &sleeper, NULL);") c
                      , Blank
                      , Literal 4 $ "act_t top = { .step = top_return }"]
                      , refinits
@@ -608,14 +621,12 @@ mainIR p c = [ Function (Pointer Void) "sleeper" [("arg", Pointer Void)] [ Liter
                                              ,"(", intercalate ", " entryargs, "))"]
                      , Literal 4 "tick()"
                      , debugprint 4
-                     , LiteralNoSemi 4 $ maybe "" (\i -> "int counter = " ++ show i ++ ";") c
-                     , LiteralNoSemi 4 $ maybe "while(1) {" (const "while(counter) {") c
+                     , LiteralNoSemi 4 "while(1) {"
                      , Literal 8 "now = next_event_time()"
                      , LiteralNoSemi 8 "if(now == NO_EVENT_SCHEDULED)"
                      , Literal 12 "break"
                      , Literal 8 "tick()"
                      , debugprint 8
-                     , LiteralNoSemi 8 $ maybe "" (const "counter = counter - 1;") c
                      , LiteralNoSemi 4 "}"]
                      , printrefs
                      ]
@@ -631,6 +642,7 @@ mainIR p c = [ Function (Pointer Void) "sleeper" [("arg", Pointer Void)] [ Liter
       -- | Default value for references of different types.
       defaultValue :: Type -> String
       defaultValue TInt    = "0"
+      defaultValue TUInt8  = "0"
       defaultValue TInt64  = "0UL"
       defaultValue TBool   = "false"
       defaultValue (Ref t) = defaultValue t
@@ -654,6 +666,7 @@ mainIR p c = [ Function (Pointer Void) "sleeper" [("arg", Pointer Void)] [ Liter
       
       formatter :: Type -> String
       formatter (Ref TInt)   = "int %d"
+      formatter (Ref TUInt8) = "uint8 %u"
       formatter (Ref TInt64) = "int64 %lu"
       formatter (Ref TBool)  = "bool %d"
 
@@ -664,11 +677,11 @@ mainIR p c = [ Function (Pointer Void) "sleeper" [("arg", Pointer Void)] [ Liter
 
 -- | Monad for generating C code. The read only integer represents the indentation level at
 -- which to output code, and the writer output is the actual code that was generated.
-type CGen a = ReaderT Int (Writer [String]) a
+type CGen a = ReaderT Int (Writer (Hughes String)) a
 
 -- | Run the code generating function `irToC` and return the output emitted.
 generateC :: [IR] -> String
-generateC xs = unlines $ execWriter $ runReaderT (irToC xs) $ 0
+generateC xs = unlines $ fromHughes $ execWriter $ runReaderT (irToC xs) $ 0
 
 -- | Generate output in the form of C code from the input IR instructions.
 irToC :: [IR] -> CGen ()
@@ -753,14 +766,15 @@ irToC ir = flip mapM_ ir $ \x -> case x of
         emit $ concat ["leave((act_t *) act, sizeof(act_", name, "_t));"]
 
     Blank                 -> emit ""
-    Literal ind str       -> tell [concat [replicate ind ' ', str, ";"]]
-    LiteralNoSemi ind str -> tell [concat [replicate ind ' ', str]]
+    Literal ind str       -> tell $ toHughes [concat [replicate ind ' ', str, ";"]]
+    LiteralNoSemi ind str -> tell $ toHughes [concat [replicate ind ' ', str]]
   where
       -- | Emit a string output at the indentation level indicated by the reader environment.
       emit :: String -> CGen ()
       emit str = do
           i <- ask
-          tell [replicate i ' ' ++ str]
+          tell $ toHughes [replicate i ' ' ++ str]
+          --tell [replicate i ' ' ++ str]
 
       -- | Run a code generating computation with increased indentation, making all output
       -- generated by `emit` appear one indentation level deeper.

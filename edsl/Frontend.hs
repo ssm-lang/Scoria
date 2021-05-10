@@ -8,6 +8,7 @@ module Frontend
      , Exp(..)
      , inputIntRef
      , inputInt64Ref
+     , inputWord8Ref
      , inputBoolRef
      , (+.)
      , (-.)
@@ -18,11 +19,13 @@ module Frontend
      , neg
      , int
      , uint64
+     , word8
      , true'
      , false'
      , deref
      , var
      , wait
+     , waitAll
      , after
      , fork
      , changed
@@ -38,6 +41,7 @@ import Control.Monad.State.Lazy
 import BinderAnn.Monadic
 
 import Data.Int
+import Data.Word
 
 import Core
 
@@ -111,6 +115,9 @@ instance Res () where
 inputIntRef :: Ref Int
 inputIntRef = Ptr ("dummyintref", Ref TInt)
 
+inputWord8Ref :: Ref Word8
+inputWord8Ref = Ptr ("dummyword8ref", Ref TUInt8)
+
 inputInt64Ref :: Ref Int64
 inputInt64Ref = Ptr ("dummyint64ref", Ref TInt64)
 
@@ -150,6 +157,9 @@ int i = Exp $ Lit TInt $ LInt i
 
 uint64 :: Int64 -> Exp Int64
 uint64 i = Exp $ Lit TInt64 $ LInt64 i
+
+word8 :: Word8 -> Exp Word8
+word8 i = Exp $ Lit TUInt8 $ LUInt8 i
 
 true' :: Exp Bool
 true' = Exp $ Lit TBool $ LBool True

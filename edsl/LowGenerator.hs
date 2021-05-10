@@ -3,15 +3,19 @@
 module LowGenerator where
 
 import Data.List
+import Data.Word
+import Data.Int
 import Data.Maybe
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 import LowCore
+import HughesList
 
 import Test.QuickCheck
 import Test.QuickCheck.Gen.Unsafe ()
 import Control.Monad.Reader
-import Control.Monad.Writer
+--import Control.Monad.Writer
 import Control.Monad.State
 
 import System.IO.Unsafe
@@ -23,22 +27,24 @@ for :: [a] -> (a -> b) -> [b]
 for = flip map
 
 instance Arbitrary Type where
-    arbitrary = elements [TInt, TInt64, TBool, Ref TInt, Ref TInt64, Ref TBool]
+    arbitrary = elements [TInt, TInt64, {-TUInt8,-} TBool, Ref TInt, Ref TInt64, Ref TBool{-, Ref TUInt8-}]
 
 type Procedures = [(String, [(String, Type)], [Stm])]
 type Variable = (Name, Type)
 type Ref     = (String, Type)
 
 instance Arbitrary Program where
-  shrink p = concat [ shrinkProcedures p  -- Shrink number of functions
-                    , shrinkArity p       -- Shrink procedure arity (writing this right now)
-                    , shrinkAllStmts p    -- Shrink by removing statements that effectively
-                                          -- have type () (fork, wait etc).
-                    , shrinkForks p       -- Shrink fork statements (fork less things)
-                    , shrinkIf p          -- Flatten if's (every if becomes two new programs)
-                    , shrinkRefs p        -- Shrink number of declared refs
-                    , shrinkWait p        -- Shrink wait statements
-                    ]
+  shrink p = let p' = p --removeUnusedProcedures p
+             in concat [ --shrinkHalfProcedures p'
+                       {-,-} shrinkSingleProcedures p'  -- Shrink number of functions
+                       , shrinkArity p'             -- Shrink procedure arity (writing this right now)
+                       , shrinkAllStmts p'          -- Shrink by removing statements that effectively
+                                                -- have type () (fork, wait etc).
+                       , shrinkForks p'             -- Shrink fork statements (fork less things)
+                       , shrinkIf p'                -- Flatten if's (every if becomes two new programs)
+                       , shrinkRefs p'              -- Shrink number of declared refs
+                       , shrinkWait p'              -- Shrink wait statements
+                       ]
   arbitrary = do
     types <- arbitrary `suchThat` (not . null)
     let funs = [ ("fun" ++ show i, as) | (as,i) <- zip types [1..]]
@@ -199,10 +205,11 @@ arbExp t vars 0 = oneof $ litGen : varGen
     -- | Generator of SSMExp literals.
     litGen :: Gen SSMExp
     litGen = case t of
-      TInt   -> return . Lit TInt   . LInt =<< arbitrary
-      TInt64 -> return . Lit TInt64 . LInt64 =<< arbitrary
+      TInt   -> return . Lit TInt   . LInt =<< (arbitrary :: Gen Int)
+      --TUInt8 -> return . Lit TUInt8 . LUInt8 =<< (arbitrary :: Gen Word8)
+      TInt64 -> return . Lit TInt64 . LInt64 =<< (arbitrary :: Gen Int64)
       TBool  -> return . Lit TBool  . LBool =<< arbitrary
-    
+
     -- | Generator that returns a randomly selected variable from the set of variables.
     varGen :: [Gen SSMExp]
     varGen = [ return (Var t' (getVarName n)) | (n,t') <- vars, t == t']
@@ -218,6 +225,12 @@ arbExp t vars n = case t of
                  ]
 -- catch-all case for numeric expressions right now, as int and int64 are generated
 -- the same way
+ -- TUInt8 -> do e1 <- arbExp t vars (n `div` 2)
+ --              e2 <- arbExp t vars (n `div` 2)
+ --              elements [ e1 + e2
+ --                       , e1 - e2
+ --                       , e1 * e2
+ --                       ]
   _ ->    frequency [ (1, do e <- arbExp t vars (n-1)
                              return $ negate e
                       )
@@ -237,7 +250,6 @@ testprogram1 = Program "fun1" [] $ Map.fromList [("fun1",
     Procedure "fun1" [] [If (BOp TBool (UOp TInt (Lit TInt (LInt 1)) Neg) (UOp TInt (Lit TInt (LInt 2)) Neg) OLT)
                            [ Fork [("fun1",[])]]
                            [ NewRef (Fresh "v0") (Ref TBool) (BOp TBool (BOp TInt (Lit TInt (LInt 2)) (Lit TInt (LInt 1)) OPlus) (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 0)) OPlus) OEQ)
-                           --, NewRef (Fresh "v1") (Ref TInt) (Lit TInt (LInt 5))
                            , Fork [("fun1",[]),("fun1",[]),("fun1",[])]]])]
 
 testprogram2 :: Program
@@ -355,35 +367,70 @@ testprogram12 = Program "fun2" [Right ("ref3", Ref TInt64)] $ Map.fromList
                               , GetRef (Fresh "v3") TInt64 ("ref3", Ref TInt64)
                               ])
   ]
-
 t = BOp TInt64 (BOp TInt64 (Var TInt64 "v0") (Var TInt64 "v0") OTimes) (BOp TInt64 (UOp TInt64 (Lit TInt64 $ LInt64 8) Neg) (UOp TInt64 (Lit TInt64 $ LInt64 8) Neg) OPlus) OMinus
 
+testprogram13 :: Program
+testprogram13 = Program "fun5" [Right ("ref6", Ref TBool)] $ Map.fromList
+  [("fun5", Procedure "fun5" [("ref6", Ref TBool)]
+                             [ After (Lit TInt64 $ LInt64 118172118490001) ("ref6", Ref TBool) (Lit TBool $ LBool True)
+                             , Wait [("ref6", Ref TBool)]
+                             , GetRef (Fresh "v1") TBool ("ref6", Ref TBool)
+                             , Fork [("fun5", [Right ("ref6", Ref TBool)])]
+                             ])]
+
+testprogram14 :: Program
+testprogram14 = Program "fun1" [Right ("ref1", Ref TBool)] $ Map.fromList
+    [("fun1", Procedure "fun1"
+                [ ("ref1", Ref TBool)]
+                [ NewRef (Fresh "v0") (Ref TInt) (Lit TInt $ LInt 5)
+                , NewRef (Fresh "v1") (Ref TInt) (Lit TInt $ LInt 6)
+                , NewRef (Fresh "v2") (Ref TInt) (Lit TInt $ LInt 7)
+                , Wait [("ref1", Ref TBool), ("v0", Ref TInt), ("v1", Ref TInt), ("v2", Ref TInt)]
+                ])]
+
 {-
 Program:
-  entrypoint: fun2
-  arguments: [Right ("ref3",Ref TInt64)]
+  entrypoint: fun5
+  arguments: [Right ("ref6",Ref TBool)]
 
-fun1()
-fun2(("ref3",Ref TInt64))
-  GetRef (Fresh "v0") TInt64 ("ref3",Ref TInt64)
-  After ((((v0 * v0) - (-8 + -8)) * ((v0 * v0) - (-8 + -8))) + 1) ("ref3",Ref TInt64) (v0 + 1)
-  GetRef (Fresh "v3") TInt64 ("ref3",Ref TInt64)
-
-
+fun5(("ref6",Ref TBool))
+  After ((((1 + 1) + (-3426 * -3173)) * ((1 + 1) + (-3426 * -3173))) + 1) ("ref6",Ref TBool) True
+  Wait [("ref6",Ref TBool)]
+  GetRef (Fresh "v1") TBool ("ref6",Ref TBool)
+  Fork [("fun5",[Right ("ref6",Ref TBool)])]
 -}
 
-{-
+{-****** Removing unused procedures ******-}
 
-Program:
-  entrypoint: fun17
-  arguments: [Right ("ref9",Ref TBool)]
+removeUnusedProcedures :: Program -> Program
+removeUnusedProcedures p = case removeProcedure p (toremove' p) of
+  Just p -> p
+  Nothing -> p
 
-fun17(("ref9",Ref TBool))
-  NewRef (Fresh "v5") (Ref TBool) false
-  After 5 ("ref9",Ref TBool) false
-  After 2 ("v5",Ref TBool) false
-fun3()
--}
+usedInStm :: [Stm] -> Set.Set String
+usedInStm [] = Set.empty
+usedInStm (x:xs) = case x of
+  If c thn els -> let s1 = usedInStm thn
+                      s2 = usedInStm els
+                      s3 = usedInStm xs
+                  in Set.unions [s1,s2,s3]
+
+  While c bdy -> let s1 = usedInStm bdy
+                     s2 = usedInStm xs
+                  in Set.union s1 s2
+
+  Fork procs -> let s1 = Set.fromList $ map fst procs
+                    s2 = usedInStm xs
+                in Set.union s1 s2
+
+  otherwise -> usedInStm xs
+
+toremove' :: Program -> [String]
+toremove' p = let s1 = Set.fromList $ Map.keys (funs p)
+                  s2 = usedInStm $ body (fromJust (Map.lookup (main p) (funs p)))
+                  s3 = Set.union s2 (Set.singleton (main p))
+              in Set.toList $ s1 `Set.difference` s3
+
 {-****** Removing declared references *****-}
 
 shrinkRefs :: Program -> [Program]
@@ -502,50 +549,106 @@ allRefs p = refs $ body p
 
 {-***** Removing entire procedures *****-}
 
-shrinkProcedures :: Program -> [Program]
-shrinkProcedures p = map fromJust $ filter isJust $ for toremove $ \fun ->
+-- | Return all mutations where one function were removed from the program. Never
+-- tries to remove the main function.
+shrinkSingleProcedures :: Program -> [Program]
+shrinkSingleProcedures p = map fromJust $ filter isJust $ for toremove $ \fun ->
     let p' = p { funs = Map.delete fun (funs p) }
-    in removeProcedure p' fun
+    in removeProcedure p' [fun]
   where
     toremove :: [String]
     toremove = delete (main p) (Map.keys (funs p))
 
-removeProcedure :: Program -> String -> Maybe Program
-removeProcedure p fun = do
-  procedures <- sequence [ do pro' <- remove pro fun
-                              return (n,pro')
-                         | (n,pro) <- Map.toList (funs p)]
-  return $ p { funs = Map.fromList procedures}
-
-remove :: Procedure -> String -> Maybe Procedure
-remove p fun = let body' = newbody (body p) in
-               if body' /= (body p)
-                 then Just $ p { body = newbody (body p) }
-                 else Nothing
+-- | Return all mutations where half of functions were removed from the program. Never
+-- tries to remove the main function.
+shrinkHalfProcedures :: Program -> [Program]
+shrinkHalfProcedures p = concat $ for [ removeProcedure p h1
+                                      , removeProcedure p h2
+                                      , removeProcedure p h3
+                                      ] $ \mp ->
+  if isJust mp
+    then [fromJust mp]
+    else []
   where
-    newbody :: [Stm] -> [Stm]
-    newbody []     = []
-    newbody (x:xs) = case x of
+    toremove :: [String]
+    toremove = delete (main p) (Map.keys (funs p))
+
+    (h1,h2,h3) = let l       = length toremove `div` 3
+                     (h1,r)  = mysplit l toremove
+                     (h2,h3) = mysplit l r
+                  in (h1,h2,h3)
+
+    mysplit :: Int -> [a] -> ([a],[a])
+    mysplit i xs = go i ([], xs)
+      where
+        go :: Int -> ([a],[a]) -> ([a],[a])
+        go 0 (sx,ys)   = (reverse sx, ys)
+        go i (sx,y:ys) = go (i-1) (y : sx, ys)
+
+removeProcedure :: Program -> [String] -> Maybe Program
+removeProcedure p procs = do
+  funs' <- removeFromProcedures (Map.toList (funs p)) procs False
+  return $ p { funs = Map.fromList funs' }
+
+removeFromProcedures :: [(String,Procedure)]
+                     -> [String]
+                     -> Bool
+                     -> Maybe [(String,Procedure)]
+removeFromProcedures [] _ b             = if b then Just [] else Nothing
+removeFromProcedures ((n,p):ps) procs b =
+  if n `elem` procs
+    then removeFromProcedures ps procs True
+    else case remove p procs of
+      Just p' -> do ps' <- removeFromProcedures ps procs (b || True)
+                    return $ (n,p') : ps'
+      Nothing -> do ps' <- removeFromProcedures ps procs (b || False)
+                    return $ (n,p) : ps'
+
+remove :: Procedure -> [String] -> Maybe Procedure
+remove p funs = case newbody (body p, False) of
+  (_, False)  -> Nothing
+  (bdy, True) -> Just $ p { body = bdy }
+  where
+    newbody :: ([Stm], Bool) -> ([Stm], Bool)
+    newbody ([], b)     = ([], b)
+    newbody ((x:xs), b) = case x of
       If c thn els ->
-        let stm = If c (newbody thn) (newbody els)
-        in stm : newbody xs
+        let (thn',b1) = newbody (thn, b)
+            (els',b2) = newbody (els, b1)
+            stm       = If c thn' els'
+            (xs',b3)  = newbody (xs, b2)
+        in (stm:xs', b3)
 
       While c bdy  ->
-        let stm = While c $ newbody bdy
-        in stm : newbody xs
+        let (bdy',b1) = newbody (bdy, b)
+            stm       = While c bdy'
+            (xs',b2)  = newbody (xs, b1)
+        in (stm : xs', b2)
       
-      Fork procs   -> let procs' = removeFork procs fun in
-        if null procs'
-          then newbody xs
-          else Fork procs' : newbody xs
-      
-      otherwise    -> otherwise : newbody xs
+      Fork procs   -> do
+        let procs' = removeFork procs funs
+        case procs' of
+          Just []      -> newbody (xs, b || True)
+          Just procs'' -> let (xs',b1) = newbody (xs, b || True)
+                          in (Fork procs'' : xs', b1)
+          Nothing      -> let (xs',b1) = newbody (xs, b || False)
+                          in (Fork procs : xs', b1)
+
+      otherwise    ->
+        let (xs',b1) = newbody (xs, b)
+        in (otherwise : xs', b1)
     
     removeFork :: [(String, [Either SSMExp Reference])]
-               -> String
-               -> [(String, [Either SSMExp Reference])]
-    removeFork procs fun = filter ((/=) fun . fst) procs
-
+               -> [String]
+               -> Maybe [(String, [Either SSMExp Reference])]
+    removeFork procs funs = go procs funs False
+      where
+        go [] _ b                 = if b then Just [] else Nothing
+        go (x@(n,args):xs) funs b = do
+          if n `elem` funs
+            then do go xs funs (b || True)
+            else do xs' <- go xs funs (b || False)
+                    return $ x : xs'
 {-***** Shrinking/flattening if statements *****-}
 
 shrinkIf :: Program -> [Program]
@@ -553,22 +656,20 @@ shrinkIf p = [ p { funs = Map.insert n proc' (funs p) } | (n,fun) <- Map.toList 
                                                         , proc' <- shrinkIfProcedure fun]
 
 shrinkIfProcedure :: Procedure -> [Procedure]
-shrinkIfProcedure p = let bodys = execWriter $ shrinkIfStm ([], body p)
+shrinkIfProcedure p = let bodys = shrinkIfStm (emptyHughes, body p)
                       in for bodys $ \bdy -> p { body = bdy }
 
-shrinkIfStm :: ([Stm],[Stm]) -> Writer [[Stm]] ()
-shrinkIfStm (_,[])           = return ()
-shrinkIfStm (rfront, (x:xs)) = case x of
-  If c thn els -> do let front = reverse rfront
-                     tell [front ++ thn ++ xs, front ++ els ++ xs]
-                     shrinkIfStm (x : rfront, xs)
-  -- I am not sure about this step. Is it small enough? Ask Koen!
-  While c bdy -> do let bdys = execWriter $ shrinkIfStm ([], bdy)
-                    let front = reverse rfront
-                    sequence_ [ tell [front ++ [While c bdy'] ++ xs]
-                              | bdy' <- bdys]
-                    shrinkIfStm (x : rfront, xs)
-  _ -> shrinkIfStm (x : rfront, xs)
+shrinkIfStm :: (Hughes Stm,[Stm]) -> [[Stm]]
+shrinkIfStm (_,[])           = []
+shrinkIfStm (front, (x:xs)) = case x of
+  If c thn els -> let front' = fromHughes front
+                      curr   = [front' ++ thn ++ xs, front' ++ els ++ xs]
+                  in curr  ++ shrinkIfStm (snoc front x, xs)
+  While c bdy -> let bdys  = shrinkIfStm (emptyHughes, bdy)
+                     front' = fromHughes front
+                     curr = [ front' ++ (While c bdy' : xs) | bdy' <- bdys]
+                 in curr ++ shrinkIfStm (snoc front x, xs)
+  _ -> shrinkIfStm (snoc front x, xs)
 
 {-***** Shrinking wait instructions *****-}
 
@@ -577,24 +678,23 @@ shrinkWait p = [ p { funs = Map.insert n proc' (funs p) } | (n,fun) <- Map.toLis
                                                           , proc' <- shrinkWaitProcedure fun]
 
 shrinkWaitProcedure :: Procedure -> [Procedure]
-shrinkWaitProcedure p = let bodys = execWriter $ shrinkWaitStm ([], body p)
-                         in for bodys $ \bdy -> p { body = bdy }
+shrinkWaitProcedure p = let bodys = shrinkWaitStm (emptyHughes, body p)
+                        in for bodys $ \bdy -> p { body = bdy }
 
-shrinkWaitStm :: ([Stm], [Stm]) -> Writer [[Stm]] ()
-shrinkWaitStm (_, [])          = return ()
-shrinkWaitStm (rfront, (x:xs)) = case x of
-  While c bdy -> do let bdys = execWriter $ shrinkWaitStm ([], bdy)
-                    let front = reverse rfront
-                    sequence_ [ tell [front ++ [While c bdy'] ++ xs]
-                              | bdy' <- bdys]
-                    shrinkWaitStm (x : rfront, xs)
+shrinkWaitStm :: (Hughes Stm, [Stm]) -> [[Stm]]
+shrinkWaitStm (_, [])          = []
+shrinkWaitStm (front, (x:xs)) = case x of
+  While c bdy -> let bdys   = shrinkWaitStm (emptyHughes, bdy)
+                     front' = fromHughes front
+                     currs  = [ front' ++ (While c bdy' : xs) | bdy' <- bdys]
+                 in currs ++ shrinkWaitStm (snoc front x, xs)
   
-  Wait refs -> do let sublists = filter (not . null) $ map (\r -> delete r refs) refs
-                  let front = reverse rfront
-                  forM_ sublists $ \sublist -> tell [front ++ [Wait sublist] ++ xs]
-                  shrinkWaitStm (x : rfront, xs)
+  Wait refs -> let sublists = filter (not . null) $ map (\r -> delete r refs) refs
+                   front'   = fromHughes front
+                   currs    = [ front' ++ (Wait l : xs) | l <- sublists]
+               in currs ++ shrinkWaitStm (snoc front x, xs)
  
-  _ -> shrinkWaitStm (x : rfront, xs)
+  _ -> shrinkWaitStm (snoc front x, xs)
 
 {-***** Shrinking fork sizes *****-}
 
@@ -603,24 +703,24 @@ shrinkForks p =  [ p { funs = Map.insert n f' (funs p) }
                  | (n,f) <- Map.toList (funs p), f' <- shrinkForksProcedure f]
 
 shrinkForksProcedure :: Procedure -> [Procedure]
-shrinkForksProcedure p = let bdys = execWriter $ shrinkForkStm ([], body p)
+shrinkForksProcedure p = let bdys = shrinkForkStm (emptyHughes, body p)
                          in map (\bdy -> p { body = bdy } ) bdys
 
-shrinkForkStm :: ([Stm], [Stm]) -> Writer [[Stm]] ()
-shrinkForkStm (_, [])          = return ()
-shrinkForkStm (rfront, (x:xs)) = case x of
-  While c bdy  -> do let bdys = execWriter $ shrinkForkStm ([], bdy)
-                     let front = reverse rfront
-                     sequence_ [ tell [front ++ [While c bdy'] ++ xs]
-                               | bdy' <- bdys]
-                     shrinkForkStm (x : rfront, xs)
+shrinkForkStm :: (Hughes Stm, [Stm]) -> [[Stm]]
+shrinkForkStm (_, [])          = []
+shrinkForkStm (front, (x:xs)) = case x of
+  While c bdy  -> let bdys   = shrinkForkStm (emptyHughes, bdy)
+                      front' = fromHughes front
+                      curr   = [ (front' ++ (While c bdy' : xs)) | bdy' <- bdys]
+                  in curr ++ shrinkForkStm (snoc front x, xs)
 
-  Fork procs   -> do
+  Fork procs   ->
     let procss = filter (not . null) $ map (\f -> delete f procs) procs
-    let front = reverse rfront
-    tell $ map (\ps -> front ++ [Fork ps] ++ xs) procss
-    shrinkForkStm (x : rfront, xs)
-  _ -> shrinkForkStm (x : rfront, xs)
+        front' = fromHughes front
+        curr   = [ front' ++ (Fork ps : xs) | ps <- procss]
+    in curr ++ shrinkForkStm (snoc front x, xs)
+
+  _ -> shrinkForkStm (snoc front x, xs)
 
 {-***** Shrinking procedure arity *****-}
 
@@ -857,34 +957,34 @@ shrinkAllStmts p = [ p { funs = Map.insert n proc'' (funs p) }
 -- statements.
 shrinkAllStmtsProcedure :: Procedure -> [Procedure]
 shrinkAllStmtsProcedure p = [ p { body = bdy } 
-                            | bdy <- execWriter $ shrinkBody ([], body p)]
+                            | bdy <- shrinkBody (emptyHughes, body p)]
 
 -- | Shrink the statements of a procedure body. SetRef, SetLocal, If, While, Skip,
 -- After, Wait and Fork can be 'safely' removed, where safely means that the rest of
 -- the program is still type safe.
-shrinkBody :: ([Stm], [Stm]) -> Writer [[Stm]] ()
-shrinkBody (_, [])          = return ()
-shrinkBody (rfront, (x:xs)) = case x of
-  SetRef _ _     -> emitPartial >> continue
-  SetLocal _ _ _ -> emitPartial >> continue
-  If c thn els   -> let thns = execWriter $ shrinkBody ([], thn)
-                        elss = execWriter $ shrinkBody ([], els)
-                        front = reverse rfront
-                    in do sequence [ tell [front ++ [If c thn' els] ++ xs] | thn' <- thns ]
-                          sequence [ tell [front ++ [If c thn els'] ++ xs] | els' <- elss ]
-                          continue
-  While c bdy    -> let bdys = execWriter $ shrinkBody ([], bdy)
-                        front = reverse rfront
-                    in do sequence [ tell [front ++ [While c bdy'] ++ xs] | bdy' <- bdys ]
-                          continue
+shrinkBody :: (Hughes Stm, [Stm]) -> [[Stm]]
+shrinkBody (_, [])          = []
+shrinkBody (front, (x:xs)) = case x of
+  SetRef _ _     -> emitPartial : continue
+  SetLocal _ _ _ -> emitPartial : continue
+  If c thn els   -> let thns   = shrinkBody (emptyHughes, thn)
+                        elss   = shrinkBody (emptyHughes, els)
+                        front' = fromHughes front
+                        currth = [ front' ++ (If c thn' els : xs) | thn' <- thns]
+                        currel = [ front' ++ (If c thn els' : xs) | els' <- elss]
+                    in currth ++ (currel ++ continue)
+  While c bdy    -> let bdys   = shrinkBody (emptyHughes, bdy)
+                        front' = fromHughes front
+                        curr   = [ front' ++ (While c bdy' : xs) | bdy' <- bdys]
+                    in curr ++ continue
   Skip           -> continue
   After _ _ _    -> emitPartial >> continue
   Wait _         -> emitPartial >> continue
   Fork _         -> emitPartial >> continue
   _              -> continue
   where
-    emitPartial :: Writer [[Stm]] ()
-    emitPartial = tell [reverse rfront ++ xs]
+    emitPartial :: [Stm]
+    emitPartial = fromHughes front ++ xs
 
-    continue :: Writer [[Stm]] ()
-    continue = shrinkBody (x : rfront, xs)
+    continue :: [[Stm]]
+    continue = shrinkBody (snoc front x, xs)
