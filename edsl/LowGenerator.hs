@@ -147,7 +147,7 @@ arbProc funs vars refs c n = frequency $
                v        <- choose (0,3) >>= arbExp (dereference t) vars
                delay'   <- choose (0,3) >>= arbExp TUInt64 vars
                (rest,c') <- arbProc funs vars refs c (n-1)
-               let delay = delay' * delay' + 1 -- hack to make it non negative and non zero
+               let delay = delay' * delay' + (Lit TUInt64 (LUInt64 1)) -- hack to make it non negative and non zero
                let stm   = After delay r v
                return (stm:rest, c')
 --               (:) stm <$> arbProc funs vars refs c (n-1)
@@ -388,6 +388,21 @@ testprogram14 = Program "fun1" [Right ("ref1", Ref TBool)] $ Map.fromList
                 , Wait [("ref1", Ref TBool), ("v0", Ref TInt), ("v1", Ref TInt), ("v2", Ref TInt)]
                 ])]
 
+testprogram15 :: Program
+testprogram15 = Program "fun1" [Right ("ref1", Ref TInt64)] $ Map.fromList
+  [ ("fun1", Procedure "fun1" [("ref1", Ref TInt64)]
+               [After (Lit TUInt64 (LUInt64 1)) ("ref1", Ref TInt64) (Lit TInt64 (LInt64 2))])
+  , ("fun2", Procedure "fun2" [] [])
+  ]
+{-
+Program:
+  entrypoint: fun1
+  arguments: [Right ("ref1",Ref TInt64)]
+
+fun1(("ref1",Ref TInt64))
+  After (((1 * 0) * (1 * 0)) + 1) ("ref1",Ref TInt64) ((2 + 0) + (0 * -1))
+fun2()
+-}
 {-
 Program:
   entrypoint: fun5
