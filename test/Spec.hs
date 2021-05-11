@@ -27,18 +27,12 @@ trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
 main :: IO ()
 main = do
---    c <- testSingle $ myfib (int 13) inputIntRef
---    c <- testSingle $ nonterminate inputIntRef
---    case c of
---        Left err -> putStrLn err
---        Right _  -> putStrLn "test OK"
-
     quickCheck (verboseShrinking prop_correct)
 --    quickCheck (verboseShrinking prop_valgrind_ok)
 
 prop_correct :: Program -> Property
 prop_correct p = monadicIO $ do
-    res <- run $ testSingle p
+    res <- run $ testSingle p (Just 10000)
     case res of
         Good               -> return ()
         Bad t1 t2          -> do monitor (whenFail $ do
@@ -92,14 +86,14 @@ prop_correct p = monadicIO $ do
 
 prop_valgrind_ok :: Program -> Property
 prop_valgrind_ok p = monadicIO $ do
-    b <- run $ runCGValgrind p
+    b <- run $ runCGValgrind p (Just 10000)
     assert b
 
 {- | Tests a fully applied SSM program by evaluating both the interpreter and running
 the C code and comparing the output. -}
-testSingle :: Program -> IO Report
-testSingle program = do
-    report1   <- runCG program
+testSingle :: Program -> Maybe Int -> IO Report
+testSingle program mi = do
+    report1   <- runCG program mi
     case report1 of
         Generated trace1 -> do trace2 <- take (length trace1) <$> safeInterpreter program
                                if trace1 /= trace2

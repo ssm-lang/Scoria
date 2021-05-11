@@ -181,16 +181,16 @@ runTR tra = evalState tra st
       st :: TRState
       st = TRState 0 0 0 []
 
-compile_ :: Bool -> Maybe Double -> Program -> String
-compile_ False _ p = compile p
-compile_ True c p  = let f = compile p
-                         m = generateC $ mainIR p c
+compile_ :: Bool -> Maybe Int -> Program -> String
+compile_ False _ p = compile p Nothing
+compile_ True c p  = let f = compile p c
+                         m = generateC $ mainIR p
                      in unlines [f,m]
 
 -- | This function takes a `Program` and returns a string, which contains the content
 -- of the generated C file.
-compile :: Program -> String
-compile p = unlines code
+compile :: Program -> Maybe Int -> String
+compile p mi = unlines code
   where
       -- | Entire C file.
       code :: [String]
@@ -219,16 +219,17 @@ compile p = unlines code
       header = [ "#include \"peng-platform.h\""
                , "#include \"peng.h\""
                , "#include <stdio.h>"
-               , "#include <pthread.h>"
-               , "#include <unistd.h>"
                , ""
-               , "#ifdef DEBUG"
-               , "#define DEBUG_PRINT(x) printf(x);"
-               , "#else"
-               , "#define DEBUG_PRINT(x) while(0) {}"
-               , "#endif"
                , ""
-               ]
+               ] ++ limit mi
+
+      limit :: Maybe Int -> [String]
+      limit mc = let ticks = maybe "ULONG_MAX" show mc
+                 in [ "#ifdef DEBUG"
+                    , "#include <stdint.h>"
+                    , "uint64_t limit = " ++ ticks ++ ";"
+                    , "#endif"
+                    ]
 
 -- | This function takes a procedure and returns three `IR` statements that
 -- represents the struct, enter function and step function of the procedure.
@@ -604,13 +605,8 @@ untilBlock (x : xs) = case x of
   Fork _ -> ([x], xs)
   _      -> ([x],[]) <> untilBlock xs
 
-mainIR :: Program -> Maybe Double -> [IR]
-mainIR p c = [ maybe Blank (\f -> Function (Pointer Void) "sleeper"
-                                          [("arg", Pointer Void)]
-                                          [ Literal 4 $ concat ["sleep(", show f, ")"]
-                                          , Literal 4 "exit(0)"
-                                          ]) c
-             , Function Void "top_return"
+mainIR :: Program -> [IR]
+mainIR p = [ Function Void "top_return"
                        [("act", Pointer $ Act "")]
                        [Return]
              , Blank
@@ -619,9 +615,7 @@ mainIR p c = [ maybe Blank (\f -> Function (Pointer Void) "sleeper"
   where
       bdy :: [IR]
       bdy = concat $ [ [
-                       LiteralNoSemi 4 $ maybe "" (const "pthread_t sleep_thread;") c
-                     , LiteralNoSemi 4 $ maybe "" (const "pthread_create(&sleep_thread, NULL, &sleeper, NULL);") c
-                     , Blank
+                       Blank
                      , Literal 4 $ "act_t top = { .step = top_return }"]
                      , refinits
                      , [Literal 4 $ concat $ ["fork_routine((act_t *) enter_", main p
@@ -680,7 +674,7 @@ mainIR p c = [ maybe Blank (\f -> Function (Pointer Void) "sleeper"
       formatter (Ref TBool)   = "bool %d"
 
       debugprint :: Int -> IR
-      debugprint i = Literal i $ concat ["printf(\"now %lu eventqueuesize %d\\n\", now, event_queue_len)"]
+      debugprint i = Literal i $ concat ["DEBUG_PRINT(\"now %lu eventqueuesize %d\\n\", now, event_queue_len)"]
 
 {- ***************** Code generation *************** -}
 
