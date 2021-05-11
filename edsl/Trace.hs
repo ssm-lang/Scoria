@@ -12,13 +12,14 @@ import qualified Text.Megaparsec.Char.Lexer as Lexer
 import Control.DeepSeq
 import GHC.Generics
 import Data.Int
+import Data.Word
 
 import Core hiding (Result, Fork)
 
 type Parser a = Parsec Void Text a
 
-data OutputEntry = Instant Int64 Int      -- ^ now, size of eventqueue
-                 | Event Int64 SSMExp     -- ^ now, new variable value
+data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
+                 | Event Word64 SSMExp     -- ^ now, new variable value
                  | Fork [String]        -- ^ Fork call, names of forked procedures
                  | Result String SSMExp -- ^ variable name and final value
                  | Crash
@@ -28,7 +29,7 @@ type Output = [OutputEntry]
 
 testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "event 1 value bool 1"
-                             , "result a int64 2343546543245"
+                             , "result a uint64 2343546543245"
                              , "event 2 value int (-1)"
                              , "now 3 eventqueuesize 3"
                              , "now 5 eventqueuesize 5"
@@ -37,7 +38,7 @@ testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "result x int 1"
                              , "fork mywait"
                              , "result y bool 0"
-                             , "result zt int64 3423523234"
+                             , "result zt uint64 3423523234"
                              , "result z bool 1"
                              ]
 
@@ -49,14 +50,17 @@ mkTrace inp = fromRight $ parse pTrace "" (pack inp)
       fromRight (Right b) = b
 
 parseLine :: String -> Maybe OutputEntry
-parseLine inp = toMaybe $ parse (choice [pEvent, pInstant, pResult, pFork]) "" (pack inp)
+parseLine inp = toMaybe $ parse pTraceItem "" (pack inp)
   where
       toMaybe :: Show a => Either a b -> Maybe b
       toMaybe (Left a)  = Nothing
       toMaybe (Right b) = Just b
 
 pTrace :: Parser Output
-pTrace = many $ choice [pEvent, pInstant, pResult, pFork, pCrash]
+pTrace = many pTraceItem
+
+pTraceItem :: Parser OutputEntry
+pTraceItem = choice [pEvent, pInstant, pResult, pFork, pCrash]
 
 pFork :: Parser OutputEntry
 pFork = do
@@ -120,11 +124,12 @@ pIdent = do
                  , "eventqueuesize"
                  , "int"
                  , "int64"
+                 , "uint64"
                  , "bool"]
 pRes :: Parser SSMExp
 pRes = do
     -- add more variants here as we add more types
-    choice [pInt64, pInt, pBool]
+    choice [pInt64, pUInt64, pInt, pBool]
   where
       pInt :: Parser SSMExp
       pInt = do
@@ -143,6 +148,15 @@ pRes = do
           num <- choice [ try (parens signed), signed]
           pSpace
           return $ Lit TInt64 $ LInt64 $ num
+
+      pUInt64 :: Parser SSMExp
+      pUInt64 = do
+          pSpace
+          pSymbol "uint64"
+          pSpace
+          num <- choice [ try (parens signed), Lexer.decimal]
+          pSpace
+          return $ Lit TUInt64 $ LUInt64 num
 
       pBool :: Parser SSMExp
       pBool = do
@@ -173,7 +187,7 @@ pEventqueuesize = do
     pSpace
     return num
 
-pNow :: Parser Int64
+pNow :: Parser Word64
 pNow = do
     pSymbol "now"
     pSpace

@@ -9,6 +9,7 @@ import Data.List
 import Data.Maybe
 import qualified Data.Map as Map
 import Data.Int
+import Data.Word
 
 import System.IO.Unsafe
 
@@ -18,7 +19,6 @@ import qualified Trace as T
 trace :: Show a => a -> a
 trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
--- TODO add written :: Bool here
 type Var s = STRef s
   ( -- Reference pointing to the actual value of the variable.
     STRef s SSMExp
@@ -31,7 +31,7 @@ type Var s = STRef s
 -- | The type of events.
 data Event s = Event
   { -- | The time when this even should occur
-    at  :: Int64
+    at  :: Word64
     -- | The reference variable that gets the new value
   , ref :: Var s
     -- | The value this reference will assume at time at
@@ -71,7 +71,7 @@ instance Ord (Proc s) where
 -- | The interpreter state.
 data St s = St
   { -- | Current time
-    now        :: Int64
+    now        :: Word64
   -- | Outstanding events
   , events     :: [Event s]
   -- | Processes ready to run, should be a priority queue
@@ -127,6 +127,8 @@ interpret p = runST interpret'
       defaultValue :: Type -> SSMExp
       defaultValue TInt   = Lit TInt $ LInt 0
       defaultValue TInt64 = Lit TInt64 $ LInt64 0
+      defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
+      defaultValue TUInt8 = Lit TUInt8 $ LUInt8 0
       defaultValue TBool  = Lit TBool $ LBool False
 
       getReferences :: Program -> Map.Map String (Var s) -> [(String, Var s)]
@@ -230,7 +232,7 @@ runProcess = do
             Skip            -> runProcess
             After d r v     -> do
                 ref  <- lookupRef (fst r)
-                d'   <- getInt64 <$> eval d
+                d'   <- getUInt64 <$> eval d
                 v'   <- eval v
                 now' <- gets now
                 schedule_event $ Event (now' + d') ref v'
@@ -293,8 +295,8 @@ fork (n,args) prio dep par = do
           m <- flip mapM (zip names args) $ \(n, a) ->
               case a of
                   Left e  -> do v <- eval e
-                                lift' (newVar' v) >>= \v'   -> return (n, v')
-                  Right r -> lookupRef (fst r) >>= \ref -> return (n, ref)
+                                lift' (newVar' v) >>= \v'  -> return (n, v')
+                  Right r -> lookupRef (fst r)    >>= \ref -> return (n, ref)
           return $ Map.fromList m
 
 writeRef :: String -> SSMExp -> Interp s ()
@@ -372,9 +374,19 @@ wasWritten r = do
 writeVar :: Var s -> SSMExp -> Interp s ()
 writeVar ref e = do
     (variable,waits, _) <- lift' $ readSTRef ref
-    lift' $ writeSTRef variable e
-    mapM_ desensitize waits
-    lift' $ writeSTRef ref (variable, [], True)
+    lift' $ writeSTRef variable e -- actually update the variable value
+
+    -- which waiting processes should be woken up? Only those whose priority
+    -- is strictly greater than the one who updated the variable
+    p <- gets process
+    let (towait, keep) = partition (\p' -> priority p < priority p') waits
+
+    -- wake up and desensitize the processes
+    mapM_ desensitize towait
+
+    -- update the variable to be written to in this instant and give it knowledge of
+    -- which processes are still waiting on it
+    lift' $ writeSTRef ref (variable, keep, True)
   where
       desensitize :: Proc s -> Interp s ()
       desensitize p = do
@@ -436,7 +448,7 @@ enqueue p = modify $ \st -> st { readyQueue = insert p (readyQueue st)}
                             else p2 : insert p1 ps
 
 -- | Inspects the eventqueue and returns the next event time.
-nextEventTime :: Interp s Int64
+nextEventTime :: Interp s Word64
 nextEventTime = do
     evs <- gets events
     return $ foldl min maxBound (map at evs)
@@ -488,28 +500,38 @@ neg (Lit _ (LInt i))   = Lit TInt   $ LInt (-i)
 neg (Lit _ (LInt64 i)) = Lit TInt64 $ LInt64 (-i)
 
 lessthan :: SSMExp -> SSMExp -> SSMExp
-lessthan (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TBool $ LBool $ i1 < i2
-lessthan (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LInt i1))   (Lit _ (LInt i2))     = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TBool $ LBool $ i1 < i2
 lessthan _ _ = error "can only order numerical values"
 
 equals :: SSMExp -> SSMExp -> SSMExp
-equals (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TBool $ LBool $ i1 == i2
-equals (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TBool $ LBool $ i1 == i2
-equals (Lit _ (LBool b1))  (Lit _ (LBool b2))  = Lit TBool $ LBool $ b1 == b2
+equals (Lit _ (LInt i1))   (Lit _ (LInt i2))     = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LBool b1))  (Lit _ (LBool b2))    = Lit TBool $ LBool $ b1 == b2
 
 addition :: SSMExp -> SSMExp -> SSMExp
-addition (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TInt   $ LInt   $ i1 + i2
-addition (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ i1 + i2
+addition (Lit _ (LInt i1))   (Lit _ (LInt i2))     = Lit TInt   $ LInt     $ i1 + i2
+addition (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TInt64 $ LInt64   $ i1 + i2
+addition (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 + i2
+addition (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TUInt8 $ LUInt8   $ i1 + i2
 addition _ _ = error "can only add numerical values"
 
 subtract :: SSMExp -> SSMExp -> SSMExp
-subtract (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TInt   $ LInt   $ i1 - i2
-subtract (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ i1 - i2
+subtract (Lit _ (LInt i1))   (Lit _ (LInt i2))     = Lit TInt   $ LInt     $ i1 - i2
+subtract (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TInt64 $ LInt64   $ i1 - i2
+subtract (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 - i2
+subtract (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TUInt8 $ LUInt8   $ i1 - i2
 subtract _ _ = error "can only subtract numerical values"
 
 multiply :: SSMExp -> SSMExp -> SSMExp
 multiply (Lit _ (LInt i1))   (Lit _ (LInt i2))   = Lit TInt   $ LInt   $ i1 * i2
 multiply (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ i1 * i2
+multiply (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 * i2
+multiply (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) = Lit TUInt8 $ LUInt8 $ i1 * i2
 multiply _ _ = error "can only multiply numerical values"
 
 getInt :: SSMExp -> Int
@@ -519,6 +541,10 @@ getInt e                = error $ "not an integer: " ++ show e
 getInt64 :: SSMExp -> Int64
 getInt64 (Lit _ (LInt64 i)) = i
 getInt64 e                  = error $ "not an integer: " ++ show e
+
+getUInt64 :: SSMExp -> Word64
+getUInt64 (Lit _ (LUInt64 i)) = i
+getUInt64 e                  = error $ "not an integer: " ++ show e
 
 getBool :: SSMExp -> Bool
 getBool (Lit _ (LBool b)) = b

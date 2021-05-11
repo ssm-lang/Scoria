@@ -18,6 +18,7 @@ data Report = Good                     -- ^ Test succeeded!
             | CompilationError String  -- ^ Error compiling the program, with the c-file
             | ParseError String        -- ^ Error parsing output of running the program, with the output
             | ExecutionError String    -- ^ Error while running the compiled program
+  deriving Show
 
 getname :: Program -> String
 getname ssm = main ssm
@@ -25,26 +26,36 @@ getname ssm = main ssm
 -- | This function runs a program by creating a temporary directory, copying the
 -- runtime system there, compiling the program and then running the executable.
 -- It will parse the output of the program and return a report.
-runCG :: Program -> IO Report
-runCG program = do
+runCG :: Program -> Maybe Int -> IO Report
+runCG program mi = do
+--    putStrLn "creating test dir"
     setupTestDir
-    createTestFile program
+--    putStrLn "created test dir"
+    createTestFile program True mi
+--    putStrLn "created test file"
+--    putStrLn "starting execution of program"
     output <- runTest program
+--    putStrLn "finished executing program"
     removeTestDir
+--    putStrLn "removed test dir"
     case output of
         Left report -> return report
         Right out   -> case parseOutput $ lines out of
             Just trace -> return $ Generated trace
             Nothing    -> return $ ParseError out
 
-runCGValgrind :: Program -> IO Bool
-runCGValgrind p = do
+-- | For running valgrind, we need to stay away from the linux timeout call, as it will mask
+-- the memory behavior of the program we are inspection. Instead we use the second argument to
+-- compile to indicate for how many seconds the program will run, and it will generate a thread
+-- that terminates the thread after that time.
+runCGValgrind :: Program -> Maybe Int -> IO Bool
+runCGValgrind p mi = do
     setupTestDir
-    createTestFile p
-    c <- tryCompile p False
+    createTestFile p True mi
+    c <- tryCompile p True
     case c of
         Left _  -> do removeTestDir
-                      return False
+                      return True
         Right _ -> do b <- runExecutableCheckCode (getname p) wrapValgrind
                       removeTestDir
                       return b
@@ -70,11 +81,11 @@ gcc execname debug = ("gcc", ["-o",execname,execname ++ ".c"] ++ flags)
       flags = [ rtssrc ++ "peng-scheduler.c"
               , rtssrc ++ "peng-int.c"
               , rtssrc ++ "peng-int64.c"
+              , rtssrc ++ "peng-uint8.c"
               , rtssrc ++ "peng-bool.c"
               , "-I" ++ rtsloc ++ "include"
               , "-I" ++ rtsloc ++ "linux/include"
               , "-g"
-              , "-pthread"
               ] ++ if debug then ["-DDEBUG"] else []
 
       rtssrc :: String
@@ -107,10 +118,10 @@ inDirectory fp ma = do
     return a
 
 -- | Compile the test program and write it to a c-file
-createTestFile :: Program -> IO ()
-createTestFile program = do
+createTestFile :: Program -> Bool -> Maybe Int -> IO ()
+createTestFile program b d = do
     let name = getname program
-    let c = compile_ True Nothing program
+    let c = compile_ b d program
 
     inDirectory testdir $ do
         writeFile (name ++ ".c") c
@@ -123,7 +134,7 @@ tryCompile p debug = inDirectory testdir $ do
     let name = getname p
     let (cmd, args) = gcc name debug
     (_,_,Just gccerr,_) <- createProcess (proc cmd args) {std_err = CreatePipe }
-    c <- hGetContents gccerr
+    c <- System.IO.hGetContents gccerr
     if null c
         then return $ Right ()
         else putStrLn c >> return (Left c)
@@ -134,14 +145,21 @@ tryCompile p debug = inDirectory testdir $ do
 runExecutable :: String -> Maybe (String -> (String,[String])) -> IO (Either String String)
 runExecutable exec m = do
     let cmd'        = "./" ++ exec
-    let (cmd, args) = maybe (cmd, []) (\f -> f cmd') m
+    let (cmd, args) = maybe (cmd', []) (\f -> f cmd') m
     inDirectory testdir $ do
-        (_,Just hout, Just herr, _) <- createProcess (proc cmd args) { std_out = CreatePipe
-                                                                     , std_err = CreatePipe
+        (_,Just hout, Just herr, _) <- createProcess (proc cmd args) { std_out = CreatePipe --Inherit
+                                                                     , std_err = CreatePipe --Inherit
                                                                      }
         err <- hGetContents herr
+        std <- hGetContents hout
+        
+        -- Koen, when you see this hack, remind me to ask you about this!
+        -- / Robert
+        let l = length std
+        if l == l then return () else return ()
+        
         if null err
-            then Right <$> hGetContents hout
+            then return $ Right std
             else return $ Left err
 
 -- | Intended to be used with valgrind. Arguments are the same as the function above this
@@ -163,25 +181,24 @@ runExecutableCheckCode exec m = do
 runTest :: Program -> IO (Either Report String)
 runTest program = do
     let name = getname program
+--    putStrLn "got name of executable"
 
+--    putStrLn "trying to compile the file"
     comp <- tryCompile program True
+--    putStrLn "compiled the file"
     case comp of
         Left c  -> return $ Left $ CompilationError c
         Right _ -> do
-            let f = Just (\cmd -> ("timeout", [show timeout ++ "s",cmd]))
+            let f = Just (\cmd -> (cmd, []))
             res <- runExecutable name f
             case res of
                 Left c  -> return $ Left $ ExecutionError c
                 Right s -> return $ Right s
-  where
-      timeout :: Double
-      timeout = 0.2
 
 -- | Parse the output, but discard the last line. The call to timeout might have cut it
 -- off short so that it would not be parsed properly.
 parseOutput :: [String] -> Maybe Output
 parseOutput []     = Just []
-parseOutput [_]    = Just []
 parseOutput (x:xs) = do
     line <- parseLine x
     rest <- parseOutput xs

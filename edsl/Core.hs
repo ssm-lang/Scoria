@@ -10,12 +10,14 @@ import Control.DeepSeq
 import GHC.Generics
 
 import Data.Int
+import Data.Word
 import qualified Data.Typeable as T
 
 import Control.Monad.State.Lazy
 import BinderAnn.Monadic
 
 type Reference = (String, Type)
+
 data Name = Fresh String
           | Captured (String,Int,Int) String
   deriving (Show, Eq)
@@ -75,7 +77,9 @@ getProcedureName (Procedure n) = n
 getProcedureName _             = error "not a procedure"
 
 data Type = TInt
+          | TUInt8
           | TInt64
+          | TUInt64
           | TBool
           | Ref Type
   deriving (Eq, Show, Generic, NFData)
@@ -89,8 +93,14 @@ instance SSMType Int where
 instance SSMType Bool where
     typeOf _ = TBool
 
+instance SSMType Word8 where
+  typeOf _ = TUInt8
+
 instance SSMType Int64 where
     typeOf _ = TInt64
+
+instance SSMType Word64 where
+    typeOf _ = TUInt64
 
 expType :: SSMExp -> Type
 expType (Var t _)     = t
@@ -119,6 +129,12 @@ instance Num SSMExp where
   fromInteger i = if T.typeOf i == T.typeOf (1 :: Int)
                     then Lit TInt   $ LInt   $ fromInteger i
                     else Lit TInt64 $ LInt64 $ fromInteger i
+--  fromInteger i = Lit TInt64 $ LUInt8 $ fromInteger i
+--  fromInteger i
+--    | T.typeOf i == T.typeOf (1 :: Int)   = Lit TInt   $ LInt   $ fromInteger i
+--    | T.typeOf i == T.typeOf (1 :: Int64) = Lit TInt64 $ LInt64 $ fromInteger i
+--    | T.typeOf i == T.typeOf (1 :: Word8) = Lit TUInt8 $ LUInt8 $ fromInteger i
+--    | otherwise                           = error $ show $ T.typeOf i
   negate e      = UOp (expType e) e Neg
 
 -- | SSM expressions
@@ -135,14 +151,18 @@ instance Show SSMExp where
     show (BOp _ e1 e2 op) = "(" ++ show e1 ++ " " ++ show op ++ " " ++ show e2 ++ ")"
 
 -- | SSM literals
-data SSMLit = LInt Int      -- ^ Integer literals
-            | LInt64 Int64  -- ^ 64bit Integer literals
-            | LBool Bool    -- ^ Boolean literals
+data SSMLit = LInt Int        -- ^ Integer literals
+            | LUInt8 Word8    -- ^ 8bit unsigned integers
+            | LInt64 Int64    -- ^ 64bit integer literals
+            | LUInt64 Word64  -- ^ 64bit unsigned integer literals
+            | LBool Bool      -- ^ Boolean literals
   deriving (Eq, Generic, NFData)
 
 instance Show SSMLit where
     show (LInt i)   = show i
+    show (LUInt8 i) = show i
     show (LInt64 i) = show i
+    show (LUInt64 i) = show i
     show (LBool b)  = show b
 
 {-- | SSM unary operators -}

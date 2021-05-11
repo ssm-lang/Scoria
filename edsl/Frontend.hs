@@ -6,9 +6,7 @@
 module Frontend
      ( Ref(..)
      , Exp(..)
-     , inputIntRef
-     , inputInt64Ref
-     , inputBoolRef
+     , inputref
      , (+.)
      , (-.)
      , (*.)
@@ -17,12 +15,15 @@ module Frontend
      , (<~)
      , neg
      , int
+     , int64
      , uint64
+     , word8
      , true'
      , false'
      , deref
      , var
      , wait
+     , waitAll
      , after
      , fork
      , changed
@@ -31,6 +32,7 @@ module Frontend
      , SSM -- reexport so we don't need to import Core and get all the constructors
      , Box(..)
      , Int64(..)
+     , Word64(..)
 ) where
 
 import Control.Monad.Writer.Lazy
@@ -38,6 +40,8 @@ import Control.Monad.State.Lazy
 import BinderAnn.Monadic
 
 import Data.Int
+import Data.Word
+import Data.Proxy
 
 import Core
 
@@ -108,14 +112,10 @@ instance Arg (Ref a) where
 instance Res () where
     result name () = emit $ Result name
 
-inputIntRef :: Ref Int
-inputIntRef = Ptr ("dummyintref", Ref TInt)
-
-inputInt64Ref :: Ref Int64
-inputInt64Ref = Ptr ("dummyint64ref", Ref TInt64)
-
-inputBoolRef :: Ref Bool
-inputBoolRef = Ptr ("dummyboolref", Ref TBool)
+-- | When interpreting or compiling a SSM program that requires input references,
+-- supply this value instead.
+inputref :: forall a. SSMType a => Ref a
+inputref = Ptr ("dummy", Ref (typeOf (Proxy @a)))
 
 class Assignable a b where
     (<~) :: a -> b -> SSM ()
@@ -148,8 +148,14 @@ neg e@(Exp e') = Exp $ UOp (typeOf e) e' Neg
 int :: Int -> Exp Int
 int i = Exp $ Lit TInt $ LInt i
 
-uint64 :: Int64 -> Exp Int64
-uint64 i = Exp $ Lit TInt64 $ LInt64 i
+int64 :: Int64 -> Exp Int64
+int64 i = Exp $ Lit TInt64 $ LInt64 i
+
+uint64 :: Word64 -> Exp Word64
+uint64 i = Exp $ Lit TUInt64 $ LUInt64 i
+
+word8 :: Word8 -> Exp Word8
+word8 i = Exp $ Lit TUInt8 $ LUInt8 i
 
 true' :: Exp Bool
 true' = Exp $ Lit TBool $ LBool True
@@ -173,7 +179,7 @@ wait :: [Ref a] -> SSM ()
 wait r = emit $ Wait (map (\(Ptr r') -> r') r)
 
 -- | Delayed assignment
-after :: Exp Int64 -> Ref a -> Exp a -> SSM ()
+after :: Exp Word64 -> Ref a -> Exp a -> SSM ()
 after (Exp e) (Ptr r) (Exp v) = emit $ After e r v
 
 fork :: [SSM ()] -> SSM ()
