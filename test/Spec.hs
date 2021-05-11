@@ -27,7 +27,7 @@ trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
 main :: IO ()
 main = do
-    quickCheck (verboseShrinking prop_correct)
+    quickCheck (within 5000000 $ verboseShrinking prop_correct)
 --    quickCheck (verboseShrinking prop_valgrind_ok)
 
 prop_correct :: Program -> Property
