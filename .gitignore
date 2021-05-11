@@ -2,6 +2,10 @@
 stack.yaml.lock
 *~
 
+/*.c
+/*.ssm
+/*.out
+
 /testdir
 /runtest
 /zephyr-code/ssm-zephyr/peng/
