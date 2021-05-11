@@ -160,3 +160,51 @@ Clearly it does the exact opposite, which is proof that there is more than an in
 neanderthal DNA in me. The fix is to get the minimum instead.
 
 return $ foldl min maxBound (map at evs)
+
+14)
+
+Found a bug in the runtime system where an activation record could be deallocated with dangling pointers.
+If you register an event on a local variable and then terminate that process, the event will remain
+in the event queue while the reference to the variable to update is the same one. The fix is to track
+down all local variables in the event queue before deallocating the activation record, and removing
+them if there exists any scheduled update. Since we are using a priority queue this incurs a linear time
+search through the event queue. Perhaps another data structure is more appropriate.
+
+15)
+
+I found a bug in the interpreter when I ran the following program (e2 inputref):
+
+e1 :: Ref Int64 -> SSM ()
+e1 = box "e1" ["ref2"] $ \ref2 -> do
+  ref2 <~ (int64 5)
+  wait [ref2]
+  ref2 <~ (int64 10)
+
+e2 :: Ref Int64 -> SSM ()
+e2 = box "e2" ["ref1"] $ \ref1 -> do
+  fork [ e1 ref1, e1 ref1 ]
+
+If we start in e2 we will fork two e1, and then they will both block, at which point the program
+should terminate as there are no scheduled events and no processes in the ready queue. The interpreter
+proceeded past the wait statement instead.
+
+In one place in the report it said that when a variable is written we should only wake up those processes
+that are waiting for a update, that have a greater priority than the process that is performing the
+update. Here is the patch
+
+writeVar :: Var s -> SSMExp -> Interp s ()
+writeVar ref e = do
+    (variable,waits, _) <- lift' $ readSTRef ref
+    lift' $ writeSTRef variable e -- actually update the variable value
+
+    -- which waiting processes should be woken up? Only those whose priority
+    -- is strictly greater than the one who updated the variable
+    p <- gets process
+    let (towait, keep) = partition (\p' -> priority p < priority p') waits
+
+    -- wake up and desensitize the processes
+    mapM_ desensitize towait
+
+    -- update the variable to be written to in this instant and give it knowledge of
+    -- which processes are still waiting on it
+    lift' $ writeSTRef ref (variable, keep, True)
