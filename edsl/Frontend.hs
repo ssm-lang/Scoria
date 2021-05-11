@@ -15,6 +15,7 @@ module Frontend
      , (<~)
      , neg
      , int
+     , int64
      , uint64
      , word8
      , true'

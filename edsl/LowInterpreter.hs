@@ -295,8 +295,8 @@ fork (n,args) prio dep par = do
           m <- flip mapM (zip names args) $ \(n, a) ->
               case a of
                   Left e  -> do v <- eval e
-                                lift' (newVar' v) >>= \v'   -> return (n, v')
-                  Right r -> lookupRef (fst r) >>= \ref -> return (n, ref)
+                                lift' (newVar' v) >>= \v'  -> return (n, v')
+                  Right r -> lookupRef (fst r)    >>= \ref -> return (n, ref)
           return $ Map.fromList m
 
 writeRef :: String -> SSMExp -> Interp s ()
@@ -374,9 +374,19 @@ wasWritten r = do
 writeVar :: Var s -> SSMExp -> Interp s ()
 writeVar ref e = do
     (variable,waits, _) <- lift' $ readSTRef ref
-    lift' $ writeSTRef variable e
-    mapM_ desensitize waits
-    lift' $ writeSTRef ref (variable, [], True)
+    lift' $ writeSTRef variable e -- actually update the variable value
+
+    -- which waiting processes should be woken up? Only those whose priority
+    -- is strictly greater than the one who updated the variable
+    p <- gets process
+    let (towait, keep) = partition (\p' -> priority p < priority p') waits
+
+    -- wake up and desensitize the processes
+    mapM_ desensitize towait
+
+    -- update the variable to be written to in this instant and give it knowledge of
+    -- which processes are still waiting on it
+    lift' $ writeSTRef ref (variable, keep, True)
   where
       desensitize :: Proc s -> Interp s ()
       desensitize p = do
