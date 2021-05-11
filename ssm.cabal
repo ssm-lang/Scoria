@@ -46,6 +46,7 @@ library
       Buggy
       Example64bit
       Exampleuint8
+      LowPretty
   other-modules:
       Paths_ssm
   hs-source-dirs:
