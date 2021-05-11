@@ -50,14 +50,17 @@ mkTrace inp = fromRight $ parse pTrace "" (pack inp)
       fromRight (Right b) = b
 
 parseLine :: String -> Maybe OutputEntry
-parseLine inp = toMaybe $ parse (choice [pEvent, pInstant, pResult, pFork]) "" (pack inp)
+parseLine inp = toMaybe $ parse pTraceItem "" (pack inp)
   where
       toMaybe :: Show a => Either a b -> Maybe b
       toMaybe (Left a)  = Nothing
       toMaybe (Right b) = Just b
 
 pTrace :: Parser Output
-pTrace = many $ choice [pEvent, pInstant, pResult, pFork, pCrash]
+pTrace = many pTraceItem
+
+pTraceItem :: Parser OutputEntry
+pTraceItem = choice [pEvent, pInstant, pResult, pFork, pCrash]
 
 pFork :: Parser OutputEntry
 pFork = do

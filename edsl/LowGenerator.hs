@@ -409,6 +409,14 @@ theoper = BOp TUInt64 theadd theadd OTimes
 theadd  = BOp TUInt64 theleft therigh OPlus
 theleft = BOp TUInt64 (Lit TUInt64 (LUInt64 4)) (Var TUInt64 "var4") OTimes
 therigh = Lit TUInt64 (LUInt64 0)
+
+testprogram17 :: Program
+testprogram17 = Program "fun1" [] $ Map.fromList
+                              [ ("fun1", Procedure "fun1"
+                                          []
+                                          [Fork [("fun1", [])]]
+                                )
+                              ]
 {-
 
 Program:

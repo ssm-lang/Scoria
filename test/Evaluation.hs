@@ -28,10 +28,16 @@ getname ssm = main ssm
 -- It will parse the output of the program and return a report.
 runCG :: Program -> Maybe Int -> IO Report
 runCG program mi = do
+--    putStrLn "creating test dir"
     setupTestDir
+--    putStrLn "created test dir"
     createTestFile program True mi
+--    putStrLn "created test file"
+--    putStrLn "starting execution of program"
     output <- runTest program
+--    putStrLn "finished executing program"
     removeTestDir
+--    putStrLn "removed test dir"
     case output of
         Left report -> return report
         Right out   -> case parseOutput $ lines out of
@@ -128,7 +134,7 @@ tryCompile p debug = inDirectory testdir $ do
     let name = getname p
     let (cmd, args) = gcc name debug
     (_,_,Just gccerr,_) <- createProcess (proc cmd args) {std_err = CreatePipe }
-    c <- hGetContents gccerr
+    c <- System.IO.hGetContents gccerr
     if null c
         then return $ Right ()
         else putStrLn c >> return (Left c)
@@ -139,14 +145,19 @@ tryCompile p debug = inDirectory testdir $ do
 runExecutable :: String -> Maybe (String -> (String,[String])) -> IO (Either String String)
 runExecutable exec m = do
     let cmd'        = "./" ++ exec
-    let (cmd, args) = maybe (cmd, []) (\f -> f cmd') m
+    let (cmd, args) = maybe (cmd', []) (\f -> f cmd') m
     inDirectory testdir $ do
-        (_,Just hout, Just herr, _) <- createProcess (proc cmd args) { std_out = CreatePipe
-                                                                     , std_err = CreatePipe
+        (_,Just hout, Just herr, _) <- createProcess (proc cmd args) { std_out = CreatePipe --Inherit
+                                                                     , std_err = CreatePipe --Inherit
                                                                      }
         err <- hGetContents herr
+        std <- hGetContents hout
+        
+        let l = length std
+        if l == l then return () else return ()
+        
         if null err
-            then Right <$> hGetContents hout
+            then return $ Right std
             else return $ Left err
 
 -- | Intended to be used with valgrind. Arguments are the same as the function above this
@@ -168,8 +179,11 @@ runExecutableCheckCode exec m = do
 runTest :: Program -> IO (Either Report String)
 runTest program = do
     let name = getname program
+--    putStrLn "got name of executable"
 
+--    putStrLn "trying to compile the file"
     comp <- tryCompile program True
+--    putStrLn "compiled the file"
     case comp of
         Left c  -> return $ Left $ CompilationError c
         Right _ -> do
@@ -183,7 +197,6 @@ runTest program = do
 -- off short so that it would not be parsed properly.
 parseOutput :: [String] -> Maybe Output
 parseOutput []     = Just []
-parseOutput [_]    = Just []
 parseOutput (x:xs) = do
     line <- parseLine x
     rest <- parseOutput xs
