@@ -223,22 +223,21 @@ arbExp t vars n = case t of
                       e2 <- arbExp typ vars (n `div` 2)
                       return $ BOp TBool e1 e2 OEQ
                  ]
--- catch-all case for numeric expressions right now, as int and int64 are generated
--- the same way
- -- TUInt8 -> do e1 <- arbExp t vars (n `div` 2)
- --              e2 <- arbExp t vars (n `div` 2)
- --              elements [ e1 + e2
- --                       , e1 - e2
- --                       , e1 * e2
- --                       ]
+  t | t `elem` [TUInt8, TUInt64] -> do
+      e1 <- arbExp t vars (n `div` 2)
+      e2 <- arbExp t vars (n `div` 2)
+      elements [ BOp t e1 e2 OPlus
+               , BOp t e1 e2 OMinus
+               , BOp t e1 e2 OTimes
+               ]
   _ ->    frequency [ (1, do e <- arbExp t vars (n-1)
                              return $ negate e
                       )
                     , (7, do e1 <- arbExp t vars (n `div` 2)
                              e2 <- arbExp t vars (n `div` 2)
-                             elements [ e1 + e2
-                                      , e1 - e2
-                                      , e1 * e2
+                             elements [ BOp t e1 e2 OPlus
+                                      , BOp t e1 e2 OMinus
+                                      , BOp t e1 e2 OTimes
                                       ]
                       )
                     ]
@@ -394,7 +393,59 @@ testprogram15 = Program "fun1" [Right ("ref1", Ref TInt64)] $ Map.fromList
                [After (Lit TUInt64 (LUInt64 1)) ("ref1", Ref TInt64) (Lit TInt64 (LInt64 2))])
   , ("fun2", Procedure "fun2" [] [])
   ]
+
+testprogram16 :: Program
+testprogram16 = Program "fun1" [ Right ("ref2", Ref TBool)
+                               , Left (UOp TUInt64 (Lit TUInt64 (LUInt64 3)) Neg)
+                               ] $ Map.fromList $
+  [ ("fun1", Procedure "fun1" [("ref2", Ref TBool), ("var4", TUInt64)]
+      [After theadd1 ("ref2", Ref TBool) (Lit TBool (LBool False))])
+  ]
+
+theadd1 = BOp TUInt64 themult (Lit TUInt64 (LUInt64 1)) OPlus
+themult = BOp TUInt64 theoper theoper OTimes
+theoper = BOp TUInt64 theadd theadd OTimes
+
+theadd  = BOp TUInt64 theleft therigh OPlus
+theleft = BOp TUInt64 (Lit TUInt64 (LUInt64 4)) (Var TUInt64 "var4") OTimes
+therigh = Lit TUInt64 (LUInt64 0)
 {-
+
+Program:
+  entrypoint: fun2
+  arguments: [Right ("ref2",Ref TBool), Left (- 3)]
+
+fun1()
+fun2(("ref2",Ref TBool), ("var4",TUInt64))
+  After ((((4 * var4) + (0 * 6)) * ((4 * var4) + (0 * 6))) + 1) ("ref2",Ref TBool) ((4 < 5) == (4 == 6))
+fun3()
+
+Program:
+  entrypoint: fun1
+  arguments: [Right ("ref1",Ref TUInt64)]
+
+fun1(("ref1",Ref TUInt64))
+  After ((1 * 1) + 1) ("ref1",Ref TUInt64) ((1 - 125) - (1 * 1))
+
+
+Failed:                                                          
+Program:
+  entrypoint: fun8
+  arguments: [Left (15 - 933), Right ("ref2",Ref TInt64), Right ("ref3",Ref TInt)]
+
+fun6()
+  NewRef (Fresh "v2") (Ref TInt) ((1 * 1) - (1 + 1))
+  NewRef (Fresh "v4") (Ref TInt) ((10 * 6) * (1 + 1))
+fun8(("var1",TUInt64), ("ref2",Ref TInt64), ("ref3",Ref TInt))
+  GetRef (Fresh "v0") TInt64 ("ref2",Ref TInt64)
+  Fork [("fun8",[Left (- ((- 626) * (915 + 1018))),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)]),("fun8",[Left ((var1 - var1) * (var1 - var1)),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)])]
+  Fork [("fun8",[Left ((86 - var1) + (37 * var1)),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)])]
+  GetRef (Fresh "v1") TInt64 ("ref2",Ref TInt64)
+  Fork [("fun8",[Left (- ((488 + var1) - (235 + var1))),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)]),("fun8",[Left (var1 * 848),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)])]
+  If ((0 + 6) < (7 * 11)) [] [Fork [("fun8",[Left var1,Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)]),("fun8",[Left (var1 + var1),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)]),("fun8",[Left 297,Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)])]]
+  NewRef (Fresh "v2") (Ref TBool) ((-2 - -3) < (-9 * -12))
+
+
 Program:
   entrypoint: fun1
   arguments: [Right ("ref1",Ref TInt64)]
