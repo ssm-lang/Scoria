@@ -153,6 +153,8 @@ runExecutable exec m = do
         err <- hGetContents herr
         std <- hGetContents hout
         
+        -- Koen, when you see this hack, remind me to ask you about this!
+        -- / Robert
         let l = length std
         if l == l then return () else return ()
         
