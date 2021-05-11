@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ecd718625b0f10843cc9cebb38a762a1aedd8124de7e62351db7ab4ce5f9e22e
+-- hash: 04f96e3356f45540c695161eb74ac2cf7495eb0b534f4dbafb4c7afc5c6339b0
 
 name:           ssm
 version:        0.1.0.0
@@ -27,73 +27,101 @@ source-repository head
 
 library
   exposed-modules:
-      Trace
       Core
-      LowCore
-      LowCodeGen
-      LowInterpreter
       Frontend
-      Pretty
       HughesList
-      Fib
-      Foo
-      Examp
-      Examp2
-      Example
-      Manyrefs
+      LowCodeGen
+      LowCore
       LowGenerator
-      NonTerminate
-      Buggy
-      Example64bit
-      Exampleuint8
+      LowInterpreter
+      Pretty
+      Trace
   other-modules:
       Paths_ssm
   hs-source-dirs:
       edsl
-      example
   build-depends:
-      base >=4.7 && <5
-    , mtl
-    , containers
-    , language-c-quote
-    , BinderAnn
-    , prettyprinter
+      BinderAnn
     , QuickCheck
-    , text
-    , megaparsec
-    , parser-combinators
+    , base >=4.7 && <5
+    , containers
     , deepseq
+    , language-c-quote
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , text
   default-language: Haskell2010
 
 executable ssm-exe
   main-is: Main.hs
   other-modules:
+      Buggy
+      Examp
+      Examp2
+      Example
+      Example64bit
+      Exampleuint8
+      Fib
+      Foo
+      Manyrefs
+      NonTerminate
       Paths_ssm
   hs-source-dirs:
       app
+      example
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
-    , ssm
-    , time
+      BinderAnn
+    , QuickCheck
+    , base >=4.7 && <5
+    , containers
     , criterion
+    , deepseq
+    , language-c-quote
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , ssm
+    , text
+    , time
   default-language: Haskell2010
 
 test-suite ssm-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Paths_ssm
       Evaluation
+      Buggy
+      Examp
+      Examp2
+      Example
+      Example64bit
+      Exampleuint8
+      Fib
+      Foo
+      Manyrefs
+      NonTerminate
+      Paths_ssm
   hs-source-dirs:
       test
+      example
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
-    , ssm
-    , directory
-    , process
-    , text
+      BinderAnn
     , QuickCheck
+    , base >=4.7 && <5
+    , containers
+    , deepseq
+    , directory
+    , language-c-quote
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , process
+    , ssm
+    , text
   default-language: Haskell2010
-
