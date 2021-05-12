@@ -373,13 +373,15 @@ wasWritten r = do
 
 writeVar :: Var s -> SSMExp -> Interp s ()
 writeVar ref e = do
+    p <- gets process
+    writeVar_ ref e (priority p)
+
+writeVar_ :: Var s -> SSMExp -> Int -> Interp s ()
+writeVar_ ref e prio = do
     (variable,waits, _) <- lift' $ readSTRef ref
     lift' $ writeSTRef variable e -- actually update the variable value
 
-    -- which waiting processes should be woken up? Only those whose priority
-    -- is strictly greater than the one who updated the variable
-    p <- gets process
-    let (towait, keep) = partition (\p' -> priority p < priority p') waits
+    let (towait, keep) = partition (\p' -> prio < priority p') waits
 
     -- wake up and desensitize the processes
     mapM_ desensitize towait
@@ -425,7 +427,7 @@ performEvents = do
       performEvent e = do
           st <- get
           tell [T.Event (now st) (val e)]
-          writeVar (ref e) (val e)
+          writeVar_ (ref e) (val e) (-1)
           modify $ \st -> st { written = ref e : written st}
 
 -- | Fetch the process with the lowest priority from the ready queue

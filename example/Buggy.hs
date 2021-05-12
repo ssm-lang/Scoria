@@ -24,3 +24,9 @@ e1 = box "e1" ["ref2"] $ \ref2 -> do
 e2 :: Ref Int64 -> SSM ()
 e2 = box "e2" ["ref1"] $ \ref1 -> do
   fork [ e1 ref1, e1 ref1 ]
+
+badevent :: Ref Int -> SSM ()
+badevent = box "badevent" ["r"] $ \r -> do
+  after 1 r 5
+  wait [r]
+  after 2 r 10
