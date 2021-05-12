@@ -161,7 +161,7 @@ Exp e1 <. Exp e2  = Exp $ BOp TBool e1 e2 OLT
 (==.) :: SSMType a => Exp a -> Exp a -> Exp Bool
 Exp e1 ==. Exp e2 = Exp $ BOp TBool e1 e2 OEQ
 
-neg :: SSMType a => Exp a -> Exp a
+neg :: (Num a, SSMType a) => Exp a -> Exp a
 neg e@(Exp e') = Exp $ UOp (typeOf e) e' Neg
 
 int :: Int -> Exp Int
