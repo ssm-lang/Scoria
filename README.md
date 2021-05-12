@@ -271,6 +271,7 @@ Event 5 (Lit TInt (LInt 8))
 Instant 5 0
 Result "r" (Lit TInt (LInt 8))
 ```
+THe `Instant i1 i2` constructor means that instant `i2` just finished executing and that there are `i2` events in the eventqueue.
 
 ### Compiling Programs
 ---
