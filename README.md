@@ -115,7 +115,7 @@ import Frontend
 
 In Stephens paper there is a very interesting version of computing fibonacci numbers. First we need to create the `mywait` function that takes a single reference and waits for it.
 ```Haskell
-mywait :: Ref int -> SSM ()
+mywait :: Ref Int -> SSM ()
 mywait = box "mywait" ["r"] $ \r -> do
   wait [r]
 ```
