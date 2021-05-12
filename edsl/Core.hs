@@ -122,33 +122,12 @@ isReference :: Type -> Bool
 isReference (Ref _) = True
 isReference _       = False
 
-instance Num SSMExp where
-  e1 + e2       = BOp (expType e1) e1 e2 OPlus
-  e1 * e2       = BOp (expType e1) e1 e2 OTimes
-  e1 - e2       = BOp (expType e1) e1 e2 OMinus
-  fromInteger i = if T.typeOf i == T.typeOf (1 :: Int)
-                    then Lit TInt   $ LInt   $ fromInteger i
-                    else Lit TInt64 $ LInt64 $ fromInteger i
---  fromInteger i = Lit TInt64 $ LUInt8 $ fromInteger i
---  fromInteger i
---    | T.typeOf i == T.typeOf (1 :: Int)   = Lit TInt   $ LInt   $ fromInteger i
---    | T.typeOf i == T.typeOf (1 :: Int64) = Lit TInt64 $ LInt64 $ fromInteger i
---    | T.typeOf i == T.typeOf (1 :: Word8) = Lit TUInt8 $ LUInt8 $ fromInteger i
---    | otherwise                           = error $ show $ T.typeOf i
-  negate e      = UOp (expType e) e Neg
-
 -- | SSM expressions
 data SSMExp = Var Type String               -- ^ Variables
             | Lit Type SSMLit               -- ^ Literals
             | UOp Type SSMExp UnaryOp       -- ^ Unary operators
             | BOp Type SSMExp SSMExp BinOp  -- ^ Binary operators
-  deriving (Eq, Generic, NFData)
-
-instance Show SSMExp where
-    show (Var _ n)        = n
-    show (Lit _ l)        = show l
-    show (UOp _ e op)     = "(- " ++ show e ++ ")"
-    show (BOp _ e1 e2 op) = "(" ++ show e1 ++ " " ++ show op ++ " " ++ show e2 ++ ")"
+  deriving (Eq, Generic, NFData, Show)
 
 -- | SSM literals
 data SSMLit = LInt Int        -- ^ Integer literals
@@ -156,14 +135,7 @@ data SSMLit = LInt Int        -- ^ Integer literals
             | LInt64 Int64    -- ^ 64bit integer literals
             | LUInt64 Word64  -- ^ 64bit unsigned integer literals
             | LBool Bool      -- ^ Boolean literals
-  deriving (Eq, Generic, NFData)
-
-instance Show SSMLit where
-    show (LInt i)   = show i
-    show (LUInt8 i) = show i
-    show (LInt64 i) = show i
-    show (LUInt64 i) = show i
-    show (LBool b)  = show b
+  deriving (Eq, Generic, NFData, Show)
 
 {-- | SSM unary operators -}
 data UnaryOp = Neg  -- ^ negation
@@ -176,14 +148,7 @@ data BinOp = OPlus   -- ^ addition
            | OTimes  -- ^ multiplication
            | OLT     -- ^ less-than
            | OEQ     -- ^ eq
-  deriving (Eq, Generic, NFData)
-
-instance Show BinOp where
-    show OPlus  = "+"
-    show OMinus = "-"
-    show OTimes = "*"
-    show OLT    = "<"
-    show OEQ    = "=="
+  deriving (Eq, Generic, NFData, Show)
 
 -- | Arguments to our functions
 class Arg a where

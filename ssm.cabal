@@ -47,6 +47,7 @@ library
       Example64bit
       Exampleuint8
       TypeGen
+      LowPretty
   other-modules:
       Paths_ssm
   hs-source-dirs:

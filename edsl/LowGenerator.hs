@@ -34,8 +34,8 @@ type Variable = (Name, Type)
 type Ref     = (String, Type)
 
 instance Arbitrary Program where
-  shrink p = let p' = p --removeUnusedProcedures p
-             in concat [ --shrinkHalfProcedures p'
+  shrink p = let p' = removeUnusedProcedures p
+             in concat [-- shrinkHalfProcedures p'
                        {-,-} shrinkSingleProcedures p'  -- Shrink number of functions
                        , shrinkArity p'             -- Shrink procedure arity (writing this right now)
                        , shrinkAllStmts p'          -- Shrink by removing statements that effectively
@@ -147,7 +147,7 @@ arbProc funs vars refs c n = frequency $
                v        <- choose (0,3) >>= arbExp (dereference t) vars
                delay'   <- choose (0,3) >>= arbExp TUInt64 vars
                (rest,c') <- arbProc funs vars refs c (n-1)
-               let delay = delay' * delay' + (Lit TUInt64 (LUInt64 1)) -- hack to make it non negative and non zero
+               let delay = BOp TUInt64 (BOp TUInt64 delay' delay' OTimes) (Lit TUInt64 (LUInt64 1)) OPlus -- hack to make it non negative and non zero
                let stm   = After delay r v
                return (stm:rest, c')
 --               (:) stm <$> arbProc funs vars refs c (n-1)
@@ -231,7 +231,7 @@ arbExp t vars n = case t of
                , BOp t e1 e2 OTimes
                ]
   _ ->    frequency [ (1, do e <- arbExp t vars (n-1)
-                             return $ negate e
+                             return $ UOp t e Neg
                       )
                     , (7, do e1 <- arbExp t vars (n `div` 2)
                              e2 <- arbExp t vars (n `div` 2)
@@ -417,62 +417,12 @@ testprogram17 = Program "fun1" [] $ Map.fromList
                                           [Fork [("fun1", [])]]
                                 )
                               ]
-{-
 
-Program:
-  entrypoint: fun2
-  arguments: [Right ("ref2",Ref TBool), Left (- 3)]
+testprogram18 :: Program
+testprogram18 = Program {main = "fun3", args = [Right ("ref1",Ref TInt64),Right ("ref10",Ref TBool)], funs = Map.fromList [("fun3",Procedure {name = "fun3", arguments = [("ref1",Ref TInt64),("ref10",Ref TBool)], body = [After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 8134)) (Lit TUInt64 (LUInt64 3093)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 7400)) (Lit TUInt64 (LUInt64 4735)) OPlus) OTimes) (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 648134)) (Lit TUInt64 (LUInt64 3093)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 7400)) (Lit TUInt64 (LUInt64 4735)) OPlus) OTimes) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (BOp TInt64 (Lit TInt64 (LUInt64 1)) (Lit TInt64 (LUInt64 1)) OMinus),Wait [("ref1",Ref TInt64)],GetRef (Fresh "v7") TBool ("ref10",Ref TBool),After (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 1)) (Lit TUInt64 (LUInt64 1)) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref10",Ref TBool) (BOp TBool (BOp TBool (Lit TInt (LInt (-3))) (Lit TInt (LInt (-16))) OLT) (BOp TBool (Lit TBool (LBool True)) (Lit TBool (LBool True)) OEQ) OEQ),Wait [("ref1",Ref TInt64)]]})]}
 
-fun1()
-fun2(("ref2",Ref TBool), ("var4",TUInt64))
-  After ((((4 * var4) + (0 * 6)) * ((4 * var4) + (0 * 6))) + 1) ("ref2",Ref TBool) ((4 < 5) == (4 == 6))
-fun3()
-
-Program:
-  entrypoint: fun1
-  arguments: [Right ("ref1",Ref TUInt64)]
-
-fun1(("ref1",Ref TUInt64))
-  After ((1 * 1) + 1) ("ref1",Ref TUInt64) ((1 - 125) - (1 * 1))
-
-
-Failed:                                                          
-Program:
-  entrypoint: fun8
-  arguments: [Left (15 - 933), Right ("ref2",Ref TInt64), Right ("ref3",Ref TInt)]
-
-fun6()
-  NewRef (Fresh "v2") (Ref TInt) ((1 * 1) - (1 + 1))
-  NewRef (Fresh "v4") (Ref TInt) ((10 * 6) * (1 + 1))
-fun8(("var1",TUInt64), ("ref2",Ref TInt64), ("ref3",Ref TInt))
-  GetRef (Fresh "v0") TInt64 ("ref2",Ref TInt64)
-  Fork [("fun8",[Left (- ((- 626) * (915 + 1018))),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)]),("fun8",[Left ((var1 - var1) * (var1 - var1)),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)])]
-  Fork [("fun8",[Left ((86 - var1) + (37 * var1)),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)])]
-  GetRef (Fresh "v1") TInt64 ("ref2",Ref TInt64)
-  Fork [("fun8",[Left (- ((488 + var1) - (235 + var1))),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)]),("fun8",[Left (var1 * 848),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)])]
-  If ((0 + 6) < (7 * 11)) [] [Fork [("fun8",[Left var1,Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)]),("fun8",[Left (var1 + var1),Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)]),("fun8",[Left 297,Right ("ref2",Ref TInt64),Right ("ref3",Ref TInt)])]]
-  NewRef (Fresh "v2") (Ref TBool) ((-2 - -3) < (-9 * -12))
-
-
-Program:
-  entrypoint: fun1
-  arguments: [Right ("ref1",Ref TInt64)]
-
-fun1(("ref1",Ref TInt64))
-  After (((1 * 0) * (1 * 0)) + 1) ("ref1",Ref TInt64) ((2 + 0) + (0 * -1))
-fun2()
--}
-{-
-Program:
-  entrypoint: fun5
-  arguments: [Right ("ref6",Ref TBool)]
-
-fun5(("ref6",Ref TBool))
-  After ((((1 + 1) + (-3426 * -3173)) * ((1 + 1) + (-3426 * -3173))) + 1) ("ref6",Ref TBool) True
-  Wait [("ref6",Ref TBool)]
-  GetRef (Fresh "v1") TBool ("ref6",Ref TBool)
-  Fork [("fun5",[Right ("ref6",Ref TBool)])]
--}
+testprogram19 :: Program
+testprogram19 = Program {main = "fun5", args = [Right ("ref1",Ref TInt64)], funs = Map.fromList [("fun5",Procedure {name = "fun5", arguments = [("ref1",Ref TInt64)], body = [GetRef (Fresh "v0") TInt64 ("ref1",Ref TInt64),After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 30)) (Lit TUInt64 (LUInt64 181)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 169)) (Lit TUInt64 (LUInt64 105)) OPlus) OTimes) (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 30)) (Lit TUInt64 (LUInt64 181)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 169)) (Lit TUInt64 (LUInt64 105)) OPlus) OTimes) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (BOp TInt64 (BOp TInt64 (Var TInt64 "v0") (Var TInt64 "v0") OMinus) (BOp TInt64 (Lit TInt64 (LInt64 (-197))) (Var TInt64 "v0") OMinus) OPlus),Wait [("ref1",Ref TInt64)],After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 113)) (Lit TUInt64 (LUInt64 209)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 192)) (Lit TUInt64 (LUInt64 140)) OPlus) OTimes) (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 113)) (Lit TUInt64 (LUInt64 209)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 192)) (Lit TUInt64 (LUInt64 140)) OPlus) OTimes) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (BOp TInt64 (Var TInt64 "v0") (Var TInt64 "v0") OTimes),After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 162)) (Lit TUInt64 (LUInt64 100)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 213)) (Lit TUInt64 (LUInt64 16)) OPlus) OTimes) (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 162)) (Lit TUInt64 (LUInt64 100)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 213)) (Lit TUInt64 (LUInt64 16)) OPlus) OTimes) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (Lit TInt64 (LInt64 (-75))),After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 32)) (Lit TUInt64 (LUInt64 176)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 237)) (Lit TUInt64 (LUInt64 220)) OTimes) OPlus) (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 32)) (Lit TUInt64 (LUInt64 176)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 237)) (Lit TUInt64 (LUInt64 220)) OTimes) OPlus) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (BOp TInt64 (Lit TInt64 (LInt64 (-16))) (Var TInt64 "v0") OMinus),GetRef (Fresh "v3") TInt64 ("ref1",Ref TInt64)]})]}
 
 {-****** Removing unused procedures ******-}
 

@@ -50,11 +50,7 @@ data Procedure = Procedure
     -- | Statements that make up this procedure.
   , body      :: [Stm]
   }
-  deriving (Eq)
-
-instance Show Procedure where
-  show p = unlines $ concat [name p, "(", intercalate ", " (map show (arguments p)), ")"]
-                     : map ((++) "  " . show) (body p)
+  deriving (Eq, Show)
 
 data Program = Program
   { -- | Name of the procedure that is the program entrypoint.
@@ -64,13 +60,7 @@ data Program = Program
     -- | Map that associates procedure names with their definitions.
   , funs :: Map.Map String Procedure
   }
-
-instance Show Program where
-  show p = unlines [ "Program:"
-                   , "  entrypoint: " ++ main p
-                   , "  arguments: [" ++ intercalate ", " (map show (args p)) ++ "]"
-                   , ""
-                   ] ++ intercalate "" (map show (Map.elems (funs p)))
+  deriving Show
 
 type Transpile a = State TranspileState a
 
