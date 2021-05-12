@@ -9,10 +9,6 @@
 #include <limits.h>
 #include <assert.h>
 
-typedef uint64_t uint64;
-typedef int64_t int64;
-typedef uint8_t  uint8;
-
 /* A year is 31,536,000 seconds, which fits in 25 bits
    There are 1,000,000 microseconds in a second, which fits in 20 bits
    If we count microseconds, we only have 12 bits left in 32 bits,
@@ -93,24 +89,7 @@ inline void leave_no_sched(act_t *act, size_t bytes) {
   free(act);
 }
 
-// Scheduled variables
-
 typedef struct sv sv_t;
-
-#define SCHEDULED_VARIABLE_FIELDS \
-  void (*update)(sv_t *);   /* Function to update this particular type       */\
-  struct trigger *triggers; /* Doubly-linked list of sensitive continuations */\
-  peng_time_t last_updated;  /* Time of last update, for detecting event     */\
-  peng_time_t event_time;     /* Time at which the variable should be updated */\
-  void (*to_string)(sv_t *, char *, size_t)
-
-// "Base class" for scheduled variable
-struct sv {
-    SCHEDULED_VARIABLE_FIELDS;
-};
-
-// Was there an event on the given variable in the current instant?
-inline bool event_on(sv_t *var) { return var->last_updated == now; }
 
 extern void schedule_sensitive(sv_t *, priority_t);
 
@@ -119,7 +98,6 @@ typedef sv_t sv_event_t;
 extern void initialize_event(sv_event_t *);
 extern void assign_event(sv_event_t *, priority_t);
 extern void later_event(sv_t *, peng_time_t);
-
 
 // A trigger: indicates that a write to a scheduled variable
 // should schedule a routine to run in the current instant

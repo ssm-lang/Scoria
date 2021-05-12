@@ -1,0 +1,67 @@
+# Organization
+
+## Common
+
+Defines:
+typedef uint64_t peng_time_t;
+typedef uint32_t priority_t;
+typedef uint8_t depth_t;
+typedef struct trigger trigger_t;
+typedef struct sv sv_t;
+
+Declares:
+extern peng_time_t now;
+
+## Scheduler
+
+Public defines:
+peng_time_t now;
+#define NO_EVENT_SCHEDULED ULONG_MAX
+
+void fork_routine(act_t *);
+
+void initialize_event(sv_event_t *);
+void assign_event(sv_event_t *, priority_t);
+void later_event(sv_t *, peng_time_t);
+
+peng_time_t next_event_time(void);
+void tick(void);
+
+Private:
+void schedule_sensitive(sv_t *, priority_t);
+
+typedef uint16_t cont_queue_index_t;
+extern cont_queue_index_t cont_queue_len;
+extern act_t *cont_queue[];
+
+## Scheduled variables
+
+Uses:
+peng_time_t
+now
+initialize_event
+assign_event
+later_event
+
+## Activation records
+
+Private:
+PRIORITY_AT_ROOT
+DEPTH_AT_ROOT
+struct trigger;
+
+inline act_t *enter(size_t bytes, stepf_t *step, act_t *parent, priority_t priority, depth_t depth)
+inline void call(act_t *act);
+inline void leave(act_t *act, size_t bytes);
+inline void leave_no_sched(act_t *act, size_t bytes);
+
+Uses:
+priority_t
+depth_t
+extern void fork_routine(act_t *);
+
+
+## Main
+
+extern peng_time_t next_event_time(void); // Time of the next event
+extern void tick(void); // Execute the system for the current instant
