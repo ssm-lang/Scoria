@@ -122,15 +122,6 @@ isReference :: Type -> Bool
 isReference (Ref _) = True
 isReference _       = False
 
-instance Num SSMExp where
-  e1 + e2       = BOp (expType e1) e1 e2 OPlus
-  e1 * e2       = BOp (expType e1) e1 e2 OTimes
-  e1 - e2       = BOp (expType e1) e1 e2 OMinus
-  fromInteger i = if T.typeOf i == T.typeOf (1 :: Int)
-                    then Lit TInt   $ LInt   $ fromInteger i
-                    else Lit TInt64 $ LInt64 $ fromInteger i
-  negate e      = UOp (expType e) e Neg
-
 -- | SSM expressions
 data SSMExp = Var Type String               -- ^ Variables
             | Lit Type SSMLit               -- ^ Literals

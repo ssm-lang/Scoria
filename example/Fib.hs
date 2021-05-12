@@ -13,15 +13,15 @@ mysum = box "mysum" ["r1", "r2", "r"] $ \r1 r2 r -> do
     waitAll [r1,r2]
     v1 <- deref r1
     v2 <- deref r2
-    after (uint64 1) r (v1 +. v2)
+    after 1 r (v1 + v2)
 
 myfib :: Exp Int -> Ref Int -> SSM ()
 myfib = box "myfib" ["n", "r"] $ \n r -> do
-    r1 <- var (int 0) 
-    r2 <- var (int 0)
-    if' (n <. int 2)
-            (after (uint64 1) r (int 1))
-            (Just (fork [ myfib (n -. int 1) r1
-                        , myfib (n -. int 2) r2
+    r1 <- var 0 
+    r2 <- var 0
+    if' (n <. 2)
+            (after 1 r 1)
+            (Just (fork [ myfib (n - 1) r1
+                        , myfib (n - 2) r2
                         , mysum r1 r2 r
                         ]))

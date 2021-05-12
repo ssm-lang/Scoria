@@ -14,15 +14,6 @@ fun2 = box "fun2" ["ref1","ref2","var3"] $ \ref1 ref2 var3 -> do
       (return ())
       (Just (return ()))
 
-fun3 :: Ref Bool -> Exp Bool -> SSM ()
-fun3 = box "fun3" ["ref1","var2"] $ \ref1 var2 -> do
-    if' ((((negate 2) - (negate 3)) :: Exp Int) <. (0 * (negate 2)))
-      (do v0 <- deref ref1
-          return ())
-      (Just (wait [ref1]))
-    v1 <- var (negate ((negate 2) - (negate 3)))
-    wait [v1]
-
 e1 :: Ref Int64 -> SSM ()
 e1 = box "e1" ["ref2"] $ \ref2 -> do
   ref2 <~ (int64 5)

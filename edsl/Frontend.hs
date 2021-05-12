@@ -6,6 +6,7 @@
 module Frontend
      ( Ref(..)
      , Exp(..)
+     , Lit(..)
      , inputref
      , (+.)
      , (-.)
@@ -90,12 +91,30 @@ newtype Ref a = Ptr Reference -- references that are shared, (variable name, ref
   deriving Show
 newtype Exp a = Exp SSMExp                 -- expressions
   deriving Show
+newtype Lit a = FLit SSMLit
+  deriving Show
 
-instance Num a => Num (Exp a) where
-    (Exp e1) + (Exp e2) = Exp $ e1 + e2
-    (Exp e1) - (Exp e2) = Exp $ e1 - e2
-    (Exp e1) * (Exp e2) = Exp $ e1 * e2
-    fromInteger i = Exp $ fromInteger i
+class FromLiteral a where
+    fromLit :: a -> Lit a
+
+instance FromLiteral Int where
+    fromLit i = FLit $ LInt (fromIntegral i)
+
+instance FromLiteral Int64 where
+    fromLit i = FLit $ LInt64 (fromIntegral i)
+
+instance FromLiteral Word64 where
+    fromLit i = FLit $ LUInt64 (fromIntegral i)
+
+instance FromLiteral Word8 where
+    fromLit i = FLit $ LUInt8 (fromIntegral i)
+
+instance (Num a, FromLiteral a, SSMType a) => Num (Exp a) where
+    (Exp e1) + (Exp e2) = Exp $ BOp (expType e1) e1 e2 OPlus
+    (Exp e1) - (Exp e2) = Exp $ BOp (expType e1) e1 e2 OMinus
+    (Exp e1) * (Exp e2) = Exp $ BOp (expType e1) e1 e2 OTimes
+    fromInteger i = let FLit l = fromLit (fromInteger @a i)
+                    in Exp $ Lit (typeOf (Proxy @a)) l
 
 -- | Arguments we can apply SSM procedures to
 instance Arg (Exp a) where
