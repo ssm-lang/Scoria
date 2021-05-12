@@ -233,7 +233,43 @@ waitSingle(*int r) {
 ---
 The interpreter has type `interpret :: Program -> Output`. The output is a trace of the actions it's taken. At the end it will print the result of any input references, such as the `inputref` in `myfib 13 inputref`. Running the interpreter and printing the output nicely is done like this.
 ```Haskell
-putStrLn $ unlines $ map show $ interpret $ transpile $ myfib 13 inputref
+> putStrLn $ unlines $ map show $ interpret $ transpile $ myfib 5 inputref
+Fork ["myfib","myfib","mysum"]
+Fork ["myfib","myfib","mysum"]
+Fork ["myfib","myfib","mysum"]
+Fork ["myfib","myfib","mysum"]
+Fork ["waitSingle","waitSingle"]
+Fork ["waitSingle","waitSingle"]
+Fork ["myfib","myfib","mysum"]
+Fork ["waitSingle","waitSingle"]
+Fork ["waitSingle","waitSingle"]
+Fork ["myfib","myfib","mysum"]
+Fork ["myfib","myfib","mysum"]
+Fork ["waitSingle","waitSingle"]
+Fork ["waitSingle","waitSingle"]
+Fork ["waitSingle","waitSingle"]
+Instant 0 8
+Event 1 (Lit TInt (LInt 1))
+Event 1 (Lit TInt (LInt 1))
+Event 1 (Lit TInt (LInt 1))
+Event 1 (Lit TInt (LInt 1))
+Event 1 (Lit TInt (LInt 1))
+Event 1 (Lit TInt (LInt 1))
+Event 1 (Lit TInt (LInt 1))
+Event 1 (Lit TInt (LInt 1))
+Instant 1 3
+Event 2 (Lit TInt (LInt 2))
+Event 2 (Lit TInt (LInt 2))
+Event 2 (Lit TInt (LInt 2))
+Instant 2 2
+Event 3 (Lit TInt (LInt 3))
+Event 3 (Lit TInt (LInt 3))
+Instant 3 1
+Event 4 (Lit TInt (LInt 5))
+Instant 4 1
+Event 5 (Lit TInt (LInt 8))
+Instant 5 0
+Result "r" (Lit TInt (LInt 8))
 ```
 
 ### Compiling Programs
@@ -429,3 +465,14 @@ extern uint64_t limit;
 #define DEBUG_PRINT(x) while(0) {}
 #endif
 ```
+
+### Testing Programs
+---
+So this is something that I am hacking on right now, so these things change quite fast. However, I've written a function `testSingle :: Program -> Maybe Int -> IO Report` that takes a program, a trace length (if any) and returns an `IO Report`. The `Report` type exists in `Evaluation.hs`. It will report on some different types of errors (compilation errors, execution errors, parse errors etc). `testSingle` will take the program and run both the generated c code and the interpreter and compare the traces. If they are equal `Good` is returned, and otherwise some different variants of errors are returned. If I run this
+```Haskell
+do r <- testSingle (transpile (myfib 5 inputref)) (Just 10000)
+   print r 
+   return ()
+```
+it will print `Good`, which means the test was successful. Now, this only means that the interpreter and the code generator does the same thing. We still pray that they do the right thing ;)
+In `Spec.hs` there's a property that generates random programs and runs this test for all of them. You can run the tests by issuing `stack test`.

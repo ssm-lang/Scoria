@@ -6,6 +6,7 @@ import LowCore hiding (main)
 import Trace
 import LowGenerator
 import LowCodeGen
+import Frontend
 --import LowPretty
 
 import Fib
@@ -27,7 +28,8 @@ trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
 main :: IO ()
 main = do
---      testSingle testprogram17 (Just 6554)
+--      r <- testSingle (transpile (myfib 5 inputref)) (Just 10000)
+--      print r 
 --      return ()
     quickCheck (verboseShrinking prop_correct)
 --    quickCheck (verboseShrinking prop_valgrind_ok)
