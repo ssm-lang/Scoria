@@ -21,28 +21,48 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
+- mtl
+- containers
+- language-c-quote
+- BinderAnn
+- prettyprinter
+- QuickCheck
+- text
+- megaparsec
+- parser-combinators
+- deepseq
 
 library:
-  source-dirs: src
+  source-dirs: edsl
 
 executables:
   ssm-exe:
     main:                Main.hs
-    source-dirs:         app
+    source-dirs:
+    - app
+    - example
     ghc-options:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
     - ssm
+    - time
+    - criterion
 
 tests:
   ssm-test:
     main:                Spec.hs
-    source-dirs:         test
+    source-dirs:
+    - test
+    - example
     ghc-options:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
     - ssm
+    - directory
+    - process
+    - text
+    - QuickCheck
