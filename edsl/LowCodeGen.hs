@@ -46,6 +46,8 @@ data IR
   | -- | Struct declaration. First argument is the name (renders as "act_name_t") and
     -- second field are the field declarations in the struct.
     Struct String [FieldDec]
+  | -- | Dequeue an event on this variable if there is any
+    DequeueEvent String
 
   | -- | Switch statement that renders to "switch(act->pc) { ... }".
     Switch [IR]
@@ -220,6 +222,7 @@ compile p mi = unlines code
                , "#include \"peng.h\""
                , "#include <stdio.h>"
                , ""
+               , "extern void dequeue_event(sv_t *var);"
                , ""
                ] ++ limit mi
 
@@ -531,21 +534,19 @@ stepIR p = do
     let fun = Function Void (concat ["step_", name p]) [("gen_act", Pointer $ Act "")]
     let cast = UpcastAct (Pointer $ Act $ name p) "gen_act"
     
-    switch <- flip createBlocks (Leave (name p)) <$> gencase (body p)
---    (Switch cases) <- stmts $ body p
---    let leave = Leave $ name p
+    cases      <- gencase (body p)
+    dequeues   <- dequeueLocalEvents
+    let end    = dequeues ++ [Leave (name p)]
+    let switch = flip createBlocks end cases
     return $ fun $ [ cast
                    , switch
---                   , Switch $ cases ++ [leave]
                    ]
   where
-      -- | Takes as input a sequence of `Stm` and returns a sequence of `IR` statements.
-      -- The `IR` statements in the sequence will all be case blocks meant to go inside
-      -- of a switch statement.
---      stmts :: [Stm] -> IR -> TR IR
---      stmts xs end = do ir <- gencase xs
---                        return $ Switch $ (createBlocks ir) : [end]
-    
+      dequeueLocalEvents :: TR [IR]
+      dequeueLocalEvents = do
+        refs <- gets localrefs
+        return $ map (\s -> DequeueEvent $ concat ["&act->", s]) refs
+
       -- | Return a `IR` statement that increments the program counter to the next case.
       incpc :: TR IR
       incpc = do
@@ -555,8 +556,8 @@ stepIR p = do
 
       -- | Put the step functions body in a switch expression, after turning it
       -- into a sequence of cases.
-      createBlocks :: [IR] -> IR -> IR
-      createBlocks ir end = Switch $ (createBlocks' 0 ir) ++ [end]
+      createBlocks :: [IR] -> [IR] -> IR
+      createBlocks ir end = Switch $ (createBlocks' 0 ir) ++ end
         where
           -- | Create the case expressions.
           createBlocks' :: Int -> [IR] -> [IR]
@@ -757,6 +758,7 @@ irToC ir = flip mapM_ ir $ \x -> case x of
             FieldDec typ var -> emit $ concat [show typ, " ", var, ";"]
             GenericFields    -> emit "ACTIVATION_RECORD_FIELDS;"
         emit $ concat ["} act_", typedef, "_t;"]
+    DequeueEvent var -> emit $ concat ["dequeue_event((sv_t *)", var, ");"]
 
     Switch stmts    -> do
         emit "switch(act->pc) {"

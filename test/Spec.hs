@@ -34,8 +34,8 @@ main = do
 --      r <- testSingle singlecase (Just 10000)
 --      print r 
 --      return ()
---    quickCheck (verboseShrinking prop_correct)
-    quickCheck (withMaxSuccess 1000 $ verboseShrinking prop_valgrind_ok)
+    quickCheck (verboseShrinking prop_correct)
+--    quickCheck (withMaxSuccess 1000 $ verboseShrinking prop_valgrind_ok)
 
 regression_test :: IO ()
 regression_test = do
