@@ -40,3 +40,9 @@ infevent = box "infevent" ["r"] $ \r -> do
   v0 <- var 5
   after 2 v0 5
   fork [ infevent v0]
+
+badafter :: Ref Int -> SSM ()
+badafter = box "badafter" ["r"] $ \r -> do
+  after 10 r 5
+  wait [r]
+  after ((uint64 maxBound) - 1) r 10

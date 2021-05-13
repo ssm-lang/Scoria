@@ -29,10 +29,10 @@ trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
 main :: IO ()
 main = do
-      r <- testSingle testprogram6 (Just 10000)
-      print r 
-      return ()
---    quickCheck (verboseShrinking prop_correct)
+--      r <- testSingle (transpile $ badafter inputref) (Just 10000)
+--      print r 
+--      return ()
+    quickCheck (verboseShrinking prop_correct)
 --    quickCheck (verboseShrinking prop_valgrind_ok)
 
 prop_correct :: Program -> Property
@@ -141,6 +141,7 @@ timeoutEval i xs = do
         Just (Left (e :: SomeException)) -> case show e of
             v | "eventqueue full" `isPrefixOf` v -> modifyIORef ref (EventQueueFull :)
               | "negative depth"  `isPrefixOf` v -> modifyIORef ref (NegativeDepth :)
+              | "bad after"       `isPrefixOf` v -> modifyIORef ref (BadAfter :)
             _ -> modifyIORef ref (Crash :)
         _ -> return ()
     reverse <$> readIORef ref

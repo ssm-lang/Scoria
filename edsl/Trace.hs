@@ -25,6 +25,7 @@ data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
                  | Crash
                  | EventQueueFull
                  | NegativeDepth
+                 | BadAfter
   deriving (Show, Eq, Generic, NFData)
 
 type Output = [OutputEntry]
@@ -35,18 +36,22 @@ testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "result a uint64 2343546543245"
                              , "event 2 value int (-1)"
                              , "now 3 eventqueuesize 3"
+                             , "bad after"
                              , "now 5 eventqueuesize 5"
                              , "fork mywait mywait mysum"
                              , "event 6 value int 7"
                              , "result x int 1"
                              , "fork mywait"
+                             , "bad after"
                              , "negative depth"
                              , "eventqueue full"
                              , "result y bool 0"
+                             , "bad after"
                              , "result zt uint64 3423523234"
                              , "result z bool 1"
                              , "negative depth"
                              , "eventqueue full"
+                             , "bad after"
                              ]
 
 mkTrace :: String -> Output
@@ -67,7 +72,7 @@ pTrace :: Parser Output
 pTrace = many pTraceItem
 
 pTraceItem :: Parser OutputEntry
-pTraceItem = choice [try pEvent, try pInstant, pResult, pFork, pCrash, pEventQueueFull, pNegativeDepth]
+pTraceItem = choice [try pEvent, try pInstant, pBadAfter, pResult, pFork, pCrash, pEventQueueFull, pNegativeDepth]
 
 pFork :: Parser OutputEntry
 pFork = do
@@ -84,6 +89,14 @@ pCrash = do
     pSymbol "crash"
     pSpace
     return Crash
+
+pBadAfter :: Parser OutputEntry
+pBadAfter = do
+    pSpace
+    pSymbol "bad"
+    pSpace
+    pSymbol "after"
+    return BadAfter
 
 pNegativeDepth :: Parser OutputEntry
 pNegativeDepth = do
@@ -144,6 +157,8 @@ pIdent = do
                  , "crash"
                  , "now"
                  , "result"
+                 , "bad"
+                 , "after"
                  , "eventqueuesize"
                  , "eventqueue"
                  , "full"

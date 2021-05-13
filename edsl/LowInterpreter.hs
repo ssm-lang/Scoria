@@ -266,14 +266,16 @@ schedule_event :: Event s -> Interp s ()
 schedule_event e = do
     st <- get
     let evs = events st
-    if numevents st == 8192
-        then error "eventqueue full"
-        else if any ((==) e) evs
-            then let evs' = delete e evs
-                 in modify $ \st -> st { events = insert e evs' }
-            else    modify $ \st -> st { events = insert e evs
-                                       , numevents = numevents st + 1 
-                                       }
+
+    when (now st > at e) $ error "bad after"
+
+    if any ((==) e) evs
+        then modify $ \st -> st { events = insert e (delete e evs) }
+        else if numevents st == 8192
+            then error "eventqueue full"
+            else modify $ \st -> st { events    = insert e evs
+                                    , numevents = numevents st + 1
+                                    }
   where
       insert :: Event s -> [Event s] -> [Event s]
       insert e []       = [e]
