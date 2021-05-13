@@ -23,12 +23,15 @@ data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
                  | Fork [String]        -- ^ Fork call, names of forked procedures
                  | Result String SSMExp -- ^ variable name and final value
                  | Crash
+                 | EventQueueFull
+                 | NegativeDepth
   deriving (Show, Eq, Generic, NFData)
 
 type Output = [OutputEntry]
 
 testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "event 1 value bool 1"
+                             , "negative depth"
                              , "result a uint64 2343546543245"
                              , "event 2 value int (-1)"
                              , "now 3 eventqueuesize 3"
@@ -37,9 +40,13 @@ testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "event 6 value int 7"
                              , "result x int 1"
                              , "fork mywait"
+                             , "negative depth"
+                             , "eventqueue full"
                              , "result y bool 0"
                              , "result zt uint64 3423523234"
                              , "result z bool 1"
+                             , "negative depth"
+                             , "eventqueue full"
                              ]
 
 mkTrace :: String -> Output
@@ -60,7 +67,7 @@ pTrace :: Parser Output
 pTrace = many pTraceItem
 
 pTraceItem :: Parser OutputEntry
-pTraceItem = choice [pEvent, pInstant, pResult, pFork, pCrash]
+pTraceItem = choice [try pEvent, try pInstant, pResult, pFork, pCrash, pEventQueueFull, pNegativeDepth]
 
 pFork :: Parser OutputEntry
 pFork = do
@@ -77,6 +84,22 @@ pCrash = do
     pSymbol "crash"
     pSpace
     return Crash
+
+pNegativeDepth :: Parser OutputEntry
+pNegativeDepth = do
+    pSpace
+    pSymbol "negative"
+    pSpace
+    pSymbol "depth"
+    return NegativeDepth
+
+pEventQueueFull :: Parser OutputEntry
+pEventQueueFull = do
+    pSpace
+    pSymbol "eventqueue"
+    pSpace
+    pSymbol "full"
+    return EventQueueFull
 
 pEvent :: Parser OutputEntry
 pEvent = do
@@ -122,6 +145,10 @@ pIdent = do
                  , "now"
                  , "result"
                  , "eventqueuesize"
+                 , "eventqueue"
+                 , "full"
+                 , "negative"
+                 , "depth"
                  , "int"
                  , "int64"
                  , "uint64"

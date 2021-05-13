@@ -194,7 +194,7 @@ compile p mi = unlines code
   where
       -- | Entire C file.
       code :: [String]
-      code = concat [header, generatedcode]
+      code = concat [header, schedule, debug_fork, generatedcode]
 
       -- | Generated code content.
       generatedcode :: [String]
@@ -230,6 +230,43 @@ compile p mi = unlines code
                     , "uint64_t limit = " ++ ticks ++ ";"
                     , "#endif"
                     ]
+      
+      schedule :: [String]
+      schedule = [ "#ifdef DEBUG"
+                 , ""
+                 , "extern int can_schedule(sv_t *var);"
+                 , "#define SCHEDULE(schedule_fun, var, delay, value)   \\"
+                 , "if(!can_schedule((sv_t *) var)) {                   \\"
+                 , "  printf(\"eventqueue full\\n\");                   \\"
+                 , "  exit(1);                                          \\"
+                 , "}                                                   \\"
+                 , "(*schedule_fun)(var, delay, value);"
+                 , ""
+                 , "#else"
+                 , ""
+                 , "#define SCHEDULE(schedule_fun, var, delay, value) \\"
+                 , "(*schedule_fun)(var, delay, value);"
+                 , ""
+                 , "#endif"
+                 ]
+      
+      debug_fork :: [String]
+      debug_fork = [ "#ifdef DEBUG"
+                   , ""
+                   , "#define FORK(act, new_depth)     \\"
+                   , "if((int8_t) new_depth < 0) {     \\"
+                   , "  printf(\"negative depth\\n\"); \\"
+                   , "  exit(1);                       \\"
+                   , "}                                \\"
+                   , "fork_routine(act);"
+                   , ""
+                   , "#else"
+                   , ""
+                   , "#define FORK(act, new_depth) \\"
+                   , "fork_routine(act);"
+                   , ""
+                   , "#endif"
+                   ]
 
 -- | This function takes a procedure and returns three `IR` statements that
 -- represents the struct, enter function and step function of the procedure.
@@ -739,7 +776,8 @@ irToC ir = flip mapM_ ir $ \x -> case x of
     Assign bt var val   ->
         emit $ concat ["assign_", show bt, "(", var, ", act->priority, ", val, ");"]
     Later bt t var val  ->
-        emit $ concat ["later_", show bt, "(", var, ", now + ", t, ", ", val, ");"]
+        emit $ concat ["SCHEDULE(&later_", show bt, ", ", var, ", now + ", t, ", ", val, ");"]
+--        emit $ concat ["later_", show bt, "(", var, ", now + ", t, ", ", val, ");"]
     EventOn res ref     -> do
         let eventon = concat ["event_on((sv_t *) ", ref, ")"]
         irToC [Assign (basetype_ TBool) res eventon]
@@ -755,15 +793,14 @@ irToC ir = flip mapM_ ir $ \x -> case x of
         indent $ do
             let new_depth = ceiling (logBase 2 (fromIntegral (length funs)))
             emit $ concat ["uint8_t new_depth = act->depth - ", show new_depth,";"]
-            emit "if((int8_t) new_depth < 0) {"
-            indent $ do irToC $ [DebugPrint "crash\\n"]
-                        emit "exit(1);"
-            emit "}"
             emit "uint32_t pinc = 1 << new_depth;"
             emit "uint32_t new_priority = act->priority;"
             intercalateM (emit "new_priority += pinc;") $ flip map funs $ \(fun,args) -> do
-                emit $ concat ["fork_routine((act_t *) "
-                              , enter_ fun "new_priority" "new_depth" args, ");"]
+                emit $ concat ["FORK((act_t *) "
+                              , enter_ fun "new_priority" "new_depth" args
+                              , ", "
+                              , "new_depth"
+                              , ");"]
         emit "}"
     Leave name          ->
         emit $ concat ["leave((act_t *) act, sizeof(act_", name, "_t));"]

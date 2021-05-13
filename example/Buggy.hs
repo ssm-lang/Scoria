@@ -34,3 +34,9 @@ eventorder :: Ref Int -> Ref Int -> SSM ()
 eventorder = box "eventorder" ["r1","r2"] $ \r1 r2 -> do
   after 2 r1 5
   after 2 r2 10
+
+infevent :: Ref Int -> SSM ()
+infevent = box "infevent" ["r"] $ \r -> do
+  v0 <- var 5
+  after 2 v0 5
+  fork [ infevent v0]

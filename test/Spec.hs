@@ -20,6 +20,7 @@ import Data.Maybe
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
 import System.IO.Unsafe
+import Buggy
 
 trace :: Show a => a -> a
 trace x = unsafePerformIO $ putStrLn (show x) >> return x
@@ -28,10 +29,10 @@ trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
 main :: IO ()
 main = do
---      r <- testSingle (transpile (myfib 5 inputref)) (Just 10000)
---      print r 
---      return ()
-    quickCheck (verboseShrinking prop_correct)
+      r <- testSingle testprogram6 (Just 10000)
+      print r 
+      return ()
+--    quickCheck (verboseShrinking prop_correct)
 --    quickCheck (verboseShrinking prop_valgrind_ok)
 
 prop_correct :: Program -> Property
@@ -137,7 +138,10 @@ timeoutEval i xs = do
     ref <- newIORef []
     xs' <- timeout 5000000 $ try $ eval xs i ref
     case xs' of
-        Just (Left (e :: SomeException)) -> modifyIORef ref (Crash :)
+        Just (Left (e :: SomeException)) -> case show e of
+            v | "eventqueue full" `isPrefixOf` v -> modifyIORef ref (EventQueueFull :)
+              | "negative depth"  `isPrefixOf` v -> modifyIORef ref (NegativeDepth :)
+            _ -> modifyIORef ref (Crash :)
         _ -> return ()
     reverse <$> readIORef ref
 

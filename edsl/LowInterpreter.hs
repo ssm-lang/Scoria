@@ -74,6 +74,8 @@ data St s = St
     now        :: Word64
   -- | Outstanding events
   , events     :: [Event s]
+  -- | Number of outstanding events
+  , numevents  :: Int
   -- | Processes ready to run, should be a priority queue
   , readyQueue :: [Proc s]
   -- | References that were written in this instance
@@ -101,7 +103,7 @@ interpret p = runST interpret'
           process <- Proc 0 32 0 Nothing <$> params p <#> Nothing <#> body fun
           let refs = Map.elems $ variables process
           let actualrefs = getReferences p $ variables process
-          execWriterT $ evalStateT (run >> emitResult) (St 0 [] [process] refs (funs p) actualrefs process)
+          execWriterT $ evalStateT (run >> emitResult) (St 0 [] 0 [process] refs (funs p) actualrefs process)
 
       -- | Creates the initial variable storage for the program. Expressions are just
       -- allocated in an STRef, while references are given a default value and then
@@ -262,11 +264,16 @@ runProcess = do
 
 schedule_event :: Event s -> Interp s ()
 schedule_event e = do
-    evs <- gets events
-    if any ((==) e) evs
-        then let evs' = delete e evs
-             in modify $ \st -> st { events = insert e evs' }
-        else    modify $ \st -> st { events = insert e evs  }
+    st <- get
+    let evs = events st
+    if numevents st == 8192
+        then error "eventqueue full"
+        else if any ((==) e) evs
+            then let evs' = delete e evs
+                 in modify $ \st -> st { events = insert e evs' }
+            else    modify $ \st -> st { events = insert e evs
+                                       , numevents = numevents st + 1 
+                                       }
   where
       insert :: Event s -> [Event s] -> [Event s]
       insert e []       = [e]
@@ -348,7 +355,7 @@ pds k = do
     let dep   = depth p                                     -- old dep
     let d'    = dep - ceiling (logBase 2 (fromIntegral k))  -- new dep
     if d' < 0
-        then error "negative exponent, ran out of recursion depth"
+        then error "negative depth"
     else do let prios = [ prio + i * (2^d') | i <- [0..k-1]]        -- new prios
             return $ zip prios (repeat d')
 
@@ -425,7 +432,9 @@ performEvents = do
       currentEvents = do
           st <- get
           let (current, future) = partition (\e -> at e == now st) (events st)
-          put $ st { events = future}
+          put $ st { events = future
+                   , numevents = numevents st - length current
+                   }
           return current
 
       {- | Perform the update of a scheduled event and enqueue processes that were waiting for
