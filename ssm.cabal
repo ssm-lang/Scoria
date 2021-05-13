@@ -34,8 +34,9 @@ library
       LowCore
       LowGenerator
       LowInterpreter
-      Pretty
       Trace
+      LowPretty
+      SSM
   other-modules:
       Paths_ssm
   hs-source-dirs:

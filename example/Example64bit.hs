@@ -2,7 +2,8 @@
 module Example64bit where
 
 import BinderAnn.Monadic
-import Frontend
+import SSM
+import Data.Word
 
 fun64 :: Exp Word64 -> Ref Word64 -> SSM ()
 fun64 = box "fun64" ["e", "r"] $ \e r -> do

@@ -11,6 +11,10 @@
 
 peng_time_t now;
 
+#ifdef DEBUG
+uint64_t debug_count = 0;
+#endif
+
 extern inline void leave(act_t *, size_t);
 extern inline void leave_no_sched(act_t *, size_t);
 extern inline act_t *enter(size_t, stepf_t *,
@@ -234,7 +238,7 @@ void tick()
   // everything sensitive to it
 
 #ifdef DEBUG
-  char buffer[24];
+  char buffer[50];
 #endif
 
   while ( event_queue_len > 0 && event_queue[1]->event_time == now ) {
@@ -242,8 +246,8 @@ void tick()
     
     (*var->update)(var);     // Update the value
 #ifdef DEBUG
-    var->to_string(var, buffer, 24);
-    printf("event %lu value %s\n", now, buffer);
+    var->to_string(var, buffer, 50);
+    DEBUG_PRINT("event %lu value %s\n", now, buffer);
 #endif
     var->last_updated = now; // Remember that it was updated
     // Schedule all sensitive continuations

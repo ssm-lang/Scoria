@@ -2,7 +2,7 @@
 module Exampleuint8 where
 
 import BinderAnn.Monadic
-import Frontend
+import SSM
 import Data.Word
 
 test8bit :: Exp Word8 -> Ref Word8 -> SSM ()

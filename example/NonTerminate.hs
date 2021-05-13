@@ -2,7 +2,7 @@
 module NonTerminate where
 
 import BinderAnn.Monadic
-import Frontend
+import SSM
 
 nonterminate :: Ref Int -> Exp Int -> SSM ()
 nonterminate = box "nonterminate" ["x", "y"] $ \x y -> do
