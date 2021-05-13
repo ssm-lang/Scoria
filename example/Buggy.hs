@@ -29,3 +29,8 @@ badevent = box "badevent" ["r"] $ \r -> do
   after 1 r 5
   wait [r]
   after 2 r 10
+
+eventorder :: Ref Int -> Ref Int -> SSM ()
+eventorder = box "eventorder" ["r1","r2"] $ \r1 r2 -> do
+  after 2 r1 5
+  after 2 r2 10

@@ -208,3 +208,34 @@ writeVar ref e = do
     -- update the variable to be written to in this instant and give it knowledge of
     -- which processes are still waiting on it
     lift' $ writeSTRef ref (variable, keep, True)
+
+16)
+
+QuickCheck generated a program like this one
+
+eventorder :: Ref Int -> Ref Int -> SSM ()
+eventorder = box "eventorder" ["r1","r2"] $ \r1 r2 -> do
+  after 2 r1 5
+  after 2 r2 10
+
+The event r1 = 5 should happen first (in the instant) and then r2 = 10. It should not make a difference
+I think, but we still want them to do the same thing. The fix was to ensure that events are
+inserted in the right order in the interpreter.
+
+schedule_event :: Event s -> Interp s ()
+schedule_event e = do
+    evs <- gets events
+    if any ((==) e) evs
+        then let evs' = delete e evs
+             in modify $ \st -> st { events = insert e evs' }
+        else    modify $ \st -> st { events = insert e evs  }
+  where
+      insert :: Event s -> [Event s] -> [Event s]
+      insert e []       = [e]
+      insert e1 (e2:es) =
+          if at e1 < at e2
+              then e1 : e2 : es
+              else e2 : insert e1 es
+
+Right now the two queues are in the interprer just lists that we make sure to insert things into
+in an ordered fashion, but there should really be a better datastructure for this. A tree or something.

@@ -265,8 +265,15 @@ schedule_event e = do
     evs <- gets events
     if any ((==) e) evs
         then let evs' = delete e evs
-             in modify $ \st -> st { events = e : evs' }
-        else    modify $ \st -> st { events = e : evs  }
+             in modify $ \st -> st { events = insert e evs' }
+        else    modify $ \st -> st { events = insert e evs  }
+  where
+      insert :: Event s -> [Event s] -> [Event s]
+      insert e []       = [e]
+      insert e1 (e2:es) =
+          if at e1 < at e2
+              then e1 : e2 : es
+              else e2 : insert e1 es
 
 lift' :: ST s a -> Interp s a
 lift' = lift . lift
