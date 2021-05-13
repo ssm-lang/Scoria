@@ -15,7 +15,7 @@ module Frontend
      , (==.)
      , (<~)
      , neg
-     , int
+     , int32
      , int64
      , uint64
      , word8
@@ -97,8 +97,8 @@ newtype Lit a = FLit SSMLit
 class FromLiteral a where
     fromLit :: a -> Lit a
 
-instance FromLiteral Int where
-    fromLit i = FLit $ LInt (fromIntegral i)
+instance FromLiteral Int32 where
+    fromLit i = FLit $ LInt32 (fromIntegral i)
 
 instance FromLiteral Int64 where
     fromLit i = FLit $ LInt64 (fromIntegral i)
@@ -164,8 +164,8 @@ Exp e1 ==. Exp e2 = Exp $ BOp TBool e1 e2 OEQ
 neg :: (Num a, SSMType a) => Exp a -> Exp a
 neg e@(Exp e') = Exp $ UOp (typeOf e) e' Neg
 
-int :: Int -> Exp Int
-int i = Exp $ Lit TInt $ LInt i
+int32 :: Int32 -> Exp Int32
+int32 i = Exp $ Lit TInt32 $ LInt32 i
 
 int64 :: Int64 -> Exp Int64
 int64 i = Exp $ Lit TInt64 $ LInt64 i

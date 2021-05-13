@@ -123,7 +123,7 @@ prettyApp (n, args) = concat [ n
 
 prettyType :: Type -> String
 prettyType t = case t of
-    TInt    -> "int"
+    TInt32  -> "int"
     TUInt8  -> "uint8"
     TInt64  -> "int64"
     TUInt64 -> "uint64"
@@ -132,7 +132,7 @@ prettyType t = case t of
 
 prettyLit :: SSMLit -> String
 prettyLit l = case l of
-    LInt i    -> show i
+    LInt32 i  -> show i
     LUInt8 i  -> show i
     LInt64 i  -> show i
     LUInt64 i -> show i

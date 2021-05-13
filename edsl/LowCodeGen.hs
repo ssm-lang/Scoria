@@ -287,7 +287,7 @@ compileProcedure p = (structTR, enterTR, stepTR)
 -- | Returns the base type of a type. If the type is a reference it will unwrap the reference
 -- to find the underlying basetype.
 basetype_ :: Type -> BaseType
-basetype_ TInt    = CInt
+basetype_ TInt32  = CInt
 basetype_ TInt64  = CInt64
 basetype_ TUInt64 = CUInt64
 basetype_ TUInt8  = CUInt8
@@ -297,7 +297,7 @@ basetype_ (Ref t) = basetype_ t
 -- | `paramtype t` returns the RTSType a parameter to a function, whose type in the
 -- SSM EDSL is t, would have. E.g `Ref Int` would be `sv_int_t*`, `Exp Int` would be `int`.
 paramtype :: Type -> RTSType
-paramtype TInt    = SInt
+paramtype TInt32  = SInt
 paramtype TUInt8  = UInt8
 paramtype TInt64  = SInt64
 paramtype TUInt64  = UInt64
@@ -386,7 +386,7 @@ compLit e = case e of
   Var _ e -> "act->" ++ e ++ ".value"
   
   Lit _ l -> case l of
-    LInt i      -> if i >= 0 then show i else "(" ++ show i ++ ")"
+    LInt32 i    -> if i >= 0 then show i else "(" ++ show i ++ ")"
     LInt64 i    -> let lit = show i ++ "L" in
                    if i >= 0 then lit else "(" ++ lit ++ ")"
     LUInt64 i   -> show i ++ "UL"
@@ -684,7 +684,7 @@ mainIR p = [ Function Void "top_return"
 
       -- | Default value for references of different types.
       defaultValue :: Type -> String
-      defaultValue TInt    = "0"
+      defaultValue TInt32  = "0"
       defaultValue TInt64  = "0L"
       defaultValue TUInt64  = "0UL"
       defaultValue TUInt8  = "0"
@@ -709,7 +709,7 @@ mainIR p = [ Function Void "top_return"
           Literal 4 $ concat ["printf(\"result ", r, " ", formatter t, "\\n\", ", r, ".value)"]
       
       formatter :: Type -> String
-      formatter (Ref TInt)    = "int %d"
+      formatter (Ref TInt32)  = "int %d"
       formatter (Ref TInt64)  = "int64 %ld"
       formatter (Ref TUInt64) = "uint64 %lu"
       formatter (Ref TUInt8)  = "uint8 %u"

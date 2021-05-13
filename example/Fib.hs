@@ -3,19 +3,20 @@ module Fib where
 
 import BinderAnn.Monadic
 import SSM
+import Data.Int
 
-mywait :: Ref Int -> SSM ()
+mywait :: Ref Int32 -> SSM ()
 mywait = box "mywait" ["r"] $ \r -> do
     wait [r]
 
-mysum :: Ref Int -> Ref Int -> Ref Int -> SSM ()
+mysum :: Ref Int32 -> Ref Int32 -> Ref Int32 -> SSM ()
 mysum = box "mysum" ["r1", "r2", "r"] $ \r1 r2 r -> do
     waitAll [r1,r2]
     v1 <- deref r1
     v2 <- deref r2
     after 1 r (v1 + v2)
 
-myfib :: Exp Int -> Ref Int -> SSM ()
+myfib :: Exp Int32 -> Ref Int32 -> SSM ()
 myfib = box "myfib" ["n", "r"] $ \n r -> do
     r1 <- var 0 
     r2 <- var 0

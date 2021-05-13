@@ -3,8 +3,9 @@ module Manyrefs where
 
 import BinderAnn.Monadic
 import SSM
+import Data.Int
 
-example :: Ref Int -> Ref Bool -> Ref Int -> Exp Int -> SSM ()
+example :: Ref Int32 -> Ref Bool -> Ref Int32 -> Exp Int32 -> SSM ()
 example = box "example" ["ri1","rb","ri2","n"] $ \ri1 rb ri2 n -> do
     wait [ri1, ri2]
     wait [rb]

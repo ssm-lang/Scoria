@@ -10,7 +10,7 @@ module SSM
   , (==.)
   , (<~)
   , Frontend.neg
-  , int
+  , int32
   , int64
   , uint64
   , word8
@@ -26,6 +26,7 @@ module SSM
   , if'
   , while'
   , SSM
+  , Program
   , box
   , Output
   , SSM.compile

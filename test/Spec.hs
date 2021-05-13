@@ -21,6 +21,7 @@ import Test.QuickCheck
 import Test.QuickCheck.Monadic
 import System.IO.Unsafe
 import Buggy
+import TestCases
 
 trace :: Show a => a -> a
 trace x = unsafePerformIO $ putStrLn (show x) >> return x
@@ -29,11 +30,20 @@ trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
 main :: IO ()
 main = do
---      r <- testSingle (transpile $ badafter inputref) (Just 10000)
+--      regression_test
+--      r <- testSingle singlecase (Just 10000)
 --      print r 
 --      return ()
-    quickCheck (verboseShrinking prop_correct)
---    quickCheck (verboseShrinking prop_valgrind_ok)
+--    quickCheck (verboseShrinking prop_correct)
+    quickCheck (withMaxSuccess 1000 $ verboseShrinking prop_valgrind_ok)
+
+regression_test :: IO ()
+regression_test = do
+    sequence_ $ flip map testcases $ \p -> do
+        r <- testSingle p (Just 10000)
+        case r of
+            Good -> putStrLn "good"
+            _ -> putStrLn "bad"
 
 prop_correct :: Program -> Property
 prop_correct p = whenFail (do writeFile "timeout.c" $ compile_ True (Just 10000) p

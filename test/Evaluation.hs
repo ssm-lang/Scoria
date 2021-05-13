@@ -174,7 +174,6 @@ runExecutableCheckCode exec m = do
                                                    , std_err = CreatePipe
                                                    }
         ex        <- waitForProcess p
-        print ex
         return $ not $ ex == (ExitFailure 123)
 
 -- | Compile and run a test

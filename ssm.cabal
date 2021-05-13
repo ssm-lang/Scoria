@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a2124874deee39c4300a57d829696eae36ddb4ea80bc53161499b0480bd7691a
+-- hash: 26455767eb52e672e05e65dc5e9e22781e2d48d90879a5f2b72076dfb0fadc03
 
 name:           ssm
 version:        0.1.0.0
@@ -36,6 +36,7 @@ library
       LowInterpreter
       LowPretty
       SSM
+      TestCases
       Trace
   other-modules:
       Paths_ssm

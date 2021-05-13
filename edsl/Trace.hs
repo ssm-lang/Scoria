@@ -180,7 +180,7 @@ pRes = do
           pSpace
           num <- choice [try (parens signed), signed]
           pSpace
-          return $ Lit TInt . LInt $ num
+          return $ Lit TInt32 . LInt32 $ num
 
       pInt64 :: Parser SSMExp
       pInt64 = do

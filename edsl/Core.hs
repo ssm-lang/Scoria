@@ -76,7 +76,7 @@ getProcedureName :: SSMStm -> String
 getProcedureName (Procedure n) = n
 getProcedureName _             = error "not a procedure"
 
-data Type = TInt
+data Type = TInt32
           | TUInt8
           | TInt64
           | TUInt64
@@ -87,8 +87,8 @@ data Type = TInt
 class SSMType a where
     typeOf :: proxy a -> Type
 
-instance SSMType Int where
-    typeOf _ = TInt
+instance SSMType Int32 where
+    typeOf _ = TInt32
 
 instance SSMType Bool where
     typeOf _ = TBool
@@ -130,7 +130,7 @@ data SSMExp = Var Type String               -- ^ Variables
   deriving (Eq, Generic, NFData, Show)
 
 -- | SSM literals
-data SSMLit = LInt Int        -- ^ Integer literals
+data SSMLit = LInt32 Int32    -- ^ Integer literals
             | LUInt8 Word8    -- ^ 8bit unsigned integers
             | LInt64 Int64    -- ^ 64bit integer literals
             | LUInt64 Word64  -- ^ 64bit unsigned integer literals

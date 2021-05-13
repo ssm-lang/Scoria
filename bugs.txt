@@ -292,3 +292,10 @@ evaluate that value! We are doing this in every place where we write to referenc
 to do this when we created a new reference. If the initial value to a reference was in fact some variable
 that we've gotten from another process etc, some issue arose where the name var28 was not resolved to its
 actual value.
+
+18)
+
+Apparently Haskells `Int` type is not actually 32 bit, despite it saying so all over the internet.
+Running `maxBound :: Int` quickly reveals that they are in fact 64 bits. There was some issue where
+the code generator would overflow its values while the interpreter would not. The fix is to
+just switch all `Int` points to using actual `Int32` instead.

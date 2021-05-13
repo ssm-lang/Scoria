@@ -27,7 +27,7 @@ for :: [a] -> (a -> b) -> [b]
 for = flip map
 
 instance Arbitrary Type where
-  arbitrary = elements [TInt, TInt64, TBool, TUInt64, Ref TInt, Ref TInt64, Ref TUInt64, Ref TBool]
+  arbitrary = elements [TInt32, TInt64, TBool, TUInt64, Ref TInt32, Ref TInt64, Ref TUInt64, Ref TBool]
 
 type Procedures = [(String, [(String, Type)], [Stm])]
 type Variable = (Name, Type)
@@ -36,11 +36,6 @@ type Ref     = (String, Type)
 genListOfLength :: Gen a -> Int -> Gen [a]
 genListOfLength ga 0 = return []
 genListOfLength ga n = (:) <$> ga <*> genListOfLength ga (n-1)
-
-testio = do
-    let typesiggen = genListOfLength (arbitrary :: Gen Type) =<< choose (0,15)
-    types <- genListOfLength typesiggen =<< choose (1,15)
-    return types
 
 instance Arbitrary Program where
   shrink p = let p' = removeUnusedProcedures p
@@ -55,8 +50,8 @@ instance Arbitrary Program where
                        , shrinkWait p'              -- Shrink wait statements
                        ]
   arbitrary = do
-    let typesiggen = genListOfLength arbitrary =<< choose (0,15)
-    types <- genListOfLength typesiggen =<< choose (1,15)
+    let typesiggen = genListOfLength arbitrary =<< choose (0,10)
+    types <- genListOfLength typesiggen =<< choose (1,10)
 --    types <- take 15 <$> arbitrary `suchThat` (not . null)
     let funs = [ ("fun" ++ show i, as) | (as,i) <- zip types [1..]]
     tab <- mfix $ \tab -> sequence
@@ -94,7 +89,7 @@ arbProc :: Procedures     -- ^ All procedures in the program
         -> Gen ([Stm], Int)
 arbProc _ _ _ c 0          = return ([], c)
 arbProc funs vars refs c n = frequency $
-      [ (1, do t         <- elements [TInt, TBool]
+      [ (1, do t         <- elements [TInt32, TBool]
                e         <- choose (0,3) >>= arbExp t vars
                (name,c1) <- fresh c
                let rt     = mkReference t
@@ -197,7 +192,7 @@ arbProc funs vars refs c n = frequency $
           in all (`elem` distinct) $ filter isReference $ map snd types
 
 -- | Generate a SSMExp.
-arbExp :: Type        -- ^ Type of expression to generate (oneof TInt or TBool)
+arbExp :: Type        -- ^ Type of expression to generate (oneof TInt32 or TBool)
        -> [Variable]  -- ^ Variables that are in scope that the expression can use
        -> Int         -- ^ Size parameter
        -> Gen SSMExp
@@ -206,7 +201,7 @@ arbExp t vars 0 = oneof $ litGen : varGen
     -- | Generator of SSMExp literals.
     litGen :: Gen SSMExp
     litGen = case t of
-      TInt   -> return  . Lit TInt    . LInt    =<< choose (0, 215)
+      TInt32 -> return  . Lit TInt32  . LInt32    =<< choose (0, 215)
       TInt64 -> return  . Lit TInt64  . LInt64  =<< choose (-55050, 55050)
       TUInt64 -> return . Lit TUInt64 . LUInt64 =<< choose (0, 65500)
       TBool  -> return  . Lit TBool   . LBool   =<< arbitrary
@@ -216,10 +211,10 @@ arbExp t vars 0 = oneof $ litGen : varGen
     varGen = [ return (Var t' (getVarName n)) | (n,t') <- vars, t == t']
 
 arbExp t vars n = case t of
-  TBool -> oneof [ do e1 <- arbExp TInt vars (n `div` 2)
-                      e2 <- arbExp TInt vars (n `div` 2)
+  TBool -> oneof [ do e1 <- arbExp TInt32 vars (n `div` 2)
+                      e2 <- arbExp TInt32 vars (n `div` 2)
                       return $ BOp t e1 e2 OLT
-                 , do typ <- elements [TInt, TBool]
+                 , do typ <- elements [TInt32, TBool]
                       e1 <- arbExp typ vars (n `div` 2)
                       e2 <- arbExp typ vars (n `div` 2)
                       return $ BOp TBool e1 e2 OEQ
@@ -244,207 +239,6 @@ arbExp t vars n = case t of
                     ]
 
 {-********** Shrinking **********-}
-
-testprogram1 :: Program
-testprogram1 = Program "fun1" [] $ Map.fromList [("fun1",
-    Procedure "fun1" [] [If (BOp TBool (UOp TInt (Lit TInt (LInt 1)) Neg) (UOp TInt (Lit TInt (LInt 2)) Neg) OLT)
-                           [ Fork [("fun1",[])]]
-                           [ NewRef (Fresh "v0") (Ref TBool) (BOp TBool (BOp TInt (Lit TInt (LInt 2)) (Lit TInt (LInt 1)) OPlus) (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 0)) OPlus) OEQ)
-                           , Fork [("fun1",[]),("fun1",[]),("fun1",[])]]])]
-
-testprogram2 :: Program
-testprogram2 = Program "fun1" [] $ Map.fromList [
-  ("fun1", Procedure "fun1" [] [ NewRef (Fresh "v0") (Ref TInt) (Lit TInt $ LInt 20)
-                               , If (Lit TBool $ LBool False)
-                                   [ Fork [("fun1",[])]]
-                                   [ NewRef (Fresh "v1") (Ref TInt) (Lit TInt $ LInt 5)
-                               , Wait [("v1", Ref TInt)]]
-                               , Fork [("fun2",[])]
-                               , After (Lit TInt $ LInt 1) ("v0", Ref TInt) (Lit TInt $ LInt 10)
-                               ]
-  ),
-  ("fun2", Procedure "fun2" [] [NewRef (Fresh "v0") (Ref TInt) (Lit TInt $ LInt 20)])
-  ]
-
-testprogram3 :: Program
-testprogram3 = Program "fun1" [] $ Map.fromList [("fun1",
-    Procedure "fun1" [] [ While (Lit TBool $ LBool True)
-                            [If (Lit TBool $ LBool True)
-                              [ NewRef (Fresh "v0") (Ref TInt) (Lit TInt $ LInt 5)]
-                              [ NewRef (Fresh "v1") (Ref TInt) (Lit TInt $ LInt 10)]]
-                        , Wait [("ref1", Ref TInt)]
-                        ])]
-
-testprogram4 :: Program
-testprogram4 = Program "fun1" [ Left (Lit TBool (LInt 5))
-                              , Right ("dummy", Ref TBool)] $ Map.fromList [("fun1",
-    Procedure "fun1" [ ("var1", TInt)
-                     , ("ref2", Ref TBool)
-                     ]
-                     
-                     [ Changed (Fresh "v0") TBool ("ref2", Ref TBool)
-                     , If (Lit TBool (LBool True))
-                         [ GetRef (Fresh "v1") TBool ("ref2", Ref TBool)]
-                         [ Fork [("fun1", [ Left (Lit TInt (LInt 5))
-                                          , Right ("ref2", Ref TBool)
-                                          ]
-                                 )
-                                ]
-                         ]
-                     ]
-    )]
-
-testprogram5 :: Program
-testprogram5 = Program "fun1" [ Left (Lit TBool (LInt 5))
-                              , Right ("dummy", Ref TBool)] $ Map.fromList [("fun1",
-    Procedure "fun1" [ ("var1", TInt)
-                     , ("ref2", Ref TBool)
-                     ]
-                     
-                     [ Changed (Fresh "v0") TBool ("ref2", Ref TBool)
-                     , Fork [("fun1", [ Left (Lit TInt (LInt 5))
-                                      , Right ("ref2", Ref TBool)
-                                      ]
-                             )
-                            ]
-                     ]
-    ),("fun2",
-    Procedure "fun2" [("var1", TInt)] [ NewRef (Fresh "v0") (Ref TInt) (Lit TInt (LInt 5))
-                                      , Fork [("fun1", [ Left (Var TInt "var1")
-                                                       , Right ("v0", Ref TInt)])]])]
-
-testprogram6 :: Program
-testprogram6 = Program "fun2" [] $ Map.fromList
-                              [ ("fun2", Procedure "fun2"
-                                          []
-                                          [Fork [("fun2", []), ("fun2", [])]]
-                                )
-                              ]
-
-testprogram7 :: Program
-testprogram7 = Program "fun1" [Right ("dummy", Ref TInt)] $ Map.fromList
-                              [("fun1", Procedure "fun1" [("ref3", Ref TInt)]
-                                                         [ GetRef (Fresh "v0") TInt ("ref3", Ref TInt)
-                                                         , SetLocal (Fresh "v0") TInt (Lit TInt $ LInt 5)
-                                                         , After (Lit TInt $ LInt 20) ("ref3", Ref TInt) (Lit TInt $ LInt 5)
-                                                         ])]
-
-testprogram8 :: Program
-testprogram8 = Program "fun1" [Right ("ref1", Ref TBool)] $ Map.fromList
-    [("fun1", Procedure "fun1" [("ref1", Ref TBool)] [])]
-
-testprogram9 :: Program
-testprogram9 = Program "fun3" [Right ("ref1", Ref TInt)] $ Map.fromList $
-    [ ("fun3", Procedure "fun3" [("ref1", Ref TInt)] [ Fork [("fun5", [Right ("ref1", Ref TInt)])] ])
-    , ("fun5", Procedure "fun5" [("ref2", Ref TInt)] [ Wait [("ref2", Ref TInt)] ])
-    ]
-
-testprogram10 :: Program
-testprogram10 = Program "fun17" [Right ("ref9", Ref TBool)] $ Map.fromList
-                  [ ("fun17", Procedure "fun17" [("ref9", Ref TBool)]
-                                                [ NewRef (Fresh "v5") (Ref TBool) (Lit TBool (LBool False))
-                                                , After (Lit TInt (LInt 5)) ("ref9", Ref TBool) (Lit TBool (LBool False))
-                                                , After (Lit TInt (LInt 2)) ("v5", Ref TBool) (Lit TBool (LBool False))
-                                                ])
-                  , ("fun3",  Procedure "fun3" [] [])
-                  ]
-
-testprogram11 :: Program
-testprogram11 = Program "fun2" [Right ("ref1", Ref TInt64)] $ Map.fromList
-  [ ("fun1", Procedure "fun1" [] [])
-  , ("fun2", Procedure "fun2" [("ref1", Ref TInt64)]
-                              [ GetRef (Fresh "v0") TInt64 ("ref1", Ref TInt64)
-                              , After (BOp TInt64 (BOp TInt64 (Lit TInt64 $ LInt64 1) (Lit TInt64 $ LInt64 1) OTimes) (Lit TInt64 $ LInt64 1) OPlus) ("ref1", Ref TInt64) (BOp TInt64 (UOp TInt64 (Lit TInt64 $ LInt64 2) Neg) (BOp TInt64 (UOp TInt64 (Lit TInt64 $ LInt64 2) Neg) (UOp TInt64 (Lit TInt64 $ LInt64 1) Neg) OMinus) OPlus)
-                              ])
-  ]
-
-testprogram12 :: Program
-testprogram12 = Program "fun2" [Right ("ref3", Ref TInt64)] $ Map.fromList
-  [ ("fun1", Procedure "fun1" [] [])
-  , ("fun2", Procedure "fun2" [("ref3", Ref TInt64)]
-                              [ GetRef (Fresh "v0") TInt64 ("ref3", Ref TInt64)
-                              , After (BOp TInt64 (BOp TInt64 t t OTimes) (Lit TInt64 $ LInt64 1) OPlus) ("ref3", Ref TInt64) (BOp TInt64 (Var TInt64 "v0") (Lit TInt64 $ LInt64 1) OPlus)
-                              , GetRef (Fresh "v3") TInt64 ("ref3", Ref TInt64)
-                              ])
-  ]
-t = BOp TInt64 (BOp TInt64 (Var TInt64 "v0") (Var TInt64 "v0") OTimes) (BOp TInt64 (UOp TInt64 (Lit TInt64 $ LInt64 8) Neg) (UOp TInt64 (Lit TInt64 $ LInt64 8) Neg) OPlus) OMinus
-
-testprogram13 :: Program
-testprogram13 = Program "fun5" [Right ("ref6", Ref TBool)] $ Map.fromList
-  [("fun5", Procedure "fun5" [("ref6", Ref TBool)]
-                             [ After (Lit TInt64 $ LInt64 118172118490001) ("ref6", Ref TBool) (Lit TBool $ LBool True)
-                             , Wait [("ref6", Ref TBool)]
-                             , GetRef (Fresh "v1") TBool ("ref6", Ref TBool)
-                             , Fork [("fun5", [Right ("ref6", Ref TBool)])]
-                             ])]
-
-testprogram14 :: Program
-testprogram14 = Program "fun1" [Right ("ref1", Ref TBool)] $ Map.fromList
-    [("fun1", Procedure "fun1"
-                [ ("ref1", Ref TBool)]
-                [ NewRef (Fresh "v0") (Ref TInt) (Lit TInt $ LInt 5)
-                , NewRef (Fresh "v1") (Ref TInt) (Lit TInt $ LInt 6)
-                , NewRef (Fresh "v2") (Ref TInt) (Lit TInt $ LInt 7)
-                , Wait [("ref1", Ref TBool), ("v0", Ref TInt), ("v1", Ref TInt), ("v2", Ref TInt)]
-                ])]
-
-testprogram15 :: Program
-testprogram15 = Program "fun1" [Right ("ref1", Ref TInt64)] $ Map.fromList
-  [ ("fun1", Procedure "fun1" [("ref1", Ref TInt64)]
-               [After (Lit TUInt64 (LUInt64 1)) ("ref1", Ref TInt64) (Lit TInt64 (LInt64 2))])
-  , ("fun2", Procedure "fun2" [] [])
-  ]
-
-testprogram16 :: Program
-testprogram16 = Program "fun1" [ Right ("ref2", Ref TBool)
-                               , Left (UOp TUInt64 (Lit TUInt64 (LUInt64 3)) Neg)
-                               ] $ Map.fromList $
-  [ ("fun1", Procedure "fun1" [("ref2", Ref TBool), ("var4", TUInt64)]
-      [After theadd1 ("ref2", Ref TBool) (Lit TBool (LBool False))])
-  ]
-
-theadd1 = BOp TUInt64 themult (Lit TUInt64 (LUInt64 1)) OPlus
-themult = BOp TUInt64 theoper theoper OTimes
-theoper = BOp TUInt64 theadd theadd OTimes
-
-theadd  = BOp TUInt64 theleft therigh OPlus
-theleft = BOp TUInt64 (Lit TUInt64 (LUInt64 4)) (Var TUInt64 "var4") OTimes
-therigh = Lit TUInt64 (LUInt64 0)
-
-testprogram17 :: Program
-testprogram17 = Program "fun1" [] $ Map.fromList
-                              [ ("fun1", Procedure "fun1"
-                                          []
-                                          [Fork [("fun1", [])]]
-                                )
-                              ]
-
-testprogram18 :: Program
-testprogram18 = Program {main = "fun3", args = [Right ("ref1",Ref TInt64),Right ("ref10",Ref TBool)], funs = Map.fromList [("fun3",Procedure {name = "fun3", arguments = [("ref1",Ref TInt64),("ref10",Ref TBool)], body = [After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 8134)) (Lit TUInt64 (LUInt64 3093)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 7400)) (Lit TUInt64 (LUInt64 4735)) OPlus) OTimes) (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 648134)) (Lit TUInt64 (LUInt64 3093)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 7400)) (Lit TUInt64 (LUInt64 4735)) OPlus) OTimes) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (BOp TInt64 (Lit TInt64 (LUInt64 1)) (Lit TInt64 (LUInt64 1)) OMinus),Wait [("ref1",Ref TInt64)],GetRef (Fresh "v7") TBool ("ref10",Ref TBool),After (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 1)) (Lit TUInt64 (LUInt64 1)) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref10",Ref TBool) (BOp TBool (BOp TBool (Lit TInt (LInt (-3))) (Lit TInt (LInt (-16))) OLT) (BOp TBool (Lit TBool (LBool True)) (Lit TBool (LBool True)) OEQ) OEQ),Wait [("ref1",Ref TInt64)]]})]}
-
-testprogram19 :: Program
-testprogram19 = Program {main = "fun5", args = [Right ("ref1",Ref TInt64)], funs = Map.fromList [("fun5",Procedure {name = "fun5", arguments = [("ref1",Ref TInt64)], body = [GetRef (Fresh "v0") TInt64 ("ref1",Ref TInt64),After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 30)) (Lit TUInt64 (LUInt64 181)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 169)) (Lit TUInt64 (LUInt64 105)) OPlus) OTimes) (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 30)) (Lit TUInt64 (LUInt64 181)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 169)) (Lit TUInt64 (LUInt64 105)) OPlus) OTimes) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (BOp TInt64 (BOp TInt64 (Var TInt64 "v0") (Var TInt64 "v0") OMinus) (BOp TInt64 (Lit TInt64 (LInt64 (-197))) (Var TInt64 "v0") OMinus) OPlus),Wait [("ref1",Ref TInt64)],After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 113)) (Lit TUInt64 (LUInt64 209)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 192)) (Lit TUInt64 (LUInt64 140)) OPlus) OTimes) (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 113)) (Lit TUInt64 (LUInt64 209)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 192)) (Lit TUInt64 (LUInt64 140)) OPlus) OTimes) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (BOp TInt64 (Var TInt64 "v0") (Var TInt64 "v0") OTimes),After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 162)) (Lit TUInt64 (LUInt64 100)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 213)) (Lit TUInt64 (LUInt64 16)) OPlus) OTimes) (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 162)) (Lit TUInt64 (LUInt64 100)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 213)) (Lit TUInt64 (LUInt64 16)) OPlus) OTimes) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (Lit TInt64 (LInt64 (-75))),After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 32)) (Lit TUInt64 (LUInt64 176)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 237)) (Lit TUInt64 (LUInt64 220)) OTimes) OPlus) (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 32)) (Lit TUInt64 (LUInt64 176)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 237)) (Lit TUInt64 (LUInt64 220)) OTimes) OPlus) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (BOp TInt64 (Lit TInt64 (LInt64 (-16))) (Var TInt64 "v0") OMinus),GetRef (Fresh "v3") TInt64 ("ref1",Ref TInt64)]})]}
-
-testprogram20 :: Program
-testprogram20 = Program {main = "fun2", args = [Left (BOp TUInt64 (Lit TUInt64 (LUInt64 1132)) (Lit TUInt64 (LUInt64 111109)) OPlus),Right ("ref10",Ref TInt64),Right ("ref13",Ref TBool),Left (BOp TUInt64 (Lit TUInt64 (LUInt64 85986)) (Lit TUInt64 (LUInt64 95575)) OTimes)], funs = Map.fromList [("fun2",Procedure {name = "fun2", arguments = [("var2",TUInt64),("ref10",Ref TInt64),("ref13",Ref TBool),("var14",TUInt64)], body = [After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Var TUInt64 "var2") (Var TUInt64 "var2") OTimes) (BOp TUInt64 (Var TUInt64 "var2") (Var TUInt64 "var2") OTimes) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref10",Ref TInt64) (BOp TInt64 (Lit TInt64 (LInt64 1)) (Lit TInt64 (LInt64 1)) OMinus),GetRef (Fresh "v1") TInt64 ("ref10",Ref TInt64),GetRef (Fresh "v4") TInt64 ("ref10",Ref TInt64),Wait [("ref10",Ref TInt64)],After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Var TUInt64 "var14") (Var TUInt64 "var2") OMinus) (BOp TUInt64 (Var TUInt64 "var2") (Lit TUInt64 (LUInt64 120455)) OPlus) OPlus) (BOp TUInt64 (BOp TUInt64 (Var TUInt64 "var14") (Var TUInt64 "var2") OMinus) (BOp TUInt64 (Var TUInt64 "var2") (Lit TUInt64 (LUInt64 120455)) OPlus) OPlus) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref13",Ref TBool) (Lit TBool (LBool False))]})]}
-
-testprogram21 :: Program
-testprogram21 = Program {main = "fun4", args = [Left (UOp TInt (Lit TInt (LInt 1)) Neg),Right ("ref3",Ref TBool),Right ("ref7",Ref TInt),Right ("ref8",Ref TInt64),Right ("ref11",Ref TUInt64),Right ("ref12",Ref TInt)], funs = Map.fromList [("fun1",Procedure {name = "fun1", arguments = [("ref2",Ref TUInt64),("ref3",Ref TBool),("ref9",Ref TInt64),("ref11",Ref TInt),("ref14",Ref TInt),("var16",TInt)], body = [If (BOp TBool (BOp TInt (Var TInt "var16") (Var TInt "var16") OPlus) (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OMinus) OLT) [Wait [("ref9",Ref TInt64),("ref14",Ref TInt)],After (BOp TUInt64 (Lit TUInt64 (LUInt64 3843)) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref11",Ref TInt) (BOp TInt (Lit TInt (LInt (-10))) (Lit TInt (LInt 1)) OMinus)] [If (BOp TBool (BOp TInt (Var TInt "var16") (Lit TInt (LInt 1)) OPlus) (BOp TInt (Var TInt "var16") (Lit TInt (LInt 1)) OTimes) OLT) [If (BOp TBool (BOp TInt (Lit TInt (LInt (-12))) (Var TInt "var16") OPlus) (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OTimes) OLT) [] []] [Fork [("fun4",[Left (UOp TInt (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 14)) OMinus) Neg),Right ("ref3",Ref TBool),Right ("ref11",Ref TInt),Right ("ref9",Ref TInt64),Right ("ref2",Ref TUInt64),Right ("ref14",Ref TInt)])]],Wait [("ref2",Ref TUInt64),("ref3",Ref TBool),("ref11",Ref TInt)],If (BOp TBool (Var TInt "var16") (Lit TInt (LInt 1)) OEQ) [Changed (Fresh "v3") TBool ("ref11",Ref TInt),If (BOp TBool (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OEQ) [] []] [If (BOp TBool (BOp TInt (Var TInt "var16") (Lit TInt (LInt 1)) OMinus) (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt (-1))) OMinus) OLT) [Wait [("ref2",Ref TUInt64),("ref9",Ref TInt64),("ref11",Ref TInt),("ref14",Ref TInt)]] [GetRef (Fresh "v4") TBool ("ref3",Ref TBool)],If (Lit TBool (LBool False)) [] []]],Changed (Fresh "v6") TBool ("ref9",Ref TInt64),Wait [("ref14",Ref TInt)],GetRef (Fresh "v7") TInt64 ("ref9",Ref TInt64),Fork [("fun4",[Left (UOp TInt (UOp TInt (Var TInt "var16") Neg) Neg),Right ("ref3",Ref TBool),Right ("ref14",Ref TInt),Right ("ref9",Ref TInt64),Right ("ref2",Ref TUInt64),Right ("ref11",Ref TInt)])],Wait [("ref9",Ref TInt64)],Wait [("ref11",Ref TInt)]]}),("fun4",Procedure {name = "fun4", arguments = [("var2",TInt),("ref3",Ref TBool),("ref7",Ref TInt),("ref8",Ref TInt64),("ref11",Ref TUInt64),("ref12",Ref TInt)], body = [Fork [("fun1",[Right ("ref11",Ref TUInt64),Right ("ref3",Ref TBool),Right ("ref8",Ref TInt64),Right ("ref7",Ref TInt),Right ("ref12",Ref TInt),Left (UOp TInt (BOp TInt (Var TInt "var2") (Var TInt "var2") OPlus) Neg)]),("fun4",[Left (BOp TInt (UOp TInt (Lit TInt (LInt 5)) Neg) (BOp TInt (Var TInt "var2") (Lit TInt (LInt (-3))) OTimes) OTimes),Right ("ref3",Ref TBool),Right ("ref7",Ref TInt),Right ("ref8",Ref TInt64),Right ("ref11",Ref TUInt64),Right ("ref12",Ref TInt)])],GetRef (Fresh "v1") TUInt64 ("ref11",Ref TUInt64),GetRef (Fresh "v2") TInt64 ("ref8",Ref TInt64),GetRef (Fresh "v3") TBool ("ref3",Ref TBool),Wait [("ref12",Ref TInt)],Wait [("ref11",Ref TUInt64)],After (BOp TUInt64 (Var TUInt64 "v1") (Lit TUInt64 (LUInt64 1)) OPlus) ("ref7",Ref TInt) (Var TInt "var2"),Wait [("ref11",Ref TUInt64)],Changed (Fresh "v9") TBool ("ref11",Ref TUInt64)]})]}
-
-testprogram22 :: Program
-testprogram22 = Program {main = "fun5", args = [Right ("ref1",Ref TInt),Right ("ref3",Ref TBool),Right ("ref5",Ref TUInt64)], funs = Map.fromList [("fun5",Procedure {name = "fun5", arguments = [("ref1",Ref TInt),("ref3",Ref TBool),("ref5",Ref TUInt64)], body = [NewRef (Fresh "v0") (Ref TInt) (BOp TInt (BOp TInt (Lit TInt (LInt 13)) (Lit TInt (LInt (-1))) OPlus) (BOp TInt (Lit TInt (LInt 3)) (Lit TInt (LInt (-12))) OPlus) OMinus),After (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 590)) (Lit TUInt64 (LUInt64 1259)) OMinus) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref3",Ref TBool) (Lit TBool (LBool True)),NewRef (Fresh "v1") (Ref TInt) (Lit TInt (LInt (-4))),After (BOp TUInt64 (Lit TUInt64 (LUInt64 1573)) (Lit TUInt64 (LUInt64 1)) OPlus) ("v0",Ref TInt) (BOp TInt (UOp TInt (Lit TInt (LInt (-9))) Neg) (BOp TInt (Lit TInt (LInt (-7))) (Lit TInt (LInt 4)) OTimes) OMinus),Fork [("fun5",[Right ("ref1",Ref TInt),Right ("ref3",Ref TBool),Right ("ref5",Ref TUInt64)])],Changed (Fresh "v3") TBool ("v0",Ref TInt),Wait [("ref5",Ref TUInt64)],GetRef (Fresh "v4") TUInt64 ("ref5",Ref TUInt64),Changed (Fresh "v5") TBool ("v0",Ref TInt),Changed (Fresh "v6") TBool ("v1",Ref TInt),After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 211)) (Lit TUInt64 (LUInt64 0)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 1597)) (Lit TUInt64 (LUInt64 624)) OMinus) OMinus) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt) (Lit TInt (LInt 13)),Wait [("v1",Ref TInt)]]})]}
-
-testprogram23 :: Program
-testprogram23 = Program {main = "fun13", args = [Right ("ref3",Ref TBool),Left (BOp TUInt64 (Lit TUInt64 (LUInt64 5800)) (Lit TUInt64 (LUInt64 348)) OTimes),Left (BOp TUInt64 (Lit TUInt64 (LUInt64 3097)) (Lit TUInt64 (LUInt64 7722)) OTimes)], funs = Map.fromList [("fun13",Procedure {name = "fun13", arguments = [("ref3",Ref TBool),("var15",TUInt64),("var16",TUInt64)], body = [After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Var TUInt64 "var16") (Var TUInt64 "var16") OTimes) (BOp TUInt64 (Var TUInt64 "var15") (Lit TUInt64 (LUInt64 4784)) OMinus) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref3",Ref TBool) (BOp TBool (Lit TInt (LInt 10)) (Lit TInt (LInt 1)) OEQ),NewRef (Fresh "v0") (Ref TInt) (UOp TInt (Lit TInt (LInt 1)) Neg),Wait [("ref3",Ref TBool)],After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Var TUInt64 "var16") (Var TUInt64 "var15") OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 278)) (Var TUInt64 "var15") OMinus) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("v0",Ref TInt) (UOp TInt (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OTimes) Neg),Wait [("ref3",Ref TBool)],Wait [("ref3",Ref TBool)]]})]}
-
-testprogram24 :: Program
-testprogram24 = Program {main = "fun10", args = [Right ("ref1",Ref TInt64)], funs = Map.fromList [("fun10",Procedure {name = "fun10", arguments = [("ref1",Ref TInt64)], body = [Fork [("fun5",[Right ("ref1",Ref TInt64),Right ("ref1",Ref TInt64)])],Wait [("ref1",Ref TInt64)],NewRef (Fresh "v23") (Ref TInt) (BOp TInt (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 10)) OPlus) (BOp TInt (Lit TInt (LInt (-21))) (Lit TInt (LInt 1)) OMinus) OMinus),Wait [("v23",Ref TInt)],Wait [("ref1",Ref TInt64)]]}),("fun5",Procedure {name = "fun5", arguments = [("ref1",Ref TInt64),("ref12",Ref TInt64)], body = [After (BOp TUInt64 (Lit TUInt64 (LUInt64 1)) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (BOp TInt64 (Lit TInt64 (LInt64 27436)) (Lit TInt64 (LInt64 1)) OTimes),Wait [("ref12",Ref TInt64)],After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 1)) (Lit TUInt64 (LUInt64 1)) OTimes) (BOp TUInt64 (Lit TUInt64 (LUInt64 0)) (Lit TUInt64 (LUInt64 1)) OMinus) OMinus) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref1",Ref TInt64) (Lit TInt64 (LInt64 26166)),NewRef (Fresh "v8") (Ref TInt) (BOp TInt (BOp TInt (Lit TInt (LInt (-14))) (Lit TInt (LInt 1)) OTimes) (BOp TInt (Lit TInt (LInt (-17))) (Lit TInt (LInt 1)) OPlus) OMinus),Changed (Fresh "v10") TBool ("v8",Ref TInt),Wait [("ref1",Ref TInt64),("ref12",Ref TInt64)],After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 1)) (Lit TUInt64 (LUInt64 23)) OMinus) (BOp TUInt64 (Lit TUInt64 (LUInt64 1)) (Lit TUInt64 (LUInt64 15)) OTimes) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("ref12",Ref TInt64) (BOp TInt64 (BOp TInt64 (Lit TInt64 (LInt64 (-54698))) (Lit TInt64 (LInt64 11262)) OMinus) (BOp TInt64 (Lit TInt64 (LInt64 (-21246))) (Lit TInt64 (LInt64 1)) OTimes) OTimes),Changed (Fresh "v16") TBool ("ref12",Ref TInt64),After (BOp TUInt64 (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 1)) (Lit TUInt64 (LUInt64 1)) OMinus) (BOp TUInt64 (Lit TUInt64 (LUInt64 24)) (Lit TUInt64 (LUInt64 2)) OPlus) OTimes) (Lit TUInt64 (LUInt64 1)) OPlus) ("v8",Ref TInt) (BOp TInt (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OMinus) (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OPlus) OPlus),Wait [("v8",Ref TInt)],GetRef (Fresh "v21") TInt64 ("ref12",Ref TInt64),Wait [("ref12",Ref TInt64)],Fork [("fun5",[Right ("ref12",Ref TInt64),Right ("ref12",Ref TInt64)])]]})]}
-
-testprogram25 :: Program
-testprogram25 = Program {main = "fun1", args = [Right ("ref1",Ref TInt),Left (BOp TUInt64 (Lit TUInt64 (LUInt64 1454)) (Lit TUInt64 (LUInt64 4372)) OTimes),Right ("ref3",Ref TInt64)], funs = Map.fromList [("fun1",Procedure {name = "fun1", arguments = [("ref1",Ref TInt),("var2",TUInt64),("ref3",Ref TInt64)], body = [After (Var TUInt64 "var2") ("ref3",Ref TInt64) (BOp TInt64 (BOp TInt64 (Lit TInt64 (LInt64 (-13))) (Lit TInt64 (LInt64 3)) OMinus) (UOp TInt64 (Lit TInt64 (LInt64 (-16))) Neg) OTimes),GetRef (Fresh "v0") TInt ("ref1",Ref TInt),Fork [("fun1",[Right ("ref1",Ref TInt),Left (BOp TUInt64 (BOp TUInt64 (Var TUInt64 "var2") (Var TUInt64 "var2") OMinus) (BOp TUInt64 (Var TUInt64 "var2") (Var TUInt64 "var2") OMinus) OMinus),Right ("ref3",Ref TInt64)])],Fork [("fun1",[Right ("ref1",Ref TInt),Left (BOp TUInt64 (BOp TUInt64 (Lit TUInt64 (LUInt64 4132)) (Lit TUInt64 (LUInt64 4476)) OTimes) (BOp TUInt64 (Var TUInt64 "var2") (Lit TUInt64 (LUInt64 146)) OPlus) OTimes),Right ("ref3",Ref TInt64)])]]})]}
-
-testprogram26 :: Program
-testprogram26 = Program {main = "fun5", args = [Right ("ref17",Ref TInt),Right ("ref20",Ref TUInt64),Right ("ref23",Ref TInt64),Right ("ref26",Ref TBool),Right ("ref27",Ref TBool),Left (BOp TInt (Lit TInt (LInt 42)) (Lit TInt (LInt 21)) OPlus),Right ("ref30",Ref TBool),Right ("ref31",Ref TInt),Right ("ref33",Ref TInt),Right ("ref38",Ref TBool),Right ("ref41",Ref TInt),Right ("ref43",Ref TUInt64)], funs = Map.fromList [("fun4",Procedure {name = "fun4", arguments = [("ref11",Ref TBool),("ref18",Ref TBool),("ref20",Ref TUInt64)], body = [NewRef (Fresh "v2") (Ref TInt) (BOp TInt (BOp TInt (Lit TInt (LInt 37)) (Lit TInt (LInt 1)) OMinus) (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 200)) OMinus) OTimes),GetRef (Fresh "v3") TBool ("ref18",Ref TBool),Fork [("fun4",[Right ("ref11",Ref TBool),Right ("ref18",Ref TBool),Right ("ref20",Ref TUInt64)])],Wait [("ref18",Ref TBool)],If (BOp TBool (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OLT) [] []]}),("fun5",Procedure {name = "fun5", arguments = [("ref17",Ref TInt),("ref20",Ref TUInt64),("ref23",Ref TInt64),("ref26",Ref TBool),("ref27",Ref TBool),("var28",TInt),("ref30",Ref TBool),("ref31",Ref TInt),("ref33",Ref TInt),("ref38",Ref TBool),("ref41",Ref TInt),("ref43",Ref TUInt64)], body = [NewRef (Fresh "v0") (Ref TInt) (Var TInt "var28"),After (Lit TUInt64 (LUInt64 1228)) ("ref38",Ref TBool) (BOp TBool (BOp TInt (Lit TInt (LInt 182)) (Lit TInt (LInt 1)) OPlus) (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 147)) OMinus) OLT),Changed (Fresh "v1") TBool ("ref26",Ref TBool),NewRef (Fresh "v2") (Ref TBool) (BOp TBool (BOp TInt (Lit TInt (LInt 153)) (Lit TInt (LInt 1)) OTimes) (UOp TInt (Lit TInt (LInt 1)) Neg) OLT),Fork [("fun6",[Right ("ref31",Ref TInt),Left (BOp TInt (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OTimes) (BOp TInt (Lit TInt (LInt 191)) (Lit TInt (LInt 168)) OTimes) OPlus),Right ("ref41",Ref TInt),Right ("ref33",Ref TInt),Right ("ref31",Ref TInt),Right ("ref30",Ref TBool),Right ("v0",Ref TInt),Right ("ref43",Ref TUInt64),Right ("ref20",Ref TUInt64),Right ("ref17",Ref TInt),Right ("ref20",Ref TUInt64),Right ("v0",Ref TInt),Right ("ref38",Ref TBool),Right ("v2",Ref TBool),Right ("ref26",Ref TBool),Right ("ref23",Ref TInt64),Right ("ref27",Ref TBool),Left (BOp TInt (Lit TInt (LInt 85)) (Lit TInt (LInt 1)) OPlus)])],If (BOp TBool (BOp TBool (Lit TBool (LBool True)) (Lit TBool (LBool True)) OEQ) (BOp TBool (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OEQ) OEQ) [] [GetRef (Fresh "v3") TBool ("ref27",Ref TBool)],GetRef (Fresh "v5") TInt64 ("ref23",Ref TInt64),GetRef (Fresh "v6") TUInt64 ("ref20",Ref TUInt64)]}),("fun6",Procedure {name = "fun6", arguments = [("ref6",Ref TInt),("var9",TInt),("ref11",Ref TInt),("ref22",Ref TInt),("ref24",Ref TInt),("ref27",Ref TBool),("ref28",Ref TInt),("ref29",Ref TUInt64),("ref31",Ref TUInt64),("ref34",Ref TInt),("ref37",Ref TUInt64),("ref38",Ref TInt),("ref39",Ref TBool),("ref40",Ref TBool),("ref42",Ref TBool),("ref45",Ref TInt64),("ref46",Ref TBool),("var47",TInt)], body = [GetRef (Fresh "v0") TInt ("ref28",Ref TInt),NewRef (Fresh "v1") (Ref TBool) (BOp TBool (BOp TBool (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OEQ) (BOp TBool (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OEQ) OEQ),SetRef ("ref39",Ref TBool) (BOp TBool (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OPlus) (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 1)) OMinus) OEQ),Changed (Fresh "v2") TBool ("ref34",Ref TInt),SetRef ("ref42",Ref TBool) (Lit TBool (LBool True)),After (Lit TUInt64 (LUInt64 2132)) ("ref38",Ref TInt) (BOp TInt (BOp TInt (Lit TInt (LInt 84)) (Lit TInt (LInt 57)) OPlus) (BOp TInt (Lit TInt (LInt 1)) (Var TInt "var9") OPlus) OMinus),Fork [("fun4",[Right ("ref40",Ref TBool),Right ("ref39",Ref TBool),Right ("ref31",Ref TUInt64)]),("fun6",[Right ("ref24",Ref TInt),Left (BOp TInt (BOp TInt (Var TInt "v0") (Lit TInt (LInt 1)) OPlus) (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 27)) OMinus) OTimes),Right ("ref34",Ref TInt),Right ("ref6",Ref TInt),Right ("ref11",Ref TInt),Right ("ref27",Ref TBool),Right ("ref22",Ref TInt),Right ("ref37",Ref TUInt64),Right ("ref29",Ref TUInt64),Right ("ref38",Ref TInt),Right ("ref37",Ref TUInt64),Right ("ref11",Ref TInt),Right ("ref40",Ref TBool),Right ("ref39",Ref TBool),Right ("ref42",Ref TBool),Right ("ref45",Ref TInt64),Right ("ref40",Ref TBool),Left (BOp TInt (Lit TInt (LInt 1)) (Lit TInt (LInt 84)) OPlus)])]]})]}
 
 {-****** Removing unused procedures ******-}
 
@@ -559,8 +353,8 @@ removeRefs p refs =  map fromJust $ filter isJust $ for refs $ \ref -> do
           otherwise      -> otherwise
           where
             defaultValue :: Type -> SSMExp
-            defaultValue TInt  = Lit TInt $ LInt 1
-            defaultValue TBool = Lit TBool $ LBool True
+            defaultValue TInt32 = Lit TInt32 $ LInt32 1
+            defaultValue TBool  = Lit TBool  $ LBool True
 
         -- | Try to remove a reference from a procedure call. This is done by replacing
         -- it with an arbitrary reference in scope of the same type.
@@ -987,7 +781,7 @@ removeNth n (x:xs) = x : removeNth (n-1) xs
 
 -- | Returns a default value for a type. Does not work for reference types.
 defaultVal :: Type -> SSMExp
-defaultVal TInt   = Lit TInt $ LInt 1
+defaultVal TInt32 = Lit TInt32 $ LInt32 1
 defaultVal TInt64 = Lit TInt64 $ LInt64 1
 defaultVal TUInt64 = Lit TUInt64 $ LUInt64 1
 defaultVal TBool  = Lit TBool $ LBool True

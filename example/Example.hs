@@ -4,8 +4,9 @@ module Example where
 import BinderAnn.Monadic
 import Core
 import SSM
+import Data.Int
 
-f1 :: Ref Int -> SSM ()
+f1 :: Ref Int32 -> SSM ()
 f1 = box "f1" ["r"] $ \r -> do
   after 1 r 2
   wait [r]
@@ -15,18 +16,18 @@ f1 = box "f1" ["r"] $ \r -> do
   wait [r]
 
 
-example :: Ref Int -> SSM ()
+example :: Ref Int32 -> SSM ()
 example = box "example" ["r"] $ \r -> do
   v <- deref r
   after 1 r (v + 1)
   wait [r]
   fork [example r]
 
-testafter :: Ref Int -> SSM ()
+testafter :: Ref Int32 -> SSM ()
 testafter = box "testafter" ["r"] $ \r -> do
   after 2 r 5
   after 3 r 10
 
-forktest :: Ref Int -> SSM ()
+forktest :: Ref Int32 -> SSM ()
 forktest = box "forktest" ["r"] $ \r -> do
   fork [ forktest r, forktest r]
