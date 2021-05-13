@@ -364,7 +364,8 @@ pds k = do
 -- | Create a new variable with an initial value, and adds it to the current process's
 -- variable storage. When a variable is created it is considered written to.
 newVar :: String -> SSMExp -> Interp s ()
-newVar n v = do
+newVar n e = do
+    v <- eval e
     ref <- lift' $ newVar' v
     p <- gets process
     modify $ \st -> st { written = ref : written st

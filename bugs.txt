@@ -239,3 +239,56 @@ schedule_event e = do
 
 Right now the two queues are in the interprer just lists that we make sure to insert things into
 in an ordered fashion, but there should really be a better datastructure for this. A tree or something.
+
+17)
+
+It generated a program that was quite large, even after shrinking. The interpreter crashed.
+
+entrypoint:
+  fun5(ref17, ref20, ref23, ref26, ref27, (42 + 21), ref30, ref31, ref33, ref38, ref41, ref43)
+
+fun4(*bool ref11, *bool ref18, *uint64 ref20) {
+  *int v2 = var ((37 - 1) * (1 - 200))
+  bool v3 = *ref18
+  fork [fun4(ref11, ref18, ref20)]
+  wait [ref18]
+  if((1 < 1)) {
+  } else {
+  }
+}
+
+fun5(*int ref17, *uint64 ref20, *int64 ref23, *bool ref26, *bool ref27, int var28, *bool ref30, *int ref31, *int ref33, *bool ref38, *int ref41, *uint64 ref43) {
+  *int v0 = var var28
+  after 1228 then ref38 = ((182 + 1) < (1 - 147))
+  bool v1 = @ref26
+  *bool v2 = var ((153 * 1) < (1))
+  fork [fun6(ref31, ((1 * 1) + (191 * 168)), ref41, ref33, ref31, ref30, v0, ref43, ref20, ref17, ref20, v0, ref38, v2, ref26, ref23, ref27, (85 + 1))]
+  if(((True == True) == (1 == 1))) {
+  } else {
+    bool v3 = *ref27
+  }
+  int64 v5 = *ref23
+  uint64 v6 = *ref20
+}
+
+fun6(*int ref6, int var9, *int ref11, *int ref22, *int ref24, *bool ref27, *int ref28, *uint64 ref29, *uint64 ref31, *int ref34, *uint64 ref37, *int ref38, *bool ref39, *bool ref40, *bool ref42, *int64 ref45, *bool ref46, int var47) {
+  int v0 = *ref28
+  *bool v1 = var ((1 == 1) == (1 == 1))
+  ref39 = ((1 + 1) == (1 - 1))
+  bool v2 = @ref34
+  ref42 = True
+  after 2132 then ref38 = ((84 + 57) - (1 + var9))
+  fork [fun4(ref40, ref39, ref31), fun6(ref24, ((v0 + 1) * (1 - 27)), ref34, ref6, ref11, ref27, ref22, ref37, ref29, ref38, ref37, ref11, ref40, ref39, ref42, ref45, ref40, (1 + 84))]
+}
+
+The problem was that the interpreter crashed when it evaluated (v0 + 1) * (1 - 27) in fun6. So, we see that
+v0 is the same as the value of ref28. When we forked fun6, ref28 was applied to the value v0 in 
+fun5. In fun5 the value v0 was created by creating a new reference with the initial value of var28.
+When we evaluated that expression in fun6, we got an error saying that var28 was not bound in the current
+process. Super wierd!
+
+What should happen is that whenever we create a reference and put some initial value inside it, we must
+evaluate that value! We are doing this in every place where we write to references, but I had forgotten
+to do this when we created a new reference. If the initial value to a reference was in fact some variable
+that we've gotten from another process etc, some issue arose where the name var28 was not resolved to its
+actual value.
