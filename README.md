@@ -116,7 +116,7 @@ import SSM
 
 In Stephens paper there is a very interesting version of computing fibonacci numbers. First we need to create the `mywait` function that takes a single reference and waits for it.
 ```Haskell
-mywait :: Ref int -> SSM ()
+mywait :: Ref Int -> SSM ()
 mywait = box "mywait" ["r"] $ \r -> do
   wait [r]
 ```
@@ -230,6 +230,8 @@ waitSingle(*int r) {
 
 ### Interpreting Programs
 ---
+If you wrote your own program in e.g `Foo.hs` and run `stack repl` followed by `:load Foo.hs`, that load instruction will nuke the other loads that already happened. To run the interpreter or code generator it is necessary to load them again `:load LowInterpreter.hs`, `LowCodeGen.hs`. I will make an 'export-all' file soon, that will replace `Frontend.hs`.
+
 The interpreter has type `interpret :: Program -> Output`. The output is a trace of the actions it's taken. At the end it will print the result of any input references, such as the `inputref` in `myfib 13 inputref`. Running the interpreter and printing the output nicely is done like this.
 ```Haskell
 > putStrLn $ unlines $ map show $ interpret $ myfib 5 inputref
