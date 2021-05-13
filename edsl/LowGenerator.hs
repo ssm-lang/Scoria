@@ -33,6 +33,15 @@ type Procedures = [(String, [(String, Type)], [Stm])]
 type Variable = (Name, Type)
 type Ref     = (String, Type)
 
+genListOfLength :: Gen a -> Int -> Gen [a]
+genListOfLength ga 0 = return []
+genListOfLength ga n = (:) <$> ga <*> genListOfLength ga (n-1)
+
+testio = do
+    let typesiggen = genListOfLength (arbitrary :: Gen Type) =<< choose (0,15)
+    types <- genListOfLength typesiggen =<< choose (1,15)
+    return types
+
 instance Arbitrary Program where
   shrink p = let p' = removeUnusedProcedures p
              in concat [ shrinkHalfProcedures p'
@@ -46,7 +55,9 @@ instance Arbitrary Program where
                        , shrinkWait p'              -- Shrink wait statements
                        ]
   arbitrary = do
-    types <- take 15 <$> arbitrary `suchThat` (not . null)
+    let typesiggen = genListOfLength arbitrary =<< choose (0,15)
+    types <- genListOfLength typesiggen =<< choose (1,15)
+--    types <- take 15 <$> arbitrary `suchThat` (not . null)
     let funs = [ ("fun" ++ show i, as) | (as,i) <- zip types [1..]]
     tab <- mfix $ \tab -> sequence
         [ do let (refs, vars) = partition (isReference . fst) $ zip as [1..]
