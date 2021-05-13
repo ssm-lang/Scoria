@@ -2,8 +2,7 @@
 module Buggy where
 
 import BinderAnn.Monadic
-import Frontend
-
+import SSM
 import Data.Int
 
 fun2 :: Ref Bool -> Ref Bool -> Exp Bool -> SSM ()

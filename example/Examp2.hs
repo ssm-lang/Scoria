@@ -2,7 +2,7 @@
 module Examp2 where
 
 import BinderAnn.Monadic
-import Frontend
+import SSM
 
 ex :: Ref Int -> SSM ()
 ex = box "ex" ["a"] $ \a -> do

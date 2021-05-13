@@ -33,7 +33,6 @@ library
       LowCodeGen
       LowInterpreter
       Frontend
-      Pretty
       HughesList
       Fib
       Foo
@@ -47,6 +46,7 @@ library
       Example64bit
       Exampleuint8
       LowPretty
+      SSM
   other-modules:
       Paths_ssm
   hs-source-dirs:

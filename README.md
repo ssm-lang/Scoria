@@ -13,7 +13,7 @@ stack repl
 
 ### EDSL API
 ---
-The intention is that users of the language will be guided into not doing malicious things, such as constructing illegal terms or programs. Users will get access to the primitives to write programs by importing the module `Frontend` in their files.
+The intention is that users of the language will be guided into not doing malicious things, such as constructing illegal terms or programs. Users will get access to the primitives to write programs by importing the module `SSM` in their files.
 
 
 The API exposed by the frontend module at the moment is the following:
@@ -104,13 +104,14 @@ waitAll :: [Ref a] -> SSM ()
 waitAll refs = fork $ map waitSingle refs
 ```
 
+Furthermore, there are two functions exposed. `compile` & `interpret`. They will be described further down.
 ### Writing Programs
 ---
 
 To write a program a user needs to create a Haskell module and import the frontend.
 ```Haskell
 module Fib where
-import Frontend
+import SSM
 ```
 
 In Stephens paper there is a very interesting version of computing fibonacci numbers. First we need to create the `mywait` function that takes a single reference and waits for it.
@@ -150,11 +151,9 @@ myfib = box "myfib" ["n", "r"] $ \n r -> do
             )
 ```
 
-Now, if we want to run e.g `myfib 13 inputref` we have something of type `SSM ()`. The interpreter has type `Program -> Output`, and the compiler has type `Bool -> Just Int -> Program -> String`. To turn a `SSM ()` into a `Program` we can use `transpile :: SSM () -> Program`. It takes the program captured by the frontend and turns it into a slightly flatter version where the statements are a bit simpler.
-
-If we want to prettyprint the program above we can use `prettyProgram :: Program -> String`.
+If we want to prettyprint the program above we can use `prettyPrint :: Program -> String`.
 ```
-> putStrLn $ prettyProgram $ transpile $ myfib 13 inputref
+> putStrLn $ prettyPrint $ myfib 13 inputref
 entrypoint:
   myfib(13, r)
 
@@ -199,11 +198,11 @@ We can enable this plugin in our file by importing a file and enabling a GHC opt
 module Fib where
 
 import BinderAnn.Monadic
-import Frontend
+import SSM
 ```
 and the prettyprinter will now output this code
 ```
-> putStrLn $ prettyProgram $ transpile $ myfib 13 inputref
+> putStrLn $ prettyPrint $ myfib 13 inputref
 entrypoint:
   myfib(13, r)
 
@@ -233,7 +232,7 @@ waitSingle(*int r) {
 ---
 The interpreter has type `interpret :: Program -> Output`. The output is a trace of the actions it's taken. At the end it will print the result of any input references, such as the `inputref` in `myfib 13 inputref`. Running the interpreter and printing the output nicely is done like this.
 ```Haskell
-> putStrLn $ unlines $ map show $ interpret $ transpile $ myfib 5 inputref
+> putStrLn $ unlines $ map show $ interpret $ myfib 5 inputref
 Fork ["myfib","myfib","mysum"]
 Fork ["myfib","myfib","mysum"]
 Fork ["myfib","myfib","mysum"]
@@ -275,9 +274,9 @@ The `Instant i1 i2` constructor means that instant `i2` just finished executing 
 
 ### Compiling Programs
 ---
-The compiler has type `compile_ :: Bool -> Maybe Int -> Program -> String`. The first argument is a bool that says if you want it to also generate a `main` function i C that can be used to run the program. If the compiled program is compiled with the `-DDEBUG` flag it will also produce a trace like the interpreter. The second argument specifies if you want to limit the execution time of the program to some number of trace items, or if you want to let it run indefinitely. Compiling the `myfib` program is done like this
+The compiler has type `compile :: Bool -> Maybe Int -> Program -> String`. The first argument is a bool that says if you want it to also generate a `main` function i C that can be used to run the program. If the compiled program is compiled with the `-DDEBUG` flag it will also produce a trace like the interpreter. The second argument specifies if you want to limit the execution time of the program to some number of trace items, or if you want to let it run indefinitely. Compiling the `myfib` program is done like this
 ```Haskell
-writeFile "fib.c" $ compile_ True (Just 2500) $ transpile $ myfib 13 inputref
+writeFile "fib.c" $ compile True (Just 2500) $ myfib 13 inputref
 ```
 and then in `fib.c` we'll find this code
 ```c

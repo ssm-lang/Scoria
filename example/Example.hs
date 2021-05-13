@@ -3,7 +3,7 @@ module Example where
 
 import BinderAnn.Monadic
 import Core
-import Frontend
+import SSM
 
 f1 :: Ref Int -> SSM ()
 f1 = box "f1" ["r"] $ \r -> do

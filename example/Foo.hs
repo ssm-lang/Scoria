@@ -3,7 +3,7 @@ module Foo where
 
 import BinderAnn.Monadic
 
-import Frontend
+import SSM
 
 foo :: Exp Bool -> Ref Int -> SSM ()
 foo = box "foo" ["a", "b"] $ \a b -> do

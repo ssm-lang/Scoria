@@ -2,7 +2,7 @@
 module Fib where
 
 import BinderAnn.Monadic
-import Frontend
+import SSM
 
 mywait :: Ref Int -> SSM ()
 mywait = box "mywait" ["r"] $ \r -> do
