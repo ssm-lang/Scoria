@@ -4,6 +4,7 @@ import qualified Data.Map as Map
 import Control.Monad.State.Lazy
 import Control.Monad.Writer.Lazy
 import Control.Monad.ST.Lazy
+import Control.Monad.Extra
 import Data.STRef.Lazy
 import Data.List
 import Data.Maybe
@@ -26,20 +27,9 @@ type Var s = STRef s
     [Proc s]
   , -- Has this variable been written to in this instance?
     Bool
+  , Maybe Word64
+  , Maybe SSMExp
   )
-
--- | The type of events.
-data Event s = Event
-  { -- | The time when this even should occur
-    at  :: Word64
-    -- | The reference variable that gets the new value
-  , ref :: Var s
-    -- | The value this reference will assume at time at
-  , val :: SSMExp
-  }
-
-instance Eq (Event s) where
-    e1 == e2 = ref e1 == ref e2
 
 -- | State of a single process. Equivalent to the struct in C.
 data Proc s = Proc
@@ -51,10 +41,8 @@ data Proc s = Proc
   , runningChildren :: Int
   -- | Parent of this process, Nothing in the case of main
   , parent          :: Maybe (STRef s (Proc s))
-  -- | Variables and their values. In the SSM language we make a distinction between
-  -- expressions and references, but in the interpreter there is no need to draw that
-  -- distinction.
-  , variables      :: Map.Map String (Var s)
+  , variables       :: Map.Map String (Var s)
+  , localrefs       :: Map.Map String (Var s)
   -- | Variables this process is waiting for, if any
   , waitingOn       :: Maybe [Var s]
   -- | The work left to do for this process
@@ -73,7 +61,7 @@ data St s = St
   { -- | Current time
     now        :: Word64
   -- | Outstanding events
-  , events     :: [Event s]
+  , events     :: [Var s]
   -- | Number of outstanding events
   , numevents  :: Int
   -- | Processes ready to run, should be a priority queue
@@ -100,7 +88,7 @@ interpret p = runST interpret'
           fun <- case Map.lookup (main p) (funs p) of
               Just p'  -> return p'
               Nothing  -> error $ concat ["interpreter error - can not find function ", main p]
-          process <- Proc 0 32 0 Nothing <$> params p <#> Nothing <#> body fun
+          process <- Proc 0 32 0 Nothing <$> params p <#> Map.empty <#> Nothing <#> body fun
           let refs = Map.elems $ variables process
           let actualrefs = getReferences p $ variables process
           execWriterT $ evalStateT (run >> emitResult) (St 0 [] 0 [process] refs (funs p) actualrefs process)
@@ -147,7 +135,7 @@ interpret p = runST interpret'
       emitResult = do
           refs <- gets inputargs
           forM_ refs $ \(n,v) -> do
-              (ref,_,_) <- lift' $ readSTRef v
+              (ref,_,_,_,_) <- lift' $ readSTRef v
               val <- lift' $ readSTRef ref
               tell [T.Result n val]
 
@@ -199,17 +187,11 @@ runProcess = do
     p <- gets process
     case i of
 
-        Nothing -> case parent p of
-            Nothing -> return ()
-            Just p' -> do
-                par' <- lift' $ readSTRef p'
-                if runningChildren par' == 1
-                    then enqueue $ par' { runningChildren = 0 }
-                    else lift' $ writeSTRef p' $ par' { runningChildren = runningChildren par' - 1 }
+        Nothing -> leave
 
         Just stm -> case stm of
             NewRef n _ e    -> do
-                newVar (getVarName n) e
+                newRef (getVarName n) e
                 runProcess
             GetRef n t r    -> do
                 v <- readRef (fst r)
@@ -237,9 +219,7 @@ runProcess = do
                 d'   <- getUInt64 <$> eval d
                 v'   <- eval v
                 now' <- gets now
-                schedule_event $ Event (now' + d') ref v'
-                -- TODO should not allow more than one event per variable to be outstanding
-                --modify $ \st -> st { events = Event (now' + d') ref v' : events st }
+                schedule_event ref (now' + d') v'
                 runProcess
             Changed n t r   -> do
                 b <- wasWritten $ fst r
@@ -262,34 +242,66 @@ runProcess = do
                 forM_ (zip procs pdeps) $ \(f,(prio, dep)) -> do
                     fork f prio dep parent
 
-schedule_event :: Event s -> Interp s ()
-schedule_event e = do
+leave :: Interp s ()
+leave = do
+    p <- gets process
+
+    -- need to dequeue event on local references before we leave
+    let lrefs = Map.elems $ localrefs p
+    todeq <- flip filterM lrefs $ \r -> do
+        (_,_,_,mt,_) <- lift' $ readSTRef r
+        return $ isJust mt
+    modify $ \st -> st { events = events st \\ todeq } -- difference
+    
+    -- if we have a parent and we are the only running child, schedule the parent
+    case parent p of
+        Nothing  -> return ()
+        Just p' -> do
+            par' <- lift' $ readSTRef p'
+            if runningChildren par' == 1
+                then enqueue $ par' { runningChildren = 0 }
+                else lift' $ writeSTRef p' $ par' { runningChildren = runningChildren par' - 1 }
+
+schedule_event :: Var s -> Word64 -> SSMExp -> Interp s ()
+schedule_event e thn val = do
     st <- get
-    let evs = events st
+    
+    when (now st > thn) $ error "bad after"
 
-    when (now st > at e) $ error "bad after"
-
-    if any ((==) e) evs
-        then modify $ \st -> st { events = insert e (delete e evs) }
+    -- fetch ref so we can update the scheduled information
+    (ref,pr,b,mt,_) <- lift' $ readSTRef e
+    lift' $ writeSTRef e (ref,pr,b,Just thn, Just val)
+    
+    -- if it was scheduled before we remove the old one from the eventqueue
+    -- and just insert it again.
+    if isJust mt
+        then do let es' = delete e (events st)
+                es''    <- insert thn e es'
+                modify $ \st -> st { events = es'' }
+    -- otherwise we check if the queue is full before we schedule the new event
         else if numevents st == 8192
             then error "eventqueue full"
-            else modify $ \st -> st { events    = insert e evs
-                                    , numevents = numevents st + 1
-                                    }
+            else do es' <- insert thn e (events st)
+                    modify $ \st -> st { events    = es' --insert thn e (events st)
+                                       , numevents = numevents st + 1
+                                       }
+
   where
-      insert :: Event s -> [Event s] -> [Event s]
-      insert e []       = [e]
-      insert e1 (e2:es) =
-          if at e1 < at e2
-              then e1 : e2 : es
-              else e2 : insert e1 es
+      insert :: Word64 -> Var s -> [Var s] -> Interp s [Var s]
+      insert _ e []         = return [e]
+      insert thn e1 (e2:es) = do
+          (_,_,_,Just t,_) <- lift' $ readSTRef e2
+          if thn < t
+              then return $ e1 : e2 : es
+              else do es' <- insert thn e1 es
+                      return $ e2 : es'
 
 lift' :: ST s a -> Interp s a
 lift' = lift . lift
 
 wait :: [Reference] -> Interp s ()
 wait refs = do
-    refs' <- mapM (lookupRef . fst) refs -- [Var s]
+    refs' <- mapM (lookupRef . fst) refs
     modify $ \st -> st { process = (process st) { waitingOn = Just refs' } }
 
 -- | Enqueue a new, forked process.
@@ -301,7 +313,7 @@ fork :: (String, [Either SSMExp Reference])  -- ^ Procedure to fork (name and ar
 fork (n,args) prio dep par = do
     p <- lookupProcedure n
     variables <- params $ (fst . unzip . LowCore.arguments) p
-    enqueue $ Proc prio dep 0 (Just par) variables Nothing (body p)
+    enqueue $ Proc prio dep 0 (Just par) variables Map.empty Nothing (body p)
   where
       -- | Return an initial variable storage for the new process. Expression arguments are turned into
       -- new STRefs while reference arguments are passed from the calling processes variable storage.
@@ -322,13 +334,17 @@ writeRef r e = do
         Just ref -> do v <- eval e
                        writeVar ref v
                        modify $ \st -> st { written = ref : written st }
-        Nothing  -> error $ "interpreter error - can not find variable " ++ r
+        Nothing  -> case Map.lookup r (localrefs p) of
+            Just ref -> do v <- eval e
+                           writeVar ref v
+                           modify $ \st -> st { written = ref : written st }
+            Nothing -> error $ "interpreter error - can not find variable " ++ r
 
 -- | Read a variable from the current processes environment.
 readRef :: String -> Interp s SSMExp
 readRef s = do
     r <- lookupRef s
-    (vr,_,_) <- lift' $ readSTRef r
+    (vr,_,_,_,_) <- lift' $ readSTRef r
     lift' $ readSTRef vr
 
 -- | Look up a variable in the currently running process variable store.
@@ -337,7 +353,9 @@ lookupRef r = do
     p <- gets process
     case Map.lookup r (variables p) of
       Just ref -> return ref
-      Nothing  -> error $ "interpreter error - can not find variable " ++ r
+      Nothing  -> case Map.lookup r (localrefs p) of
+          Just ref -> return ref
+          Nothing -> error $ "interpreter error - can not find variable " ++ r
 
 -- | Simple lookup function that throws an error if the desired procedure does not exist in
 -- the procedure storage.
@@ -361,6 +379,15 @@ pds k = do
     else do let prios = [ prio + i * (2^d') | i <- [0..k-1]]        -- new prios
             return $ zip prios (repeat d')
 
+newRef :: String -> SSMExp -> Interp s ()
+newRef n e = do
+    v <- eval e
+    ref <- lift' $ newVar' v
+    p <- gets process
+    modify $ \st -> st { written = ref : written st
+                       , process = p { localrefs = Map.insert n ref (localrefs p) }
+                       }
+
 -- | Create a new variable with an initial value, and adds it to the current process's
 -- variable storage. When a variable is created it is considered written to.
 newVar :: String -> SSMExp -> Interp s ()
@@ -376,7 +403,7 @@ newVar n e = do
 newVar' :: SSMExp -> ST s (Var s)
 newVar' v = do
     val <- newSTRef v
-    ref <- newSTRef (val, [], True)
+    ref <- newSTRef (val, [], True, Nothing, Nothing)
     return ref
 
 -- | Function returns True if variable was written in this instant, and otherwise False.
@@ -384,9 +411,12 @@ wasWritten :: String -> Interp s SSMExp
 wasWritten r = do
     p <- gets process
     case Map.lookup r (variables p) of
-        Just v -> do (_,_,b) <- lift' $ readSTRef v
-                     return $ Lit TBool $ LBool $ b
-        Nothing -> error $ "interpreter error - can not find variable " ++ r
+        Just v -> do (_,_,b,_,_) <- lift' $ readSTRef v
+                     return $ Lit TBool $ LBool b
+        Nothing -> case Map.lookup r (localrefs p) of
+            Just v  -> do (_,_,b,_,_) <- lift' $ readSTRef v
+                          return $ Lit TBool $ LBool b
+            Nothing -> error $ "interpreter error - can not find variable " ++ r
 
 writeVar :: Var s -> SSMExp -> Interp s ()
 writeVar ref e = do
@@ -395,7 +425,7 @@ writeVar ref e = do
 
 writeVar_ :: Var s -> SSMExp -> Int -> Interp s ()
 writeVar_ ref e prio = do
-    (variable,waits, _) <- lift' $ readSTRef ref
+    (variable,waits,_,me,mv) <- lift' $ readSTRef ref
     lift' $ writeSTRef variable e -- actually update the variable value
 
     let (towait, keep) = partition (\p' -> prio < priority p') waits
@@ -405,14 +435,14 @@ writeVar_ ref e prio = do
 
     -- update the variable to be written to in this instant and give it knowledge of
     -- which processes are still waiting on it
-    lift' $ writeSTRef ref (variable, keep, True)
+    lift' $ writeSTRef ref (variable, keep, True, me, mv)
   where
       desensitize :: Proc s -> Interp s ()
       desensitize p = do
           let variables = fromJust $ waitingOn p
           forM_ variables $ \r -> do
-              (ref,procs,b) <- lift' $ readSTRef r
-              lift' $ writeSTRef r (ref, delete p procs,b)
+              (ref,procs,b,me,mv) <- lift' $ readSTRef r
+              lift' $ writeSTRef r (ref, delete p procs,b,me,mv)
           enqueue $ p { waitingOn = Nothing}
 
 -- | Make the procedure wait for writes to the variable
@@ -420,8 +450,11 @@ sensitize :: String -> Interp s ()
 sensitize v = do
     p <- gets process
     r <- lookupRef v
-    (ref,procs,b) <- lift' $ readSTRef r
-    lift' $ writeSTRef r (ref, p:procs,b)
+    (ref,procs,b,me,mv) <- lift' $ readSTRef r
+    -- don't want to register a process twice
+    if p `elem` procs
+        then return ()
+        else lift' $ writeSTRef r (ref, p:procs,b,me,mv)
 
 {- | Perform all the events scheduled for this instance, enqueueing those processes that
 were waiting for one of these events to happen. -}
@@ -431,23 +464,33 @@ performEvents = do
     mapM_ performEvent es
   where
       -- | Fetch the events at this instant in time, if any
-      currentEvents :: Interp s [Event s]
+      currentEvents :: Interp s [Var s]
       currentEvents = do
           st <- get
-          let (current, future) = partition (\e -> at e == now st) (events st)
-          put $ st { events = future
+          (current, future) <- flip partitionM (events st) $ \e -> do
+              (_,_,_,Just t,_) <- lift' $ readSTRef e
+              return $ t == now st
+          put $ st { events    = future
                    , numevents = numevents st - length current
                    }
           return current
 
       {- | Perform the update of a scheduled event and enqueue processes that were waiting for
       this event to happen. -}
-      performEvent :: Event s -> Interp s ()
+      performEvent :: Var s -> Interp s ()
       performEvent e = do
           st <- get
-          tell [T.Event (now st) (val e)]
-          writeVar_ (ref e) (val e) (-1)
-          modify $ \st -> st { written = ref e : written st}
+
+          -- fetch the variable information and reset the event fields
+          (r,procs,b,me,mv) <- lift' $ readSTRef e
+          lift' $ writeSTRef e (r,procs,b,Nothing,Nothing)
+          
+          -- output event information to trace
+          tell [T.Event (now st) (fromJust mv)]
+          
+          -- perform the actual update, eventually scheduling processes
+          writeVar_ e (fromJust mv) (-1)
+          modify $ \st -> st { written = e : written st}
 
 -- | Fetch the process with the lowest priority from the ready queue
 dequeue :: Interp s (Proc s)
@@ -472,7 +515,11 @@ enqueue p = modify $ \st -> st { readyQueue = insert p (readyQueue st)}
 nextEventTime :: Interp s Word64
 nextEventTime = do
     evs <- gets events
-    return $ foldl min maxBound (map at evs)
+    case evs of
+        [] -> return maxBound
+        (x:xs) -> do (_,_,_,Just t,_) <- lift' $ readSTRef x
+                     return t
+--    return $ foldl min maxBound (map at evs)
 
 -- | Return the next instruction of the current process if one exists.
 popInstruction :: Interp s (Maybe Stm)
@@ -495,7 +542,7 @@ eval e = do
     p <- gets process
     case e of
         Var _ n -> case Map.lookup n (variables p) of
-            Just r -> do v <- lift $ lift $ (readSTRef . \(x,_,_) -> x) =<< readSTRef r
+            Just r -> do v <- lift $ lift $ (readSTRef . \(x,_,_,_,_) -> x) =<< readSTRef r
                          eval v
             Nothing -> error $ "interpreter error - variable " ++ n ++ " not found in current process"
         Lit _ l -> return e

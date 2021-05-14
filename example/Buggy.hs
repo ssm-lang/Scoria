@@ -4,6 +4,7 @@ module Buggy where
 import BinderAnn.Monadic
 import SSM
 import Data.Int
+import Data.Word
 
 fun2 :: Ref Bool -> Ref Bool -> Exp Bool -> SSM ()
 fun2 = box "fun2" ["ref1","ref2","var3"] $ \ref1 ref2 var3 -> do
@@ -52,3 +53,9 @@ testlocal = box "testlocal" ["r","e"] $ \r e -> do
   e <~ ((1 - e) * (52 * e))
   after 1 r ((217 * e) <. (112 - 20))
   wait [r]
+
+badwait :: Ref Int64 -> Ref Int64 -> SSM ()
+badwait = box "badwait" ["ref5","ref8"] $ \ref5 ref8 -> do
+  after 2153 ref5 1
+  wait [ref5, ref8]
+  fork [ badwait ref8 ref8]
