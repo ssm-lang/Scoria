@@ -30,11 +30,12 @@ trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
 main :: IO ()
 main = do
---      regression_test
+--    quickCheck $ prop_correct singlecase
+      regression_test
 --      r <- testSingle singlecase (Just 10000)
 --      print r 
 --      return ()
-    quickCheck (verboseShrinking prop_correct)
+--    quickCheck (verboseShrinking prop_correct)
 --    quickCheck (withMaxSuccess 1000 $ verboseShrinking prop_valgrind_ok)
 
 regression_test :: IO ()
@@ -152,6 +153,7 @@ timeoutEval i xs = do
             v | "eventqueue full" `isPrefixOf` v -> modifyIORef ref (EventQueueFull :)
               | "negative depth"  `isPrefixOf` v -> modifyIORef ref (NegativeDepth :)
               | "bad after"       `isPrefixOf` v -> modifyIORef ref (BadAfter :)
+              | "contqueue full"  `isPrefixOf` v -> modifyIORef ref (ContQueueFull :)
             _ -> modifyIORef ref (Crash :)
         _ -> return ()
     reverse <$> readIORef ref

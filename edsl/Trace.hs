@@ -24,6 +24,7 @@ data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
                  | Result String SSMExp -- ^ variable name and final value
                  | Crash
                  | EventQueueFull
+                 | ContQueueFull
                  | NegativeDepth
                  | BadAfter
   deriving (Show, Eq, Generic, NFData)
@@ -33,24 +34,29 @@ type Output = [OutputEntry]
 testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "event 1 value bool 1"
                              , "negative depth"
+                             , "contqueue full"
                              , "result a uint64 2343546543245"
                              , "event 2 value int (-1)"
                              , "now 3 eventqueuesize 3"
                              , "bad after"
+                             , "contqueue full"
                              , "now 5 eventqueuesize 5"
                              , "fork mywait mywait mysum"
                              , "event 6 value int 7"
                              , "result x int 1"
                              , "fork mywait"
+                             , "contqueue full"
                              , "bad after"
                              , "negative depth"
                              , "eventqueue full"
                              , "result y bool 0"
                              , "bad after"
+                             , "contqueue full"
                              , "result zt uint64 3423523234"
                              , "result z bool 1"
                              , "negative depth"
                              , "eventqueue full"
+                             , "contqueue full"
                              , "bad after"
                              ]
 
@@ -72,7 +78,16 @@ pTrace :: Parser Output
 pTrace = many pTraceItem
 
 pTraceItem :: Parser OutputEntry
-pTraceItem = choice [try pEvent, try pInstant, pBadAfter, pResult, pFork, pCrash, pEventQueueFull, pNegativeDepth]
+pTraceItem = choice [ try pEvent
+                    , try pInstant
+                    , pBadAfter
+                    , pResult
+                    , pFork
+                    , pCrash
+                    , pEventQueueFull
+                    , pContQueueFull
+                    , pNegativeDepth
+                    ]
 
 pFork :: Parser OutputEntry
 pFork = do
@@ -113,6 +128,14 @@ pEventQueueFull = do
     pSpace
     pSymbol "full"
     return EventQueueFull
+
+pContQueueFull :: Parser OutputEntry
+pContQueueFull = do
+    pSpace
+    pSymbol "contqueue"
+    pSpace
+    pSymbol "full"
+    return ContQueueFull
 
 pEvent :: Parser OutputEntry
 pEvent = do
@@ -161,6 +184,7 @@ pIdent = do
                  , "after"
                  , "eventqueuesize"
                  , "eventqueue"
+                 , "contqueue"
                  , "full"
                  , "negative"
                  , "depth"
