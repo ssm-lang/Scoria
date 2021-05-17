@@ -51,6 +51,18 @@ executables:
     - time
     - criterion
 
+  print-ssm-from-file:
+    main:                Main.hs
+    source-dirs:
+    - printfail
+    - edsl
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependenciec:
+    - ssm
+
 tests:
   ssm-test:
     main:                Spec.hs

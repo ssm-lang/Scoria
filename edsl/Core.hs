@@ -20,7 +20,7 @@ type Reference = (String, Type)
 
 data Name = Fresh String
           | Captured (String,Int,Int) String
-  deriving (Show, Eq)
+  deriving (Show, Eq, Read)
 
 getVarName :: Name -> String
 getVarName (Fresh n)      = n
@@ -82,7 +82,7 @@ data Type = TInt32
           | TUInt64
           | TBool
           | Ref Type
-  deriving (Eq, Show, Generic, NFData)
+  deriving (Eq, Show, Generic, NFData, Read)
 
 class SSMType a where
     typeOf :: proxy a -> Type
@@ -127,7 +127,7 @@ data SSMExp = Var Type String               -- ^ Variables
             | Lit Type SSMLit               -- ^ Literals
             | UOp Type SSMExp UnaryOp       -- ^ Unary operators
             | BOp Type SSMExp SSMExp BinOp  -- ^ Binary operators
-  deriving (Eq, Generic, NFData, Show)
+  deriving (Eq, Generic, NFData, Show, Read)
 
 -- | SSM literals
 data SSMLit = LInt32 Int32    -- ^ Integer literals
@@ -135,11 +135,11 @@ data SSMLit = LInt32 Int32    -- ^ Integer literals
             | LInt64 Int64    -- ^ 64bit integer literals
             | LUInt64 Word64  -- ^ 64bit unsigned integer literals
             | LBool Bool      -- ^ Boolean literals
-  deriving (Eq, Generic, NFData, Show)
+  deriving (Eq, Generic, NFData, Show, Read)
 
 {-- | SSM unary operators -}
 data UnaryOp = Neg  -- ^ negation
-  deriving (Show, Eq, Generic, NFData)
+  deriving (Show, Eq, Generic, NFData, Read)
 
 {-- | SSM binary operators. We use phantom types to represent the two argument types and
 the result type of the operator. E.g OLT 2 3 :: BinOp Int Int Bool -}
@@ -148,7 +148,7 @@ data BinOp = OPlus   -- ^ addition
            | OTimes  -- ^ multiplication
            | OLT     -- ^ less-than
            | OEQ     -- ^ eq
-  deriving (Eq, Generic, NFData, Show)
+  deriving (Eq, Generic, NFData, Show, Read)
 
 -- | Arguments to our functions
 class Arg a where

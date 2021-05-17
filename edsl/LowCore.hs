@@ -40,7 +40,7 @@ data Stm = NewRef C.Name C.Type C.SSMExp
          | Changed C.Name C.Type C.Reference
          | Wait [C.Reference]
          | Fork [(String, [Either C.SSMExp C.Reference])]
-  deriving (Show, Eq)
+  deriving (Show, Eq, Read)
 
 data Procedure = Procedure
   { -- | Name of the procedure.
@@ -50,7 +50,7 @@ data Procedure = Procedure
     -- | Statements that make up this procedure.
   , body      :: [Stm]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Read)
 
 data Program = Program
   { -- | Name of the procedure that is the program entrypoint.
@@ -60,7 +60,7 @@ data Program = Program
     -- | Map that associates procedure names with their definitions.
   , funs :: Map.Map String Procedure
   }
-  deriving Show
+  deriving (Show, Read)
 
 type Transpile a = State TranspileState a
 
