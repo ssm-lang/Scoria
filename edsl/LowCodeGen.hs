@@ -170,7 +170,7 @@ data TRState = TRState
     -- | The size of the widest wait
     numwaits :: Int,
     -- | Local references declared with var
-    localrefs :: [String]
+    localrefs :: [(String, Type)]
   }
 
 -- | Translation monad.
@@ -336,12 +336,12 @@ instance CType Reference where
   basetype (_, t) = basetype_ t
 
   compArg (n, _) = do
-    refs <- gets localrefs
+    refs <- map fst <$> gets localrefs
     let prefix = if n `elem` refs then "&" else ""
     return $ concat [prefix, "act->", n]
 
   compVal (n, _) = do
-    refs <- gets localrefs
+    refs <- map fst <$> gets localrefs
     let accessor = if n `elem` refs then "." else "->"
     return $ concat ["act->", n, accessor, "value"]
 
@@ -494,9 +494,11 @@ enterIR p = do
     let cast   = UpcastEnter (Pointer $ Act $ name p) $ name p
     let assvar = concat $ map assignParam $ arguments p
     setuptrigs <- setupTriggers
+    initrefs   <- initializeLocalRefs
     return $ fun $ concat [ [cast]
                           , assvar
                           , setuptrigs
+                          , initrefs
                           , [ReturnEnter]
                           ]
     
@@ -531,6 +533,11 @@ enterIR p = do
       setupTriggers = do
           i <- gets numwaits
           return $ map InitializeTrigger [1..i]
+      
+      initializeLocalRefs :: TR [IR]
+      initializeLocalRefs = do
+        refs <- gets localrefs
+        return $ map (\(n,t) -> Initialize (basetype_ t) (concat ["&act->", n])) refs
 
 -- | This function takes a procedure and generates an `IR` instruction that represents
 -- the step function of this procedure.
@@ -549,7 +556,7 @@ stepIR p = do
   where
       dequeueLocalEvents :: TR [IR]
       dequeueLocalEvents = do
-        refs <- gets localrefs
+        refs <- map fst <$> gets localrefs
         return $ map (\s -> DequeueEvent $ concat ["&act->", s]) refs
 
       -- | Return a `IR` statement that increments the program counter to the next case.
@@ -582,10 +589,9 @@ stepIR p = do
       gencase xs = fmap concat $
         flip mapM xs $ \x -> case x of
             NewRef n t v     -> do
-                modify $ \st -> st { localrefs = getVarName n : localrefs st }
-                init <- Initialize (basetype_ t) <$> compVar (n,t)
+                modify $ \st -> st { localrefs = (getVarName n, t) : localrefs st }
                 assi <- Assign (basetype_ t) <$> compVar (n,t) <*> compVal v
-                return $ [init, assi]
+                return $ [assi]
             GetRef n t r    -> sequence [Assign (basetype_ t) <$> compVar (n,t) <*> compVal r]
             SetRef r e      -> sequence [Assign (basetype r)  <$> compVar r     <*> compVal e]
             SetLocal n t e2 -> sequence [Assign (basetype_ t) <$> compVar (n,t) <*> compVal e2]

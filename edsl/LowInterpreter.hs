@@ -97,7 +97,7 @@ interpret p = runST interpret'
           let actualrefs = getReferences p $ variables process
           outp <- execWriterT $ 
                     evalStateT (run >> emitResult) 
-                      (St 0 [] 0 [process] 0 refs (funs p) actualrefs process)
+                      (St 0 [] 0 [process] 1 refs (funs p) actualrefs process)
           return $ fromHughes outp
 
       -- | Creates the initial variable storage for the program. Expressions are just

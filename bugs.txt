@@ -331,3 +331,114 @@ leave = do
                        , numevents = numevents st - length todeq
                        }
     ...
+
+20)
+
+I had a bug in the interpreter related to the max length of the continuation queue. The generated C
+code uses a dummy parent process to fork the initial entrypoint of the program, and thus the length of
+the continuation queue is 1 when the program starts initially. The c program reported an error when the
+queue length was overrun, but the interpreter still thought it had room for 1 more process.
+
+The solution was to start the continuation count at 1 when interpretation begins.
+
+21)
+
+Bug in the code generator. When a variable is initialized the event time is set to ULONG_MAX.
+The code generator initialized a variable only when it was first used, but if this was in e.g an
+else branch that was never executed, the variable would have remained uninitialized. When the call to
+dequeue_event was made before leaving the RTS inspects the event time to figure out if it was in the
+event queue (and should thus be removed). If it is not in the event queue the event time value is
+ULONG_MAX. However, without initializing the variable this value is 0, tricking the RTS into deallocating
+an event that is not there.
+
+So, initially the generated code looked like this. Notice that the variable v3 is not initialized in the
+step function and that it is instead initialized when we are interpreting the `NewRef` constructor,
+which is a result of the `var` combinator.
+
+typedef struct {
+    ACTIVATION_RECORD_FIELDS;
+    sv_int64_t* ref6;
+    sv_int_t v3;
+} act_fun8_t;
+
+act_fun8_t* enter_fun8(act_t* caller, uint32_t priority, uint8_t depth, sv_int64_t* ref6);
+void step_fun8(act_t* gen_act);
+
+
+act_fun8_t* enter_fun8(act_t* caller, uint32_t priority, uint8_t depth, sv_int64_t* ref6) {
+    act_fun8_t* act = (act_fun8_t*) enter(sizeof(act_fun8_t), step_fun8, caller, priority, depth);
+    act->ref6 = ref6;
+    return act;
+}
+
+void step_fun8(act_t* gen_act) {
+    act_fun8_t* act = (act_fun8_t*) gen_act;
+    switch(act->pc) {
+        case 0:
+            if (!((true == true))) goto L0;
+            if (!((207 == 181))) goto L2;
+            goto L3;
+            
+            L2:
+            
+            L3:
+            goto L1;
+            
+            L0:
+            SCHEDULE(&later_int64, act->ref6, now + 4393UL, (-1L));
+            initialize_int(&act->v3);
+            assign_int(&act->v3, act->priority, ((1 - 99) - (1 - 42)));
+            
+            L1:
+            SCHEDULE(&later_int64, act->ref6, now + 3753UL, ((29237L + (-35431L)) * (6301L - (-9233L))));
+        case 1:
+        dequeue_event((sv_t *)&act->v3);
+        leave((act_t *) act, sizeof(act_fun8_t));
+    }
+}
+
+The fix is to initialize all local references in the enter function rather than the first time that the
+variable is used. This was we ensure that whenever they are referenced in the step function they will
+always have been initialized properly.
+
+typedef struct {
+    ACTIVATION_RECORD_FIELDS;
+    sv_int64_t* ref6;
+    sv_int_t v3;
+} act_fun8_t;
+
+act_fun8_t* enter_fun8(act_t* caller, uint32_t priority, uint8_t depth, sv_int64_t* ref6);
+void step_fun8(act_t* gen_act);
+
+
+act_fun8_t* enter_fun8(act_t* caller, uint32_t priority, uint8_t depth, sv_int64_t* ref6) {
+    act_fun8_t* act = (act_fun8_t*) enter(sizeof(act_fun8_t), step_fun8, caller, priority, depth);
+    act->ref6 = ref6;
+    initialize_int(&act->v3);
+    return act;
+}
+
+void step_fun8(act_t* gen_act) {
+    act_fun8_t* act = (act_fun8_t*) gen_act;
+    switch(act->pc) {
+        case 0:
+            if (!((true == true))) goto L0;
+            if (!((207 == 181))) goto L2;
+            goto L3;
+            
+            L2:
+            
+            L3:
+            goto L1;
+            
+            L0:
+            SCHEDULE(&later_int64, act->ref6, now + 4393UL, (-1L));
+            assign_int(&act->v3, act->priority, ((1 - 99) - (1 - 42)));
+            
+            L1:
+            SCHEDULE(&later_int64, act->ref6, now + 3753UL, ((29237L + (-35431L)) * (6301L - (-9233L))));
+        case 1:
+        dequeue_event((sv_t *)&act->v3);
+        leave((act_t *) act, sizeof(act_fun8_t));
+    }
+}
