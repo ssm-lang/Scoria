@@ -1,3 +1,4 @@
+{-# LANGUAGE StrictData #-}
 module LowInterpreter where
 
 import qualified Data.Map as Map

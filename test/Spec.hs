@@ -54,7 +54,7 @@ regression_test = do
 prop_correct :: Program -> Property
 prop_correct p = whenFail (do writeFile "timeout.c" $ compile_ True (Just 10000) p
                               writeFile "timeout.ssm" $ show p) $
-      within 5000000 $ monadicIO $ do
+      within 10000000 $ monadicIO $ do
     res <- run $ testSingle p (Just 10000)
     case res of
         Good               -> return ()
@@ -152,7 +152,7 @@ safeInterpreter p i = do
 timeoutEval :: Int -> Output -> IO Output
 timeoutEval i xs = do
     ref <- newIORef []
-    xs' <- timeout 5000000 $ try $ eval xs i ref
+    xs' <- timeout 10000000 $ try $ eval xs i ref
     case xs' of
         Just (Left (e :: SomeException)) -> case show e of
             v | "eventqueue full" `isPrefixOf` v -> modifyIORef ref (EventQueueFull :)
