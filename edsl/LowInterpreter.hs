@@ -27,8 +27,8 @@ type Var s = STRef s
     STRef s SSMExp
   , -- List of processes that are waiting for writes to this variable.
     [Proc s]
-  , -- Has this variable been written to in this instance?
-    Bool
+  , -- The time when this variable was last written to
+    Word64
   , Maybe Word64
   , Maybe SSMExp
   )
@@ -110,8 +110,12 @@ interpret p = runST interpret'
               Nothing -> error $ concat ["interpreter error - can not find function ", main p]
           m <- flip mapM (zip (LowCore.arguments process) (args p)) $ \((n,t), a) ->
               case a of
-                  Left e  -> newVar' e                >>= \v -> return (n,v)
-                  Right r -> newVar' (defaultValue (dereference t)) >>= \v -> return (n,v)
+                  Left e  -> do
+                      v <- newVar' e 0
+                      return (n,v)
+                  Right r -> do
+                      v <- newVar' (defaultValue (dereference t)) 0
+                      return (n,v)
           return $ Map.fromList m
 
       -- | Names and types of arguments to the program entrypoint.
@@ -329,11 +333,14 @@ fork (n,args) prio dep par = do
       params :: [String] -> Interp s (Map.Map String (Var s))
       params names = do
           st <- gets process
+          currenttime <- gets now
           m <- flip mapM (zip names args) $ \(n, a) ->
               case a of
                   Left e  -> do v <- eval e
-                                lift' (newVar' v) >>= \v'  -> return (n, v')
-                  Right r -> lookupRef (fst r)    >>= \ref -> return (n, ref)
+                                v' <- lift' (newVar' v currenttime)
+                                return (n, v')
+                  Right r -> do ref <- lookupRef (fst r)
+                                return (n, ref)
           return $ Map.fromList m
 
 writeRef :: String -> SSMExp -> Interp s ()
@@ -391,7 +398,8 @@ pds k = do
 newRef :: String -> SSMExp -> Interp s ()
 newRef n e = do
     v <- eval e
-    ref <- lift' $ newVar' v
+    currenttime <- gets now
+    ref <- lift' $ newVar' v currenttime
     p <- gets process
     modify $ \st -> st { written = ref : written st
                        , process = p { localrefs = Map.insert n ref (localrefs p) }
@@ -402,29 +410,31 @@ newRef n e = do
 newVar :: String -> SSMExp -> Interp s ()
 newVar n e = do
     v <- eval e
-    ref <- lift' $ newVar' v
+    currenttime <- gets now
+    ref <- lift' $ newVar' v currenttime
     p <- gets process
     modify $ \st -> st { written = ref : written st
                        , process = p { variables = Map.insert n ref (variables p) }
                        }
 
 -- | Creates a new `Var s` with an initial value.
-newVar' :: SSMExp -> ST s (Var s)
-newVar' v = do
+newVar' :: SSMExp -> Word64 -> ST s (Var s)
+newVar' v n = do
     val <- newSTRef v
-    ref <- newSTRef (val, [], True, Nothing, Nothing)
+    ref <- newSTRef (val, [], n, Nothing, Nothing)
     return ref
 
 -- | Function returns True if variable was written in this instant, and otherwise False.
 wasWritten :: String -> Interp s SSMExp
 wasWritten r = do
     p <- gets process
+    n <- gets now
     case Map.lookup r (variables p) of
-        Just v -> do (_,_,b,_,_) <- lift' $ readSTRef v
-                     return $ Lit TBool $ LBool b
+        Just v -> do (_,_,t,_,_) <- lift' $ readSTRef v
+                     return $ Lit TBool $ LBool $ t == n
         Nothing -> case Map.lookup r (localrefs p) of
-            Just v  -> do (_,_,b,_,_) <- lift' $ readSTRef v
-                          return $ Lit TBool $ LBool b
+            Just v  -> do (_,_,t,_,_) <- lift' $ readSTRef v
+                          return $ Lit TBool $ LBool $ t == n
             Nothing -> error $ "interpreter error - can not find variable " ++ r
 
 writeVar :: Var s -> SSMExp -> Interp s ()
@@ -444,7 +454,8 @@ writeVar_ ref e prio = do
 
     -- update the variable to be written to in this instant and give it knowledge of
     -- which processes are still waiting on it
-    lift' $ writeSTRef ref (variable, keep, True, me, mv)
+    n <- gets now
+    lift' $ writeSTRef ref (variable, keep, n, me, mv)
   where
       desensitize :: Proc s -> Interp s ()
       desensitize p = do

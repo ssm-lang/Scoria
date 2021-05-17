@@ -1,7 +1,8 @@
-** Bugs I found with the generator **
+## Bugs I found with the generator
 
-1) It generated this program
+1. It generated this program
 
+```
 Procedure fun1
 Argument var1
 If False
@@ -14,6 +15,7 @@ Fork [
        fun1((1 + -1))
      ]
 Result ()
+```
 
 Which of course makes no sense. However, the C code inflooped where it was supposed to be able to
 handle it anyway. The problem was the code generator. When a process is forked it is placed in the
@@ -25,54 +27,25 @@ program counter. The fix was to make sure that if only one process is forked, th
 is incremented before the call, while if more than one process is forked the program counter should
 be incremented after they are forked.
 
-2)
+2. Function prototypes were for some programs generated in the wrong place, namely after their first reference point. The fix was to collect all structs and function prototypes during code generation and make sure that they are the first thing that appears in the C file.
 
-Function prototypes were for some programs generated in the wrong place, namely after their first
-reference point. The fix was to collect all structs and function prototypes during code generation and
-make sure that they are the first thing that appears in the C file.
+3. I was pattern-matching only on the scenario where BinderAnn had captured variable names for us. I had to add the more general pattern and make sure to generate fresh names if BinderAnn hasn't run, which is the case with the generator.
 
-3)
+4. I had nonexhaustive-patterns in the part of the interpreter that evaluated expressions. I Had to finish the function definition.
 
-I was pattern-matching only on the scenario where BinderAnn had captured variable names for us. I
-had to add the more general pattern and make sure to generate fresh names if BinderAnn hasn't run,
-which is the case with the generator.
+5. The interpreter would infinitely loop if a program does not terminate. In order to be able to cease execution if needed I rewrote it to give output lazily instead. It still infinitely loops but I don't have to wait for the computation to finish before I get the output.
 
-4)
+6. When I implemented the interpreter I did not consider a variable 'written' when it was created, so if I create a reference r and then check @r, the result would be false. It appears that the RTS considers variables to be written to in the same instant where they are created, so I changed the interpreter to act accordingly.
 
-I had nonexhaustive-patterns in the part of the interpreter that evaluated expressions. I Had to
-finish the function definition.
+## Bugs I found after changing the AST to be more easily manipulated
 
-5)
+7. I had forgotten to include a return statement in the generated enter function, resulting in the scheduler throwing an assertion error. Caught by a generated program.
 
-The interpreter would infinitely loop if a program does not terminate. In order to be able to
-cease execution if needed I rewrote it to give output lazily instead. It still infinitely loops but
-I don't have to wait for the computation to finish before I get the output.
+8. I had wrongly specified the output format of the generated c code program, so the result parser did not work properly.
 
-6)
+9. Bug in the code generator where returns where not inserter properly at all places. Whenever the program should block it needs to return, pending future rescheduling into the readyqueue. This is the program the produced the bug:
 
-When I implemented the interpreter I did not consider a variable 'written' when it was created,
-so if I create a reference r and then check @r, the result would be false. It appears that the
-RTS considers variables to be written to in the same instant where they are created, so I changed
-the interpreter to act accordingly.
-
-** Bugs I found after changing the AST to be more easily manipulated **
-
-7)
-
-I had forgotten to include a return statement in the generated enter function, resulting in the
-scheduler throwing an assertion error. Caught by a generated program.
-
-8)
-
-I had wrongly specified the output format of the generated c code program, so the result parser
-did not work properly.
-
-9)
-
-Bug in the code generator where returns where not inserter properly at all places. Whenever the program
-should block it needs to return, pending future rescheduling into the readyqueue. This is the program
-the produced the bug:
-
+```Haskell
 Program {main = "fun2", args = [Right ("ref1",Ref TInt),Left (-1 < 1),Right ("ref3",Ref TBool)],
 
 funs = fromList [("fun1",
@@ -94,33 +67,19 @@ Procedure {name = "fun2", arguments = [("ref1",Ref TInt),("var2",TBool),("ref3",
              , After ((-3 * -3) + 1) ("ref3",Ref TBool) (-1 < 1)
              , NewRef (Fresh "v1") (Ref TInt) ((- 3) * (-2 + 2))
              ]})]}
+```
 
-In fun2 the second branch in the if-statement is chosen, but rather than blocking there the codegenerator
-just kept on evaluating everything after the if. Clearly an issue.
+In fun2 the second branch in the if-statement is chosen, but rather than blocking there the codegenerator just kept on evaluating everything after the if. Clearly an issue.
 
-10)
+10. Found bug in the interpreter where I had forgotten to make the interpreter output the final result of the input variables once the program had finished executiing. The traces between the two different runs did not share the same suffix.
 
-Found bug in the interpreter where I had forgotten to make the interpreter output the final result
-of the input variables once the program had finished executiing. The traces between the two different
-runs did not share the same suffix.
+11. Found a bug in the interpreter where it did not print the outputreferences in the end properly. It only worked if the process the program started evaluating first was also the last one to be evaluated before the program terminated. If the last statement executed by any process in the program is a blocking one, and the entrypoint was not in the readyqueue, it would not print the state of the inputreferences properly.
 
-11)
+12. Found a bug in the codegenerator where the state of the inputreferences to the program was printed incorrectly. Integers were printed with the formatter %u while it should have been %d.
 
-Found a bug in the interpreter where it did not print the outputreferences in the end properly. It
-only worked if the process the program started evaluating first was also the last one to be
-evaluated before the program terminated. If the last statement executed by any process in the
-program is a blocking one, and the entrypoint was not in the readyqueue, it would not print the
-state of the inputreferences properly.
+13. It managed to shrink a true monster of a program down to this very short one that produced a bug:
 
-12)
-
-Found a bug in the codegenerator where the state of the inputreferences to the program was printed
-incorrectly. Integers were printed with the formatter %u while it should have been %d.
-
-13)
-
-It managed to shrink a true monster of a program down to this very short one that produced a bug:
-
+```Haskell
 Program:
   entrypoint: fun17
   arguments: [Right ("ref9",Ref TBool)]
@@ -142,6 +101,7 @@ fun17(("ref9",Ref TBool))
   After 5 ("ref9",Ref TBool) false
   After 2 ("v5",Ref TBool) false
 fun3()
+```
 
 It is easy to see that it should first perform the update at time 2, and then the update at time 5. The
 interpreter did it in the other order, meaning there's a bug in the interpreter.
@@ -150,30 +110,26 @@ The bug was in the nextEventTime function, which is supposed to return the time 
 to happen.
 
 This is the old version:
+```Haskell
 -- | Inspects the eventqueue and returns the next event time.
 nextEventTime :: Interp s Int
 nextEventTime = do
     evs <- gets events
     return $ foldl max 0 (map at evs)
+```
 
 Clearly it does the exact opposite, which is proof that there is more than an insignificant amount of
 neanderthal DNA in me. The fix is to get the minimum instead.
 
+```Haskell
 return $ foldl min maxBound (map at evs)
+```
 
-14)
+14. Found a bug in the runtime system where an activation record could be deallocated with dangling pointers. If you register an event on a local variable and then terminate that process, the event will remain in the event queue while the reference to the variable to update is the same one. The fix is to track down all local variables in the event queue before deallocating the activation record, and removing them if there exists any scheduled update. Since we are using a priority queue this incurs a linear time search through the event queue. Perhaps another data structure is more appropriate.
 
-Found a bug in the runtime system where an activation record could be deallocated with dangling pointers.
-If you register an event on a local variable and then terminate that process, the event will remain
-in the event queue while the reference to the variable to update is the same one. The fix is to track
-down all local variables in the event queue before deallocating the activation record, and removing
-them if there exists any scheduled update. Since we are using a priority queue this incurs a linear time
-search through the event queue. Perhaps another data structure is more appropriate.
+15. I found a bug in the interpreter when I ran the following program `e2 inputref`:
 
-15)
-
-I found a bug in the interpreter when I ran the following program (e2 inputref):
-
+```Haskell
 e1 :: Ref Int64 -> SSM ()
 e1 = box "e1" ["ref2"] $ \ref2 -> do
   ref2 <~ (int64 5)
@@ -183,6 +139,7 @@ e1 = box "e1" ["ref2"] $ \ref2 -> do
 e2 :: Ref Int64 -> SSM ()
 e2 = box "e2" ["ref1"] $ \ref1 -> do
   fork [ e1 ref1, e1 ref1 ]
+```
 
 If we start in e2 we will fork two e1, and then they will both block, at which point the program
 should terminate as there are no scheduled events and no processes in the ready queue. The interpreter
@@ -192,6 +149,7 @@ In one place in the report it said that when a variable is written we should onl
 that are waiting for a update, that have a greater priority than the process that is performing the
 update. Here is the patch
 
+```Haskell
 writeVar :: Var s -> SSMExp -> Interp s ()
 writeVar ref e = do
     (variable,waits, _) <- lift' $ readSTRef ref
@@ -208,20 +166,21 @@ writeVar ref e = do
     -- update the variable to be written to in this instant and give it knowledge of
     -- which processes are still waiting on it
     lift' $ writeSTRef ref (variable, keep, True)
+```
+16. QuickCheck generated a program like this one
 
-16)
-
-QuickCheck generated a program like this one
-
+```Haskell
 eventorder :: Ref Int -> Ref Int -> SSM ()
 eventorder = box "eventorder" ["r1","r2"] $ \r1 r2 -> do
   after 2 r1 5
   after 2 r2 10
+```
 
 The event r1 = 5 should happen first (in the instant) and then r2 = 10. It should not make a difference
 I think, but we still want them to do the same thing. The fix was to ensure that events are
 inserted in the right order in the interpreter.
 
+```Haskell
 schedule_event :: Event s -> Interp s ()
 schedule_event e = do
     evs <- gets events
@@ -236,14 +195,14 @@ schedule_event e = do
           if at e1 < at e2
               then e1 : e2 : es
               else e2 : insert e1 es
+```
 
 Right now the two queues are in the interprer just lists that we make sure to insert things into
 in an ordered fashion, but there should really be a better datastructure for this. A tree or something.
 
-17)
+17. It generated a program that was quite large, even after shrinking. The interpreter crashed.
 
-It generated a program that was quite large, even after shrinking. The interpreter crashed.
-
+```Haskell
 entrypoint:
   fun5(ref17, ref20, ref23, ref26, ref27, (42 + 21), ref30, ref31, ref33, ref38, ref41, ref43)
 
@@ -280,6 +239,7 @@ fun6(*int ref6, int var9, *int ref11, *int ref22, *int ref24, *bool ref27, *int 
   after 2132 then ref38 = ((84 + 57) - (1 + var9))
   fork [fun4(ref40, ref39, ref31), fun6(ref24, ((v0 + 1) * (1 - 27)), ref34, ref6, ref11, ref27, ref22, ref37, ref29, ref38, ref37, ref11, ref40, ref39, ref42, ref45, ref40, (1 + 84))]
 }
+```
 
 The problem was that the interpreter crashed when it evaluated (v0 + 1) * (1 - 27) in fun6. So, we see that
 v0 is the same as the value of ref28. When we forked fun6, ref28 was applied to the value v0 in 
@@ -293,19 +253,12 @@ to do this when we created a new reference. If the initial value to a reference 
 that we've gotten from another process etc, some issue arose where the name var28 was not resolved to its
 actual value.
 
-18)
+18. Apparently Haskells `Int` type is not actually 32 bit, despite it saying so all over the internet. Running `maxBound :: Int` quickly reveals that they are in fact 64 bits. There was some issue where the code generator would overflow its values while the interpreter would not. The fix is to just switch all `Int` points to using actual `Int32` instead.
 
-Apparently Haskells `Int` type is not actually 32 bit, despite it saying so all over the internet.
-Running `maxBound :: Int` quickly reveals that they are in fact 64 bits. There was some issue where
-the code generator would overflow its values while the interpreter would not. The fix is to
-just switch all `Int` points to using actual `Int32` instead.
-
-19)
-
-When a process terminates any outstanding events on the local references must be deallocated. I did this
-in the interpreter but I had forgotten to update the counter that keeps track of how many events
+19. When a process terminates any outstanding events on the local references must be deallocated. I did this in the interpreter but I had forgotten to update the counter that keeps track of how many events
 there are in the event queue.
 
+```Haskell
 leave :: Interp s ()
 leave = do
     ...
@@ -316,9 +269,11 @@ leave = do
         return $ isJust mt
     modify $ \st -> st { events = events st \\ todeq }
     ...
+```
 
 became
 
+```Haskell
 leave :: Interp s ()
 leave = do
     ...
@@ -327,34 +282,22 @@ leave = do
     todeq <- flip filterM lrefs $ \r -> do
         (_,_,_,mt,_) <- lift' $ readSTRef r
         return $ isJust mt
-    modify $ \st -> st { events = events st \\ todeq
+    modify $ \st -> st { events    = events st \\ todeq
                        , numevents = numevents st - length todeq
                        }
     ...
+```
 
-20)
+20. I had a bug in the interpreter related to the max length of the continuation queue. The generated C code uses a dummy parent process to fork the initial entrypoint of the program, and thus the length of the continuation queue is 1 when the program starts initially. The c program reported an error when the queue length was overrun, but the interpreter still thought it had room for 1 more process. The solution was to start the continuation count at 1 when interpretation begins.
 
-I had a bug in the interpreter related to the max length of the continuation queue. The generated C
-code uses a dummy parent process to fork the initial entrypoint of the program, and thus the length of
-the continuation queue is 1 when the program starts initially. The c program reported an error when the
-queue length was overrun, but the interpreter still thought it had room for 1 more process.
-
-The solution was to start the continuation count at 1 when interpretation begins.
-
-21)
-
-Bug in the code generator. When a variable is initialized the event time is set to ULONG_MAX.
-The code generator initialized a variable only when it was first used, but if this was in e.g an
-else branch that was never executed, the variable would have remained uninitialized. When the call to
-dequeue_event was made before leaving the RTS inspects the event time to figure out if it was in the
-event queue (and should thus be removed). If it is not in the event queue the event time value is
-ULONG_MAX. However, without initializing the variable this value is 0, tricking the RTS into deallocating
-an event that is not there.
+21. Bug in the code generator. When a variable is initialized the event time is set to ULONG_MAX. The code generator initialized a variable only when it was first used, but if this was in e.g an else branch that was never executed, the variable would have remained uninitialized. When the call to dequeue_event was made before leaving the RTS inspects the event time to figure out if it was in the event queue (and should thus be removed). If it is not in the event queue the event time value is
+ULONG_MAX. However, without initializing the variable this value is 0, tricking the RTS into deallocating an event that is not there.
 
 So, initially the generated code looked like this. Notice that the variable v3 is not initialized in the
 step function and that it is instead initialized when we are interpreting the `NewRef` constructor,
 which is a result of the `var` combinator.
 
+```c
 typedef struct {
     ACTIVATION_RECORD_FIELDS;
     sv_int64_t* ref6;
@@ -396,11 +339,13 @@ void step_fun8(act_t* gen_act) {
         leave((act_t *) act, sizeof(act_fun8_t));
     }
 }
+```
 
 The fix is to initialize all local references in the enter function rather than the first time that the
 variable is used. This was we ensure that whenever they are referenced in the step function they will
 always have been initialized properly.
 
+```c
 typedef struct {
     ACTIVATION_RECORD_FIELDS;
     sv_int64_t* ref6;
@@ -442,3 +387,6 @@ void step_fun8(act_t* gen_act) {
         leave((act_t *) act, sizeof(act_fun8_t));
     }
 }
+```
+
+22. There was a bug in the interpreter. I initially used a `Bool` in each variable to keep track on if they had been written to in the current instant. The problem with this approach is that it then becomes important to make sure to 'reset' this Bool before each instant begins. There were some issues where the input references to a program were not reset properly. The easiest fix was to change from a Bool to a `Word64`, where the `Word64` signifies which instant the variable was most recenty written to in. Then there is no need to reset the variables as the @-operator is now just implemented as a comparison between the stored time and now.
