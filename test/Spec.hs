@@ -31,11 +31,11 @@ trace x = unsafePerformIO $ putStrLn (show x) >> return x
 main :: IO ()
 main = do
 --    quickCheck $ prop_correct singlecase
-      regression_test
+--      regression_test
 --      r <- testSingle singlecase (Just 10000)
 --      print r 
 --      return ()
---    quickCheck (verboseShrinking prop_correct)
+    quickCheck (verboseShrinking prop_correct)
 --    quickCheck (withMaxSuccess 1000 $ verboseShrinking prop_valgrind_ok)
 
 regression_test :: IO ()

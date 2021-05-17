@@ -299,3 +299,35 @@ Apparently Haskells `Int` type is not actually 32 bit, despite it saying so all 
 Running `maxBound :: Int` quickly reveals that they are in fact 64 bits. There was some issue where
 the code generator would overflow its values while the interpreter would not. The fix is to
 just switch all `Int` points to using actual `Int32` instead.
+
+19)
+
+When a process terminates any outstanding events on the local references must be deallocated. I did this
+in the interpreter but I had forgotten to update the counter that keeps track of how many events
+there are in the event queue.
+
+leave :: Interp s ()
+leave = do
+    ...
+    -- need to dequeue event on local references before we leave
+    let lrefs = Map.elems $ localrefs p
+    todeq <- flip filterM lrefs $ \r -> do
+        (_,_,_,mt,_) <- lift' $ readSTRef r
+        return $ isJust mt
+    modify $ \st -> st { events = events st \\ todeq }
+    ...
+
+became
+
+leave :: Interp s ()
+leave = do
+    ...
+    -- need to dequeue event on local references before we leave
+    let lrefs = Map.elems $ localrefs p
+    todeq <- flip filterM lrefs $ \r -> do
+        (_,_,_,mt,_) <- lift' $ readSTRef r
+        return $ isJust mt
+    modify $ \st -> st { events = events st \\ todeq
+                       , numevents = numevents st - length todeq
+                       }
+    ...

@@ -258,7 +258,9 @@ leave = do
     todeq <- flip filterM lrefs $ \r -> do
         (_,_,_,mt,_) <- lift' $ readSTRef r
         return $ isJust mt
-    modify $ \st -> st { events = events st \\ todeq } -- difference
+    modify $ \st -> st { events = events st \\ todeq
+                       , numevents = numevents st - length todeq
+                       }
     
     -- if we have a parent and we are the only running child, schedule the parent
     case parent p of

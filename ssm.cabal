@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 445eff947907a84496b7de17d29ae03327319866e8ac0856e34e058bcc123087
+-- hash: 07ed46726dcef5145711154d60b0ddde9a441d6ca60328b19389a6423ad5ec7a
 
 name:           ssm
 version:        0.1.0.0
@@ -88,6 +88,7 @@ executable print-ssm-from-file
     , mtl
     , parser-combinators
     , prettyprinter
+    , ssm
     , text
   default-language: Haskell2010
 
