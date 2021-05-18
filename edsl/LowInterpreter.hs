@@ -450,10 +450,10 @@ writeVar_ ref e prio = do
     (variable,waits,_,me,mv) <- lift' $ readSTRef ref
     lift' $ writeSTRef variable e -- actually update the variable value
 
-    let (towait, keep) = Map.partition (\p' -> prio < priority p') waits
+    let (keep, towake) = Map.split prio waits
 
     -- wake up and desensitize the processes
-    mapM_ desensitize towait
+    mapM_ desensitize towake
 
     -- update the variable to be written to in this instant and give it knowledge of
     -- which processes are still waiting on it
