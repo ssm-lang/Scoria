@@ -1,7 +1,6 @@
 {-# LANGUAGE StrictData #-}
 module LowInterpreter where
 
-import qualified Data.Map as Map
 import Control.Monad.State.Lazy
 import Control.Monad.Writer.Lazy
 import Control.Monad.ST.Lazy
@@ -9,7 +8,8 @@ import Control.Monad.Extra
 import Data.STRef.Lazy
 import Data.List
 import Data.Maybe
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
+import qualified Data.IntMap.Strict as IntMap
 import Data.Int
 import Data.Word
 
@@ -27,10 +27,12 @@ type Var s = STRef s
   ( -- Reference pointing to the actual value of the variable.
     STRef s SSMExp
   , -- List of processes that are waiting for writes to this variable.
-    [Proc s]
+    Map.Map Int (Proc s)
   , -- The time when this variable was last written to
     Word64
+    -- The next time there's a scheduled event on this variable
   , Maybe Word64
+    -- The new value this variable will get at the next event time
   , Maybe SSMExp
   )
 
@@ -44,7 +46,9 @@ data Proc s = Proc
   , runningChildren :: Int
   -- | Parent of this process, Nothing in the case of main
   , parent          :: Maybe (STRef s (Proc s))
+  -- | Variables that are either expressions or references passed from a parent
   , variables       :: Map.Map String (Var s)
+  -- | Variables that are references that are local to this process
   , localrefs       :: Map.Map String (Var s)
   -- | Variables this process is waiting for, if any
   , waitingOn       :: Maybe [Var s]
@@ -64,15 +68,13 @@ data St s = St
   { -- | Current time
     now        :: Word64
   -- | Outstanding events
-  , events     :: [Var s]
+  , events     :: Map.Map Word64 [Var s]
   -- | Number of outstanding events
   , numevents  :: Int
   -- | Processes ready to run, should be a priority queue
-  , readyQueue :: [Proc s]
+  , readyQueue :: IntMap.IntMap (Proc s)
   -- | Number of processes in the readyqueue
   , numconts   :: Int
-  -- | References that were written in this instance
-  , written    :: [Var s]
   -- | Map that associated names with procedures.
   , procedures :: Map.Map String Procedure
   -- | Argment-references given to the entrypoint
@@ -98,7 +100,7 @@ interpret p = runST interpret'
           let actualrefs = getReferences p $ variables process
           outp <- execWriterT $ 
                     evalStateT (run >> emitResult) 
-                      (St 0 [] 0 [process] 1 refs (funs p) actualrefs process)
+                      (St 0 Map.empty 0 (IntMap.singleton 0 process) 1 (funs p) actualrefs process)
           return $ fromHughes outp
 
       -- | Creates the initial variable storage for the program. Expressions are just
@@ -163,12 +165,10 @@ run = do tick
       instant :: Interp s ()
       instant = do
         st <- get
-        if null (events st)
+        if Map.null (events st)
             then return ()
             else do now' <- nextEventTime
-                    modify $ \st -> st { now     = now'
-                                       , written = []
-                                       }
+                    modify $ \st -> st { now     = now' }
                     tick
                     st <- get
                     tell $ toHughes [T.Instant (now st) (numevents st)]
@@ -263,7 +263,11 @@ leave = do
     todeq <- flip filterM lrefs $ \r -> do
         (_,_,_,mt,_) <- lift' $ readSTRef r
         return $ isJust mt
-    modify $ \st -> st { events = events st \\ todeq
+    todeqpairs <- flip mapM todeq $ \r -> do
+        (_,_,_,mt,_) <- lift' $ readSTRef r
+        return (fromJust mt, r)
+
+    modify $ \st -> st { events = events st Map.\\ (Map.fromList todeqpairs)
                        , numevents = numevents st - length todeq
                        }
     
@@ -289,26 +293,30 @@ schedule_event e thn val = do
     -- if it was scheduled before we remove the old one from the eventqueue
     -- and just insert it again.
     if isJust mt
-        then do let es' = delete e (events st)
-                es''    <- insert thn e es'
-                modify $ \st -> st { events = es'' }
+        then do let newevs = insert_event thn e (delete_event (fromJust mt) e (events st))
+                modify $ \st -> st { events = newevs }
     -- otherwise we check if the queue is full before we schedule the new event
         else if numevents st == 8192
             then error "eventqueue full"
-            else do es' <- insert thn e (events st)
-                    modify $ \st -> st { events    = es' --insert thn e (events st)
+            else do let es' = insert_event thn e (events st)
+                    modify $ \st -> st { events    = es'
                                        , numevents = numevents st + 1
                                        }
 
-  where
-      insert :: Word64 -> Var s -> [Var s] -> Interp s [Var s]
-      insert _ e []         = return [e]
-      insert thn e1 (e2:es) = do
-          (_,_,_,Just t,_) <- lift' $ readSTRef e2
-          if thn < t
-              then return $ e1 : e2 : es
-              else do es' <- insert thn e1 es
-                      return $ e2 : es'
+adjustWithDefault :: Ord k => (a -> a) -> a -> k -> Map.Map k a -> Map.Map k a
+adjustWithDefault f v k m =
+    if Map.member k m
+        then Map.adjust f k m
+        else Map.insert k v m
+
+insert_event :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
+insert_event when v m = adjustWithDefault (v :) [v] when m
+
+delete_event :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
+delete_event when v m = case Map.lookup when m of
+    Just [x] -> if x == v then Map.delete when m else m
+    Just x   -> Map.adjust (delete v) when m
+    Nothing  -> m
 
 lift' :: ST s a -> Interp s a
 lift' = lift . lift
@@ -350,11 +358,9 @@ writeRef r e = do
     case Map.lookup r (variables p) of
         Just ref -> do v <- eval e
                        writeVar ref v
-                       modify $ \st -> st { written = ref : written st }
         Nothing  -> case Map.lookup r (localrefs p) of
             Just ref -> do v <- eval e
                            writeVar ref v
-                           modify $ \st -> st { written = ref : written st }
             Nothing -> error $ "interpreter error - can not find variable " ++ r
 
 -- | Read a variable from the current processes environment.
@@ -402,9 +408,7 @@ newRef n e = do
     currenttime <- gets now
     ref <- lift' $ newVar' v currenttime
     p <- gets process
-    modify $ \st -> st { written = ref : written st
-                       , process = p { localrefs = Map.insert n ref (localrefs p) }
-                       }
+    modify $ \st -> st { process = p { localrefs = Map.insert n ref (localrefs p) } }
 
 -- | Create a new variable with an initial value, and adds it to the current process's
 -- variable storage. When a variable is created it is considered written to.
@@ -414,15 +418,13 @@ newVar n e = do
     currenttime <- gets now
     ref <- lift' $ newVar' v currenttime
     p <- gets process
-    modify $ \st -> st { written = ref : written st
-                       , process = p { variables = Map.insert n ref (variables p) }
-                       }
+    modify $ \st -> st { process = p { variables = Map.insert n ref (variables p) } }
 
 -- | Creates a new `Var s` with an initial value.
 newVar' :: SSMExp -> Word64 -> ST s (Var s)
 newVar' v n = do
     val <- newSTRef v
-    ref <- newSTRef (val, [], n, Nothing, Nothing)
+    ref <- newSTRef (val, Map.empty, n, Nothing, Nothing)
     return ref
 
 -- | Function returns True if variable was written in this instant, and otherwise False.
@@ -448,7 +450,7 @@ writeVar_ ref e prio = do
     (variable,waits,_,me,mv) <- lift' $ readSTRef ref
     lift' $ writeSTRef variable e -- actually update the variable value
 
-    let (towait, keep) = partition (\p' -> prio < priority p') waits
+    let (towait, keep) = Map.partition (\p' -> prio < priority p') waits
 
     -- wake up and desensitize the processes
     mapM_ desensitize towait
@@ -463,7 +465,7 @@ writeVar_ ref e prio = do
           let variables = fromJust $ waitingOn p
           forM_ variables $ \r -> do
               (ref,procs,b,me,mv) <- lift' $ readSTRef r
-              lift' $ writeSTRef r (ref, delete p procs,b,me,mv)
+              lift' $ writeSTRef r (ref, Map.delete (priority p) procs,b,me,mv)
           enqueue $ p { waitingOn = Nothing}
 
 -- | Make the procedure wait for writes to the variable
@@ -473,9 +475,9 @@ sensitize v = do
     r <- lookupRef v
     (ref,procs,b,me,mv) <- lift' $ readSTRef r
     -- don't want to register a process twice
-    if p `elem` procs
+    if Map.member (priority p) procs
         then return ()
-        else lift' $ writeSTRef r (ref, p:procs,b,me,mv)
+        else lift' $ writeSTRef r (ref, Map.insert (priority p) p procs,b,me,mv)
 
 {- | Perform all the events scheduled for this instance, enqueueing those processes that
 were waiting for one of these events to happen. -}
@@ -488,13 +490,14 @@ performEvents = do
       currentEvents :: Interp s [Var s]
       currentEvents = do
           st <- get
-          (current, future) <- flip partitionM (events st) $ \e -> do
-              (_,_,_,Just t,_) <- lift' $ readSTRef e
-              return $ t == now st
+          n <- gets now
+          let current = Map.lookup n (events st)
+          let future  = Map.delete n (events st)
+
           put $ st { events    = future
-                   , numevents = numevents st - length current
+                   , numevents = numevents st - maybe 0 length current
                    }
-          return current
+          return $ maybe [] reverse current
 
       {- | Perform the update of a scheduled event and enqueue processes that were waiting for
       this event to happen. -}
@@ -511,18 +514,20 @@ performEvents = do
           
           -- perform the actual update, eventually scheduling processes
           writeVar_ e (fromJust mv) (-1)
-          modify $ \st -> st { written = e : written st}
 
 -- | Fetch the process with the lowest priority from the ready queue
 dequeue :: Interp s (Proc s)
 dequeue = do
     st <- get
-    case readyQueue st of
-        [] -> error $ "interpreter error - dequeue called on empty readyqueue"
-        (x:xs) -> do put $ st { readyQueue = xs
-                              , numconts   = numconts st - 1
-                              }
-                     return x
+    let conts = readyQueue st
+    if IntMap.null conts
+        then error "interpreter error - dequeue called on empty readyqueue"
+        else do let x = IntMap.findMin conts
+                let conts' = IntMap.deleteMin conts
+                put $ st { readyQueue = conts'
+                         , numconts = numconts st - 1
+                         }
+                return $ snd x
 
 -- | Enqueue a process in the ready queue, ordered by its priority
 enqueue :: Proc s -> Interp s ()
@@ -530,7 +535,7 @@ enqueue p = do
     nc <- gets numconts
     if nc >= 8192
         then error "contqueue full"
-        else modify $ \st -> st { readyQueue = insert p (readyQueue st)
+        else modify $ \st -> st { readyQueue = IntMap.insert (priority p) p (readyQueue st)
                                 , numconts   = numconts st + 1
                                 }
   where
@@ -544,11 +549,9 @@ enqueue p = do
 nextEventTime :: Interp s Word64
 nextEventTime = do
     evs <- gets events
-    case evs of
-        [] -> return maxBound
-        (x:xs) -> do (_,_,_,Just t,_) <- lift' $ readSTRef x
-                     return t
---    return $ foldl min maxBound (map at evs)
+    if Map.null evs
+        then return maxBound
+        else return $ fst $ Map.findMin evs
 
 -- | Return the next instruction of the current process if one exists.
 popInstruction :: Interp s (Maybe Stm)

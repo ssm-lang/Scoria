@@ -111,8 +111,7 @@ arbProc funs vars refs c n = frequency $
       --  )
 
       , (1, do let forkable = elements funs `suchThat` canBeCalled refs
-               tofork     <- genListOfLength forkable 10 `suchThat` (not . null)
---               tofork      <- listOf forkable `suchThat` (not . null)
+               tofork     <- genListOfLength forkable 5 `suchThat` (not . null)
                forks       <- mapM (applyFork vars refs) tofork
                let stm      = Fork forks
                (rest,c') <- arbProc funs vars refs c (n-1)
