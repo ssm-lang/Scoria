@@ -168,7 +168,7 @@ run = do tick
         if Map.null (events st)
             then return ()
             else do now' <- nextEventTime
-                    modify $ \st -> st { now     = now' }
+                    modify $ \st -> st { now = now' }
                     tick
                     st <- get
                     tell $ toHughes [T.Instant (now st) (numevents st)]
@@ -227,7 +227,7 @@ runProcess = do
                 runProcess
             Skip            -> runProcess
             After d r v     -> do
-                ref  <- lookupRef (fst r)
+                ref  <- lookupRef $ fst r
                 d'   <- getUInt64 <$> eval d
                 v'   <- eval v
                 now' <- gets now
@@ -260,14 +260,14 @@ leave = do
 
     -- need to dequeue event on local references before we leave
     let lrefs = Map.elems $ localrefs p
-    todeq <- flip filterM lrefs $ \r -> do
+    todeq <- flip filterM lrefs $ \r -> do   -- references to dequeue
         (_,_,_,mt,_) <- lift' $ readSTRef r
         return $ isJust mt
-    todeqpairs <- flip mapM todeq $ \r -> do
+    todeqpairs <- flip mapM todeq $ \r -> do -- turn them into pairs
         (_,_,_,mt,_) <- lift' $ readSTRef r
         return (fromJust mt, r)
 
-    modify $ \st -> st { events = events st Map.\\ (Map.fromList todeqpairs)
+    modify $ \st -> st { events = delete_events todeqpairs (events st)
                        , numevents = numevents st - length todeq
                        }
     
@@ -303,20 +303,24 @@ schedule_event e thn val = do
                                        , numevents = numevents st + 1
                                        }
 
-adjustWithDefault :: Ord k => (a -> a) -> a -> k -> Map.Map k a -> Map.Map k a
-adjustWithDefault f v k m =
-    if Map.member k m
-        then Map.adjust f k m
-        else Map.insert k v m
-
 insert_event :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
 insert_event when v m = adjustWithDefault (v :) [v] when m
+  where
+      adjustWithDefault :: Ord k => (a -> a) -> a -> k -> Map.Map k a -> Map.Map k a
+      adjustWithDefault f v k m =
+          if Map.member k m
+              then Map.adjust f k m
+              else Map.insert k v m
 
 delete_event :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
 delete_event when v m = case Map.lookup when m of
     Just [x] -> if x == v then Map.delete when m else m
     Just x   -> Map.adjust (delete v) when m
     Nothing  -> m
+
+delete_events :: [(Word64, Var s)] -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
+delete_events [] m         = m
+delete_events ((t,v):xs) m = delete_events xs $ delete_event t v m
 
 lift' :: ST s a -> Interp s a
 lift' = lift . lift
@@ -574,8 +578,9 @@ eval e = do
     p <- gets process
     case e of
         Var _ n -> case Map.lookup n (variables p) of
-            Just r -> do v <- lift $ lift $ (readSTRef . \(x,_,_,_,_) -> x) =<< readSTRef r
-                         eval v
+            Just r -> do 
+                v <- lift $ lift $ (readSTRef . \(x,_,_,_,_) -> x) =<< readSTRef r
+                eval v
             Nothing -> error $ "interpreter error - variable " ++ n ++ " not found in current process"
         Lit _ l -> return e
         UOp _ e Neg -> do

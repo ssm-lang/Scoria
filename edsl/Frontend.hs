@@ -110,9 +110,9 @@ instance FromLiteral Word8 where
     fromLit i = FLit $ LUInt8 (fromIntegral i)
 
 instance (Num a, FromLiteral a, SSMType a) => Num (Exp a) where
-    (Exp e1) + (Exp e2) = Exp $ BOp (expType e1) e1 e2 OPlus
-    (Exp e1) - (Exp e2) = Exp $ BOp (expType e1) e1 e2 OMinus
-    (Exp e1) * (Exp e2) = Exp $ BOp (expType e1) e1 e2 OTimes
+    (Exp e1) + (Exp e2) = Exp $ BOp (typeOf (Proxy @a)) e1 e2 OPlus
+    (Exp e1) - (Exp e2) = Exp $ BOp (typeOf (Proxy @a)) e1 e2 OMinus
+    (Exp e1) * (Exp e2) = Exp $ BOp (typeOf (Proxy @a)) e1 e2 OTimes
     fromInteger i = let FLit l = fromLit (fromInteger @a i)
                     in Exp $ Lit (typeOf (Proxy @a)) l
 
