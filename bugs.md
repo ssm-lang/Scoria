@@ -390,3 +390,64 @@ void step_fun8(act_t* gen_act) {
 ```
 
 22. There was a bug in the interpreter. I initially used a `Bool` in each variable to keep track on if they had been written to in the current instant. The problem with this approach is that it then becomes important to make sure to 'reset' this Bool before each instant begins. There were some issues where the input references to a program were not reset properly. The easiest fix was to change from a Bool to a `Word64`, where the `Word64` signifies which instant the variable was most recenty written to in. Then there is no need to reset the variables as the @-operator is now just implemented as a comparison between the stored time and now.
+
+23. Now we are stepping into strange territory. Some things in C have no guarantees at all, and are just referred to as undefined behavior. In C, I believe signed overflows are undefined behavior, so the compiler can choose to do anything. So far the goal of testing has been to make sure that our interpreter and generated C-code behaves exactly the same.
+
+Quickcheck generated this program:
+```
+entrypoint:
+  fun2(ref2, (107 + 58), (138 * 205))
+
+fun2(*bool ref2, int var4, int var7) {
+  *bool v1 = var True
+  var4 = ((166 + var4) * (var7 * var4))
+  ref2 = ((var4 + var4) < (var7 - var7))
+  wait [v1]
+}
+```
+It is small and straightforward, but a subtlety is that the left operand to the `<` operand overflows. More precisely, the value _should_ overflow but when in conjunction with the `<` operator, the C compiler decides to completely remove the addition from the generated asembler code (on my machine). The result of this program (final state of `ref2`) when compiled to C is 0, while the Haskell interpreter reports it as 1.
+
+Look at this small C-program:
+
+```c
+#include <stdio.h>
+
+void main() {
+    int a = 1545058350;
+    int b = 28290;
+    printf("%d\n", (1545958350 + 1545058350) < (28290 - 28290));
+    printf("%d\n", (a + a) < (b - b));
+}
+```
+On my machine the output is
+```
+1
+0
+```
+On Joel's machine, the output is
+```
+1
+1
+```
+What seems to happen is that it just inspects the sign bit on the left operand or something, and notices that an overflow occurred. From my generated assembler Joel deduced that it optimized away the addition alltogether. It is undefined behaviour, so there's no issue really, but we are comparing the results of the C code with the interpreter in Haskell, and the interpreter in Haskell behaves as I would expect, in that it performs the addition (which overflows) before it performs the comparison, so that the result will be `True`.
+
+There is a hack around this to ensure that they at least do the same thing.
+```c
+#include <stdio.h>
+
+void main() {
+    int a = 1545058350;
+    int b = 28290;
+    printf("%d\n", (1545958350 + 1545058350) < (28290 - 28290));
+#ifdef DEBUG
+    int lop = a + a;
+    int rop = b - b;
+    printf("%d\n", lop < rop);
+#else
+    printf("%d\n", (a + a) < (b - b));
+#endif DEBUG
+}
+```
+If I compile this with the `DEBUG` flag now (which should probably named `TESTING` or something, as that is what I am using it for), it would perform the addition (which overflows) and then do the comparison. This alignes with what is happening in the Haskell interpreter. If we compile it without debug we would get the 'normal' undefined behavior.
+
+One alternative would be to include special cases for this operator (and any other we discovery to have this behavior) in the interpreter, but since mine and Joel's machine behaved differently here it seems like the above solution is probably the best. At least it behaves the same on both of our machines, but we are entering undefined land after all, so maybe this whole issue is pointless?
