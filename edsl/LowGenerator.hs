@@ -51,15 +51,14 @@ instance Arbitrary Program where
                        ]
   arbitrary = do
     let typesiggen = genListOfLength arbitrary =<< choose (0,10)
-    types <- genListOfLength typesiggen =<< choose (1,10)
---    types <- take 15 <$> arbitrary `suchThat` (not . null)
+    types <- genListOfLength typesiggen =<< choose (1,5)
     let funs = [ ("fun" ++ show i, as) | (as,i) <- zip types [1..]]
     tab <- mfix $ \tab -> sequence
         [ do let (refs, vars) = partition (isReference . fst) $ zip as [1..]
              let inprefs      = [ ("ref" ++ show i        , t) | (t,i) <- refs]
              let inpvars      = [ (Fresh $ "var" ++ show i, t) | (t,i) <- vars]
 
-             (body,_)        <- arbProc tab inpvars inprefs 0 =<< choose (0, 25)
+             (body,_)        <- arbProc tab inpvars inprefs 0 =<< choose (0, 15)
 
              let params = [ (if isReference a
                              then "ref"  ++ show i

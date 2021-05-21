@@ -59,3 +59,31 @@ badwait = box "badwait" ["ref5","ref8"] $ \ref5 ref8 -> do
   after 2153 ref5 1
   wait [ref5, ref8]
   fork [ badwait ref8 ref8]
+
+sameeventtime :: Ref Int32 -> Ref Int32 -> SSM ()
+sameeventtime = box "sameeventtime" ["r1","r2"] $ \r1 r2 -> do
+  after 50 r1 5
+  after 50 r2 10
+  x <- var (5 :: Exp Int32)
+  after 20 x 10
+
+{- buggy -}
+
+bfun1 :: Ref Int64 -> Exp Int64 -> SSM ()
+bfun1 = box "bfun1" ["ref2","var5"] $ \ref2 var5 -> do
+  after 5 ref2 $ (var5 * 1)
+  wait [ref2]
+
+bfun3 :: Ref Int64 -> Ref Int64 -> Ref Int64 -> SSM ()
+bfun3 = box "bfun3" ["ref3","ref4","ref5"] $ \ref3 ref4 ref5 -> do
+  fork [ bfun1 ref4 1]
+  fork [ bfun3 ref3 ref3 ref5
+       , bfun4 ref5 ref5
+       , bfun1 ref4 0
+       ]
+
+bfun4 :: Ref Int64 -> Ref Int64 -> SSM ()
+bfun4 = box "bfun4" ["ref1","ref4"] $ \ref1 ref4 -> do
+  after 1 ref4 1
+  wait [ ref1 ]
+  fork [ bfun4 ref1 ref4 ]

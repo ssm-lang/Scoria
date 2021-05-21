@@ -1,10 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Trace where
 
-import Data.Text
+import qualified Data.Text as T
 import Data.Void
+import Data.List
 
 import Text.Megaparsec
 import Text.Megaparsec.Char
@@ -16,7 +19,7 @@ import Data.Word
 
 import Core hiding (Result, Fork)
 
-type Parser a = Parsec Void Text a
+type Parser a = Parsec Void T.Text a
 
 data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
                  | Event Word64 SSMExp     -- ^ now, new variable value
@@ -30,6 +33,40 @@ data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
   deriving (Show, Eq, Generic, NFData)
 
 type Output = [OutputEntry]
+
+{-
+Events occur between instants, and all that can happen when events are applied
+between instants is that processes are enqueued in the ready queue. Since this is
+a priority queue it does not matter which order the events are applied in, as long as
+the same events are applied in the same instant.
+-}
+instance {-# OVERLAPPING #-} Eq Output where
+    [] == [] = True
+
+    xs@(Event t _:_) == ys@(Event _ _:_) =
+        let pred i = case i of
+              Event t' _ -> t == t'
+              _            -> False
+
+            (xinsts, xs') = takeWhileAndKeep pred xs
+            (yinsts, ys') = takeWhileAndKeep pred ys
+
+        in length (union xinsts yinsts) == length xinsts &&
+           length xinsts                == length yinsts &&
+           xs'                          == ys'
+    
+    (x:xs) == (y:ys) = x == y && xs == ys
+    
+    _ == _ = False
+
+takeWhileAndKeep :: Eq a => (a -> Bool) -> [a] -> ([a],[a])
+takeWhileAndKeep f xs = go f ([], xs)
+  where
+      go _ (xs,[])      = (reverse xs, [])
+      go f (xs, (y:ys)) =
+          if f y
+              then go f (y:xs, ys)
+              else (reverse xs, y:ys)
 
 testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "event 1 value bool 1"
@@ -61,14 +98,14 @@ testoutput = Prelude.unlines [ "event 0 value int 0"
                              ]
 
 mkTrace :: String -> Output
-mkTrace inp = fromRight $ parse pTrace "" (pack inp)
+mkTrace inp = fromRight $ parse pTrace "" (T.pack inp)
   where
       fromRight :: Show a => Either a b -> b
       fromRight (Left a)  = error $ "parsing of test results failed: " ++ show a
       fromRight (Right b) = b
 
 parseLine :: String -> Maybe OutputEntry
-parseLine inp = toMaybe $ parse pTraceItem "" (pack inp)
+parseLine inp = toMaybe $ parse pTraceItem "" (T.pack inp)
   where
       toMaybe :: Show a => Either a b -> Maybe b
       toMaybe (Left a)  = Nothing
@@ -262,7 +299,7 @@ pNow = do
     return num
 
 -- | Try to parse the given text as a symbol
-pSymbol :: Text -> Parser Text
+pSymbol :: T.Text -> Parser T.Text
 pSymbol = Lexer.symbol pSpace
 
 -- | Characters we don't care about are spaces and newlines. Should probably add clrf etc also.

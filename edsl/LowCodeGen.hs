@@ -196,7 +196,12 @@ compile p mi = unlines code
   where
       -- | Entire C file.
       code :: [String]
-      code = concat [header, schedule, debug_fork, generatedcode]
+      code = concat [ header
+                    , schedule
+                    , debug_fork
+                    , add_macro
+                    , generatedcode
+                    ]
 
       -- | Generated code content.
       generatedcode :: [String]
@@ -280,6 +285,20 @@ compile p mi = unlines code
                    , ""
                    , "#endif"
                    ]
+
+      add_macro :: [String]
+      add_macro = [ "#ifdef DEBUG"
+                  , ""
+                  , "int add(int a, int b) { return a + b; }"
+                  , ""
+                  , "#define ADD(a,b) add(a,b)"
+                  , ""
+                  , "#else"
+                  , ""
+                  , "#define ADD(a,b) (a + b)"
+                  , ""
+                  , "#endif"
+                  ]
 
 -- | This function takes a procedure and returns three `IR` statements that
 -- represents the struct, enter function and step function of the procedure.
@@ -405,6 +424,7 @@ compLit e = case e of
   UOp _ e op -> case op of
     Neg -> "(-" ++ compLit e ++ ")"
 
+  BOp TInt32 e1 e2 OPlus -> concat ["add(", compLit e1, ", ", compLit e2, ")"]
   BOp _ e1 e2 op -> case op of
     OPlus  -> "(" ++ compLit e1 ++ " + " ++ compLit e2 ++ ")"
     OMinus -> "(" ++ compLit e1 ++ " - " ++ compLit e2 ++ ")"
