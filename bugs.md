@@ -451,3 +451,46 @@ void main() {
 If I compile this with the `DEBUG` flag now (which should probably named `TESTING` or something, as that is what I am using it for), it would perform the addition (which overflows) and then do the comparison. This alignes with what is happening in the Haskell interpreter. If we compile it without debug we would get the 'normal' undefined behavior.
 
 One alternative would be to include special cases for this operator (and any other we discovery to have this behavior) in the interpreter, but since mine and Joel's machine behaved differently here it seems like the above solution is probably the best. At least it behaves the same on both of our machines, but we are entering undefined land after all, so maybe this whole issue is pointless?
+
+I have fixed this with a macro like this:
+
+```c
+#ifdef DEBUG
+
+int add(int a, int b) { return a + b; }
+
+#define ADD(a,b) add(a,b)
+
+#else
+
+#define ADD(a,b) (a + b)
+
+#endif
+```
+
+and changed all occurences of `a + b` to `ADD(a,b)`.
+
+24. This program produces a bug. First it will register an event at time 5 and apply that, but then three events will be registered until second instant is over. Two of these events are for the same time (10), while one is earlier. When we insert things into the ready queue we will insert it in the end and then sift it up. When we insert the new event if will end up at the back and then be replaced with the earliest event. This will however break the order between the two events scheduled for time 10. It should not matter, however, in which order the events of an instant is applied. All that it does is to update the variable values and potentially schedule sensitized processes. Since the processes are inserted in a ready queue, the order should not matter w.r.t enqueue/dequeue operations. I fixed this by making sure that when I compare two traces I don't care about the order the events _at the same instant_ is applied, just that the same events are applied. Order is irrelevant.
+
+```Haskell
+program = bfun3 inputref inputref inputref
+
+bfun1 :: Ref Int64 -> Exp Int64 -> SSM ()
+bfun1 = box "bfun1" ["ref2","var5"] $ \ref2 var5 -> do
+  after 5 ref2 $ (var5 * 1)
+  wait [ref2]
+
+bfun3 :: Ref Int64 -> Ref Int64 -> Ref Int64 -> SSM ()
+bfun3 = box "bfun3" ["ref3","ref4","ref5"] $ \ref3 ref4 ref5 -> do
+  fork [ bfun1 ref4 1]
+  fork [ bfun3 ref3 ref3 ref5
+       , bfun4 ref5 ref5
+       , bfun1 ref4 0
+       ]
+
+bfun4 :: Ref Int64 -> Ref Int64 -> SSM ()
+bfun4 = box "bfun4" ["ref1","ref4"] $ \ref1 ref4 -> do
+  after 1 ref4 1
+  wait [ ref1 ]
+  fork [ bfun4 ref1 ref4 ]
+```
