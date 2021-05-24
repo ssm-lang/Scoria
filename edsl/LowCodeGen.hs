@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module LowCodeGen where
 
@@ -8,10 +9,19 @@ import Control.Monad.Writer.Lazy
 import Control.Monad.Reader
 import qualified Data.Map as Map
 import Data.List
+import Data.Either
 import LowCore
 import HughesList
 
 import System.IO.Unsafe
+
+import           Language.C.Quote.GCC
+import qualified Language.C.Syntax    as C
+import Text.PrettyPrint.Mainland.Class (pprList)
+import Text.PrettyPrint.Mainland (pretty, Doc)
+
+-- | Use snake_case for c literals
+{-# ANN module "HLint: ignore Use camelCase" #-}
 
 trace :: Show a => a -> a
 trace x = unsafePerformIO $ putStrLn (show x) >> return x
@@ -186,8 +196,9 @@ runTR tra = evalState tra st
 compile_ :: Bool -> Maybe Int -> Program -> String
 compile_ False _ p = compile p Nothing
 compile_ True c p  = let f = compile p c
-                         m = generateC $ mainIR p
-                     in unlines [f,m]
+                         -- m = generateC $ mainIR p
+                         m' = genMain p
+                     in unlines [f,m']
 
 -- | This function takes a `Program` and returns a string, which contains the content
 -- of the generated C file.
@@ -559,6 +570,147 @@ enterIR p = do
         refs <- gets localrefs
         return $ map (\(n,t) -> Initialize (basetype_ t) (concat ["&act->", n])) refs
 
+topReturnId :: String
+topReturnId = "top_return"
+
+forkId :: String
+forkId = "fork_routine"
+
+stepId :: String -> String
+stepId routine = "step_" ++ routine
+
+enterId :: String -> String
+enterId routine = "enter_" ++ routine
+
+svtInitializeId :: String -> String
+svtInitializeId ty = "initialize_" ++ ty
+
+svtId :: String -> String
+svtId ty = "sv_" ++ ty ++ "_t"
+
+actId :: String -> String
+actId ty = "act_" ++ ty ++ "_t"
+
+-- | The type of the activation record base class
+act_t :: C.Type
+act_t = [cty|typename act_t|]
+
+sv_t :: C.Type
+sv_t = [cty|typename sv_t|]
+
+svtType :: String -> C.Type
+svtType ty = [cty|typename $id:(svtId ty)|]
+
+actType :: String -> C.Type
+actType ty = [cty|typename $id:(actId ty)|]
+
+mkStruct :: Procedure -> TR C.Definition
+mkStruct procedure = undefined
+
+mkEnter :: Procedure -> TR C.Definition
+mkEnter procedure = undefined
+
+nextCase :: TR Int
+nextCase = do
+  n <- gets ncase
+  modify $ \st -> st { ncase = n + 1 }
+  return n
+
+mkStep :: Procedure -> TR C.Definition
+mkStep procedure = do
+    _ <- nextCase -- Toss away 0th case
+    cases <- fmap concat . mapM mkCase $ body procedure
+    final <- nextCase
+    -- FIXME: double check that this is the correct generation of first and
+    -- final labels
+    return [cedecl| void $id:step($ty:act_t *gen_act) {
+      $ty:act *act = ($ty:act *) gen_act; /* FIXME: remove cast */
+      switch (gen_act->pc) {
+      case 0:;
+        $stms:cases
+
+      case $int:final:;
+        $stms:dequeues
+        leave(($ty:act_t *) act, sizeof($ty:act)); /* FIXME: remove cast */
+        return;
+      }
+      printf("Error: Unreachable\n");
+      assert(0);
+    }|]
+    where step = stepId $ name procedure
+          act = actType $ name procedure
+          dequeues = [] -- FIXME
+
+-- | TODO: doc
+--
+-- Note that this compilation scheme might not work if the language were to
+-- support return statements. This could be fixed by placing synthesizing
+-- a break, and moving the leave call to outside of the switch statement.
+mkCase :: Stm -> TR [C.Stm]
+mkCase (NewRef n t v) = return []
+mkCase (GetRef n t v) = return []
+mkCase (SetRef r e) = return []
+mkCase (SetLocal n t e2) = return []
+mkCase (If c thn els) = return []
+mkCase (While c body) = return []
+mkCase (After d r v) = return []
+mkCase (Changed n t r) = return []
+mkCase (Wait refs) = return []
+mkCase (Fork calls) = return []
+mkCase Skip = return []
+
+topReturn :: C.Definition
+topReturn = [cedecl| void $id:topReturnId($ty:act_t *act) { return; } |]
+
+-- | Generate C definition for main program
+-- TODO items: (1) lift per-type default value and formatters from here
+--             (2) remove pointer cast
+--             (3) centralize debug logic
+mkMain :: Program -> C.Definition
+mkMain program = [cedecl|
+    void main(void) {
+      $ty:act_t top = { .step = $id:topReturnId };
+
+      $items:refInits
+
+      $id:forkId(($ty:act_t *) /* FIXME */ $id:enter($args:enterArgs));
+
+      tick();
+
+      DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
+
+      while(1) {
+        now = next_event_time();
+        if(now == NO_EVENT_SCHEDULED)
+          break;
+        tick();
+        DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
+      }
+
+      $items:refPrints
+    }
+  |]
+  where enter = enterId $ main program
+        enterArgs = [ [cexp|&top|]
+                    , [cexp|PRIORITY_AT_ROOT|]
+                    , [cexp|DEPTH_AT_ROOT|]
+                    ] ++ map enterArg (args program)
+
+        enterArg (Left ssmExp) = undefined
+        enterArg (Right (ref, _)) = [cexp|&$id:ref|]
+
+        refInits = concatMap refInit $ rights $ args program
+        refPrints = map refPrint $ rights $ args program
+
+        refInit (ref, typ) = [ [citem|$ty:(svtType typename) $id:ref;|]
+                             , [citem|$id:(svtInitializeId typename)(&$id:ref);|]
+                             , [citem|$id:ref.value = /* FIXME */ 0;|]
+                             ]
+                             where typename = show $ basetype_ typ
+
+        refPrint (ref, typ) = [citem|printf($string:fmtString, /* FIXME */ (long) $id:ref.value);|]
+                              where fmtString = "result " ++ ref ++ " %ld\n"
+
 -- | This function takes a procedure and generates an `IR` instruction that represents
 -- the step function of this procedure.
 stepIR :: Procedure -> TR IR
@@ -569,7 +721,7 @@ stepIR p = do
     cases      <- gencase (body p)
     dequeues   <- dequeueLocalEvents
     let end    = dequeues ++ [Leave (name p)]
-    let switch = flip createBlocks end cases
+    let switch = createBlocks cases end
     return $ fun $ [ cast
                    , switch
                    ]
@@ -667,7 +819,7 @@ stepIR p = do
                 return $ if length callstrings == 1
                         then [DebugPrint debugstr, pc, Call (head callstrings), Return]
                         else [DebugPrint debugstr, ForkProcedures callstrings, pc, Return]
-          
+
 
 -- | Returns a tuple where the first cell list contains the statements up to and including
 -- the next blocking statement, and the second cell contains the statements left after
@@ -679,76 +831,9 @@ untilBlock (x : xs) = case x of
   Fork _ -> ([x], xs)
   _      -> ([x],[]) <> untilBlock xs
 
-mainIR :: Program -> [IR]
-mainIR p = [ Function Void "top_return"
-                       [("act", Pointer $ Act "")]
-                       [Return]
-             , Blank
-             , Function Void "main" [] bdy
-             ]
-  where
-      bdy :: [IR]
-      bdy = concat $ [ [
-                       Blank
-                     , Literal 4 $ "act_t top = { .step = top_return }"]
-                     , refinits
-                     , [Literal 4 $ concat $ ["fork_routine((act_t *) enter_", main p
-                                             ,"(", intercalate ", " entryargs, "))"]
-                     , Literal 4 "tick()"
-                     , debugprint 4
-                     , LiteralNoSemi 4 "while(1) {"
-                     , Literal 8 "now = next_event_time()"
-                     , LiteralNoSemi 8 "if(now == NO_EVENT_SCHEDULED)"
-                     , Literal 12 "break"
-                     , Literal 8 "tick()"
-                     , debugprint 8
-                     , LiteralNoSemi 4 "}"]
-                     , printrefs
-                     ]
 
-      -- | The sequence of `IR` statements that represent the initialization of
-      -- the program input references.
-      refinits :: [IR]
-      refinits = concat $ mapRight (args p) $ \(r,t) ->
-          [ Literal 4 $ concat $ ["sv_", show (basetype_ t), "_t ", r]
-          , Literal 4 $ concat $ ["initialize_", show (basetype_ t), "(&", r, ")"]
-          , Literal 4 $ concat $ [r, ".value = ", defaultValue t]]
-
-      -- | Default value for references of different types.
-      defaultValue :: Type -> String
-      defaultValue TInt32  = "0"
-      defaultValue TInt64  = "0L"
-      defaultValue TUInt64  = "0UL"
-      defaultValue TUInt8  = "0"
-      defaultValue TBool   = "false"
-      defaultValue (Ref t) = defaultValue t
-
-      -- | Map over a list of eithers and only keep the results obtained by mapping
-      -- a function over the `Right` elements.
-      mapRight :: [Either a b] -> (b -> c) -> [c]
-      mapRight [] _           = []
-      mapRight (Right a:xs) f = f a : mapRight xs f
-      mapRight (_:xs) f       = mapRight xs f
-
-      entryargs :: [String]
-      entryargs = [ "&top"
-                  , "PRIORITY_AT_ROOT"
-                  , "DEPTH_AT_ROOT"
-                  ] ++ map (either compLit ((++) "&" . fst)) (args p)
-
-      printrefs :: [IR]
-      printrefs = mapRight (args p) $ \(r,t) ->
-          Literal 4 $ concat ["printf(\"result ", r, " ", formatter t, "\\n\", ", r, ".value)"]
-      
-      formatter :: Type -> String
-      formatter (Ref TInt32)  = "int %d"
-      formatter (Ref TInt64)  = "int64 %ld"
-      formatter (Ref TUInt64) = "uint64 %lu"
-      formatter (Ref TUInt8)  = "uint8 %u"
-      formatter (Ref TBool)   = "bool %d"
-
-      debugprint :: Int -> IR
-      debugprint i = Literal i $ concat ["DEBUG_PRINT(\"now %lu eventqueuesize %d\\n\", now, event_queue_len)"]
+genMain :: Program -> String
+genMain p = ""
 
 {- ***************** Code generation *************** -}
 
