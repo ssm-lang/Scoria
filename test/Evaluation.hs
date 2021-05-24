@@ -63,6 +63,16 @@ runCGValgrind p mi = do
       wrapValgrind :: Maybe (String -> (String, [String]))
       wrapValgrind = Just $ \cmd -> ("valgrind", ["--error-exitcode=123", cmd])
 
+runCGCompilation :: Program -> IO Bool
+runCGCompilation p = do
+    setupTestDir
+    createTestFile p True Nothing
+    c <- tryCompile p True
+    removeTestDir
+    case c of
+        Left _  -> return False
+        Right _ -> return True
+
 {-********** Utility functions for generating code and running tests **********-}
 
 -- | Name of temporary test directory
@@ -129,6 +139,7 @@ createTestFile program b d = do
 -- | Try to compile a program in the test directory. The bool signifies if the
 -- debug flag should be enabled while compiling. Without the flag the executable is
 -- much less verbose about what it is doing.
+-- TODO: It's probably possible to just inspect the returncode here
 tryCompile :: Program -> Bool -> IO (Either String ())
 tryCompile p debug = inDirectory testdir $ do
     let name = getname p

@@ -35,27 +35,43 @@ main = do
 --    r <- testSingle program (Just 10000)
 --    print r
 --    return ()
---    quickCheck $ prop_correct singlecase
-      regression_test
---      r <- testSingle singlecase (Just 10000)
---      print r 
+--    quickCheck $ verboseShrinking $ prop_test_dummy
+--      regression_test
+--      r <- testSingle singlecase limit
+--      case r of
+--          Good -> putStrLn "Good"
+--          Bad t1 t2 -> putStrLn $ errorStr t1 t2
+--          _         -> return ()
 --      return ()
---    quickCheck (verboseShrinking prop_correct)
---    quickCheck (withMaxSuccess 1000 $ verboseShrinking prop_valgrind_ok)
+--    quickCheck (withMaxSuccess 5000 $ verboseShrinking prop_correct)
+--    quickCheck (withMaxSuccess 1000 $ prop_valgrind_ok)
+    quickCheck (withMaxSuccess 5000 prop_compiles_ok)
+
+data Dummy = Dummy Program deriving Show
+
+instance Arbitrary Dummy where
+    arbitrary = return $ Dummy singlecase
+    shrink (Dummy p) = map Dummy $ shrink p
+
+prop_test_dummy :: Dummy -> Property
+prop_test_dummy (Dummy p) = prop_correct p
+
+limit :: Maybe Int
+limit = Just 7500
 
 regression_test :: IO ()
 regression_test = do
     sequence_ $ flip map testcases $ \p -> do
-        r <- testSingle p (Just 10000)
+        r <- testSingle p limit
         case r of
             Good -> putStrLn "good"
             _ -> putStrLn "bad"
 
 prop_correct :: Program -> Property
-prop_correct p = whenFail (do writeFile "timeout.c" $ compile_ True (Just 10000) p
+prop_correct p = whenFail (do writeFile "timeout.c" $ compile_ True limit p
                               writeFile "timeout.ssm" $ show p) $
-      within 10000000 $ monadicIO $ do
-    res <- run $ testSingle p (Just 10000)
+      within 15000000 $ monadicIO $ do
+    res <- run $ testSingle p limit
     case res of
         Good               -> return ()
         Bad t1 t2          -> do monitor (whenFail $ do
@@ -63,7 +79,7 @@ prop_correct p = whenFail (do writeFile "timeout.c" $ compile_ True (Just 10000)
                                             putStrLn "Test failed!"
                                             putStrLn "************\n"
                                             putStrLn "writing fail.c..."
-                                            writeFile "fail.c" (compile_ True (Just 10000) p)
+                                            writeFile "fail.c" (compile_ True limit p)
                                             putStrLn "writing fail.ssm..."
                                             writeFile "fail.ssm" (show p)
                                             putStrLn "writing fail.out..."
@@ -76,7 +92,7 @@ prop_correct p = whenFail (do writeFile "timeout.c" $ compile_ True (Just 10000)
                                             putStrLn   "*****************\n"
                                             putStrLn s
                                             putStrLn "writing comperror.c"
-                                            writeFile "comperror.c" $ compile_ True (Just 10000) p
+                                            writeFile "comperror.c" $ compile_ True limit p
                                             putStrLn "writing comperror.ssm"
                                             writeFile "comperror.ssm" $ show p)
                                  assert False
@@ -86,7 +102,7 @@ prop_correct p = whenFail (do writeFile "timeout.c" $ compile_ True (Just 10000)
                                             putStrLn   "***************\n"
                                             putStrLn s
                                             putStrLn "writing execerror.c"
-                                            writeFile "execerror.c" $ compile_ True (Just 10000) p
+                                            writeFile "execerror.c" $ compile_ True limit p
                                             putStrLn "writing execerror.ssm"
                                             writeFile "execerror.ssm" $ show p)
                                  assert False
@@ -96,7 +112,7 @@ prop_correct p = whenFail (do writeFile "timeout.c" $ compile_ True (Just 10000)
                                             putStrLn   "***********\n"
                                             putStrLn s
                                             putStrLn "writing parseerror.c"
-                                            writeFile "parseerror.c" $ compile_ True (Just 10000) p
+                                            writeFile "parseerror.c" $ compile_ True limit p
                                             putStrLn "writing parseerror.ssm"
                                             writeFile "parseerror.ssm" $ show p
                                             putStrLn "writing parseerror.trace"
@@ -108,10 +124,16 @@ prop_correct p = whenFail (do writeFile "timeout.c" $ compile_ True (Just 10000)
 
 -- valgrind prop
 -- for every generated program, valgrind will be happy
-
 prop_valgrind_ok :: Program -> Property
 prop_valgrind_ok p = monadicIO $ do
-    b <- run $ runCGValgrind p (Just 10000)
+    b <- run $ runCGValgrind p limit
+    assert b
+
+-- compile prop
+-- for every generated program, compilation will be successful
+prop_compiles_ok :: Program -> Property
+prop_compiles_ok p = monadicIO $ do
+    b <- run $ runCGCompilation p
     assert b
 
 {- | Tests a fully applied SSM program by evaluating both the interpreter and running
@@ -121,7 +143,7 @@ testSingle program mi = do
     report1   <- runCG program mi
     case report1 of
         Generated trace1 -> do trace2 <- safeInterpreter program (length trace1)
-                               if trace1 /= trace2
+                               if not (trace1 == trace2)
                                    then return $ Bad trace1 trace2
                                    else return $ Good
         otherwise      -> return otherwise
@@ -144,7 +166,6 @@ errorStr xs ys = unlines $ zipWith (\x y -> padTo xsmax x ++ padTo ysmax y ++ in
               else " <----- different" 
           else ""
 
-
 safeInterpreter :: Program -> Int -> IO Output
 safeInterpreter p i = do
     timeoutEval i $ runInterpreter p
@@ -152,7 +173,7 @@ safeInterpreter p i = do
 timeoutEval :: Int -> Output -> IO Output
 timeoutEval i xs = do
     ref <- newIORef []
-    xs' <- timeout 10000000 $ try $ eval xs i ref
+    xs' <- timeout 15000000 $ try $ eval xs i ref
     case xs' of
         Just (Left (e :: SomeException)) -> case show e of
             v | "eventqueue full" `isPrefixOf` v -> modifyIORef ref (EventQueueFull :)
