@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 07ed46726dcef5145711154d60b0ddde9a441d6ca60328b19389a6423ad5ec7a
+-- hash: 7bed5b76fbfb2f2f098ba7bdfb170a69c9bb60ee86de3103323887745124942f
 
 name:           ssm
 version:        0.1.0.0
@@ -50,6 +50,7 @@ library
     , deepseq
     , extra
     , language-c-quote
+    , mainland-pretty
     , megaparsec
     , mtl
     , parser-combinators
@@ -84,6 +85,7 @@ executable print-ssm-from-file
     , deepseq
     , extra
     , language-c-quote
+    , mainland-pretty
     , megaparsec
     , mtl
     , parser-combinators
@@ -119,6 +121,7 @@ executable ssm-exe
     , deepseq
     , extra
     , language-c-quote
+    , mainland-pretty
     , megaparsec
     , mtl
     , parser-combinators
@@ -157,6 +160,7 @@ test-suite ssm-test
     , directory
     , extra
     , language-c-quote
+    , mainland-pretty
     , megaparsec
     , mtl
     , parser-combinators
