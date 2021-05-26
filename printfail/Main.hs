@@ -2,6 +2,7 @@ module Main where
 
 import System.Environment
 
+import LowPretty
 import SSM
 
 main :: IO ()

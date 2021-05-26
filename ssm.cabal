@@ -98,6 +98,7 @@ executable ssm-exe
   main-is: Main.hs
   other-modules:
       Buggy
+      ButtonBlinky
       Examp
       Examp2
       Example
@@ -107,6 +108,7 @@ executable ssm-exe
       Foo
       Manyrefs
       NonTerminate
+      Nullary
       Paths_ssm
   hs-source-dirs:
       app
@@ -137,6 +139,7 @@ test-suite ssm-test
   other-modules:
       Evaluation
       Buggy
+      ButtonBlinky
       Examp
       Examp2
       Example
@@ -146,6 +149,7 @@ test-suite ssm-test
       Foo
       Manyrefs
       NonTerminate
+      Nullary
       Paths_ssm
   hs-source-dirs:
       test

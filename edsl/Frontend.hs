@@ -29,9 +29,12 @@ module Frontend
      , fork
      , changed
      , if'
+     , ifThen
+     , ifThenElse
      , while'
      , SSM -- reexport so we don't need to import Core and get all the constructors
      , Box(..)
+     , BoxNullary(..)
      , Int64(..)
      , Word64(..)
 ) where
@@ -214,6 +217,12 @@ changed (Ptr r) = do
 -- | Conditional executing with a dangling else
 if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()
 if' (Exp c) thn els = emit $ If c thn els
+
+ifThen :: Exp Bool -> SSM () -> SSM ()
+ifThen c thn = if' c thn Nothing
+
+ifThenElse :: Exp Bool -> SSM () -> SSM () -> SSM ()
+ifThenElse c thn els = if' c thn (Just els)
 
 while' :: Exp Bool -> SSM () -> SSM ()
 while' (Exp c) bdy = emit $ While c bdy

@@ -144,7 +144,7 @@ arbProc funs vars refs c n = frequency $
       
       , (1, do r@(_,t)  <- elements refs
                v        <- choose (0,3) >>= arbExp (dereference t) vars
-               delay    <- Lit TUInt64 . LUInt64 <$> choose (0, 5000)
+               delay    <- Lit TUInt64 . LUInt64 <$> choose (1, 5000)
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm   = After delay r v
                return (stm:rest, c')
