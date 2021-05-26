@@ -36,16 +36,16 @@ main = do
 --    print r
 --    return ()
 --    quickCheck $ verboseShrinking $ prop_test_dummy
---      regression_test
+      regression_test
 --      r <- testSingle singlecase limit
 --      case r of
 --          Good -> putStrLn "Good"
 --          Bad t1 t2 -> putStrLn $ errorStr t1 t2
 --          _         -> return ()
 --      return ()
-    quickCheck (withMaxSuccess 5000 $ verboseShrinking prop_correct)
-    quickCheck (withMaxSuccess 5000 $ prop_compiles_ok)
-    quickCheck (withMaxSuccess 1000 $ prop_valgrind_ok)
+--    quickCheck (withMaxSuccess 15000 $ verboseShrinking prop_correct)
+--    quickCheck (withMaxSuccess 5000 $ prop_compiles_ok)
+--    quickCheck (withMaxSuccess 1000 $ prop_valgrind_ok)
 
 data Dummy = Dummy Program deriving Show
 
