@@ -6,12 +6,6 @@ module LowCodeGen where
 import Control.Monad.State.Lazy (State, evalState, gets, modify)
 import Data.Either (rights)
 import qualified Data.Map as Map
--- import Control.Monad.Writer.Lazy
--- import Control.Monad.Reader
--- import Data.List
--- import HughesList
--- import System.IO.Unsafe
-
 import Language.C.Quote.GCC
 import qualified Language.C.Syntax as C
 import LowCore
@@ -33,9 +27,11 @@ compile_ wantMain tickLimit program = pretty 120 $ pprList compUnit
 
     concat2 (x, y) = (concat x, concat y)
 
--- | State maintained while compiling a program
+-- | State maintained while compiling a procedure
 data TRState = TRState
-  { -- | Which number has the next case?
+  { -- | Procedure we are compiling
+    procedure :: Procedure,
+    -- | Which number has the next case?
     ncase :: Int,
     -- | The size of the widest wait
     numwaits :: Int,
@@ -47,8 +43,8 @@ data TRState = TRState
 type TR a = State TRState a
 
 -- | Run a TR computation.
-runTR :: TR a -> a
-runTR tra = evalState tra $ TRState 0 0 []
+runTR :: Procedure -> TR a -> a
+runTR p tra = evalState tra $ TRState p 0 0 []
 
 nextCase :: TR Int
 nextCase = do
@@ -155,7 +151,7 @@ svt_ ty = [cty|typename $id:(svtId $ typeId ty)|]
 
 -- | FIXME: This only works because we don't have nested Refs (yet)
 param_ :: Type -> C.Type
-param_ (Ref ty) = [cty|typename $id:(typeId ty) *|]
+param_ (Ref ty) = [cty|$ty:(svt_ ty) *|]
 param_ ty = [cty|typename $id:(typeId ty)|]
 
 act_ :: String -> C.Type
@@ -172,7 +168,6 @@ $esc:("#include <stdint.h>")
 
 extern void $id:dequeue_event($ty:sv_t *var);
 
-/* #ifdef DEBUG */
 extern $ty:time_t now;
 extern int can_schedule($ty:sv_t *var);
 
@@ -181,15 +176,6 @@ $ty:time_t limit = $exp:limit;
 static int __add(int a, int b) {
   return a + b;
 }
-$esc:("#define ADD(a, b) __add(a, b)")
-
-/* #else */
-
-#define ADD(a, b) (a + b)
-
-// #define SCHEDULE (schedule_fun, var, then, value) (*schedule_fun)(var, then, value);
-
-/* #endif */
 
 |]
   where
@@ -237,7 +223,7 @@ mkMain program =
       ]
         ++ map enterArg (args program)
 
-    enterArg (Left ssmExp) = mkExp ssmExp
+    enterArg (Left ssmExp) = mkExp [] ssmExp -- FIXME: this is buggy if ssmExp contains a var
     enterArg (Right (ref, _)) = [cexp|&$id:ref|]
 
     refInits = concatMap refInit $ rights $ args program
@@ -253,64 +239,16 @@ mkMain program =
       where
         fmtString = "result " ++ ref ++ " %ld\n"
 
--- schedule :: [String]
--- schedule =
---   [ "#ifdef DEBUG",
---     "",
---     "extern peng_time_t now;",
---     "extern int can_schedule(sv_t *var);",
---     "#define SCHEDULE(schedule_fun, var, then, value)    \\",
---     "if(now >= then) {                                   \\",
---     "  printf(\"bad after\\n\");                            \\",
---     "  exit(1);                                          \\",
---     "}                                                   \\",
---     "if(!can_schedule((sv_t *) var)) {                   \\",
---     "  printf(\"eventqueue full\\n\");                      \\",
---     "  exit(1);                                          \\",
---     "}                                                   \\",
---     "(*schedule_fun)(var, then, value);",
---     "",
---     "#else",
---     "",
---     "#define SCHEDULE(schedule_fun, var, then, value) \\",
---     "(*schedule_fun)(var, then, value);",
---     "",
---     "#endif"
---   ]
-
--- debug_fork :: [String]
--- debug_fork =
---   [ "#ifdef DEBUG",
---     "",
---     "extern int can_fork();",
---     "#define FORK(act, new_depth)     \\",
---     "if((int8_t) new_depth < 0) {     \\",
---     "  printf(\"negative depth\\n\");    \\",
---     "  exit(1);                       \\",
---     "}                                \\",
---     "if(!can_fork()) {                \\",
---     "  printf(\"contqueue full\\n\");    \\",
---     "  exit(1);                       \\",
---     "}                                \\",
---     "fork_routine(act);",
---     "",
---     "#else",
---     "",
---     "#define FORK(act, new_depth) \\",
---     "fork_routine(act);",
---     "",
---     "#endif"
---   ]
-
 mkProcedure :: Procedure -> ([C.Definition], [C.Definition])
-mkProcedure procedure = runTR $ do
-  (stepDecl, stepDefn) <- mkStep procedure
-  (enterDecl, enterDefn) <- mkEnter procedure
-  structDefn <- mkStruct procedure
+mkProcedure p = runTR p $ do
+  (stepDecl, stepDefn) <- mkStep
+  (enterDecl, enterDefn) <- mkEnter
+  structDefn <- mkStruct
   return ([structDefn, enterDecl, stepDecl], [enterDefn, stepDefn])
 
-mkStruct :: Procedure -> TR C.Definition
-mkStruct procedure = do
+mkStruct :: TR C.Definition
+mkStruct = do
+  p <- gets procedure
   ts <- gets numwaits
   ls <- gets locals
   return
@@ -318,11 +256,11 @@ mkStruct procedure = do
   typedef struct {
     $sdecls:aCTIVATION_RECORD_FIELDS
 
-    $sdecls:(map param (arguments procedure))
+    $sdecls:(map param (arguments p))
     $sdecls:(map local ls)
     $sdecls:(map trig [1..ts])
 
-  } $id:(actId $ name procedure);
+  } $id:(actId $ name p);
   |]
   where
     aCTIVATION_RECORD_FIELDS =
@@ -340,18 +278,26 @@ mkStruct procedure = do
       where
         t = "trig" ++ show i
 
-mkEnter :: Procedure -> TR (C.Definition, C.Definition)
-mkEnter procedure = do
+mkEnter :: TR (C.Definition, C.Definition)
+mkEnter = do
+  p <- gets procedure
   ts <- gets numwaits
   ls <- gets locals
+
+  let act = act_ (name p)
+      enter = enter_ (name p)
+      step = stepId (name p)
+      params =
+        [cparams|$ty:act *caller, $ty:priority_t priority, $ty:depth_t depth|]
+          ++ map param (arguments p)
   return
     ( [cedecl| $ty:act *$id:enter($params:params);|],
       [cedecl|
   $ty:act *$id:enter($params:params) {
-    $ty:act_t gen_act = $id:act_enter(sizeof($ty:act), $id:step, caller, priority, depth);
-    $ty:act act = ($ty:act *) gen_act;
+    $ty:act_t *gen_act = $id:act_enter(sizeof($ty:act), $id:step, caller, priority, depth);
+    $ty:act *act = ($ty:act *) gen_act;
 
-    $stms:(map initParam (arguments procedure))
+    $stms:(map initParam (arguments p))
     $stms:(map initLocal ls)
     $stms:(map initTrig [1..ts])
 
@@ -359,30 +305,23 @@ mkEnter procedure = do
   }|]
     )
   where
-    act = act_ (name procedure)
-    enter = enter_ (name procedure)
-    step = stepId (name procedure)
-
-    params =
-      [cparams|$ty:act *caller, $ty:priority_t priority, $ty:depth_t depth|]
-        ++ map param (arguments procedure)
     param (n, t) = [cparam|$ty:(param_ t) $id:n|]
-
     -- initParam (n, Ref t) = -- TODO: do we need to treat refs differently?
     initParam (n, _) = [cstm|act->$id:n = $id:n;|]
     initLocal (n, t) = [cstm| $id:(initialize_ t)(&act->$id:n);|]
-    initTrig i = [cstm| act->$id:trig = gen_act;|]
+    initTrig i = [cstm| act->$id:trig.act = gen_act;|]
       where
         trig = "trig" ++ show i
 
-mkStep :: Procedure -> TR (C.Definition, C.Definition)
-mkStep procedure = do
+mkStep :: TR (C.Definition, C.Definition)
+mkStep = do
+  p <- gets procedure
   _ <- nextCase -- Toss away 0th case
-  cases <- concat <$> mapM mkCase (body procedure)
+  cases <- concat <$> mapM mkCase (body p)
   refs <- gets locals
   final <- nextCase
-  -- FIXME: double check that this is the correct generation of first and
-  -- final labels
+  let step = stepId (name p)
+      act = act_ (name p)
   return
     ( [cedecl|void $id:step($ty:act_t *gen_act);|],
       [cedecl|
@@ -392,9 +331,9 @@ mkStep procedure = do
       case 0:;
         $stms:cases
 
-      case $int:final:;
+      case $int:final:; /* FIXME: this last case is not needed */
         $stms:(map dequeue refs)
-        leave(($ty:act_t *) act, sizeof($ty:act)); /* FIXME: remove cast */
+        leave(gen_act, sizeof($ty:act));
         return;
       }
       printf("Error: Unreachable\n");
@@ -402,8 +341,6 @@ mkStep procedure = do
     }|]
     )
   where
-    step = stepId (name procedure)
-    act = act_ (name procedure)
     dequeue (s, _) = [cstm|$id:dequeue_event(($ty:sv_t *) &act->$id:s);|]
 
 -- | TODO: doc
@@ -415,9 +352,10 @@ mkStep procedure = do
 -- TODOs: remove hard-coded `act` stuff
 mkCase :: Stm -> TR [C.Stm]
 mkCase (NewRef n t v) = do
+  params <- map fst . arguments <$> gets procedure
   let lvar = getVarName n
       lhs = [cexp|&act->$id:lvar|]
-      rhs = mkExp v
+      rhs = mkExp params v
   addLocal lvar t
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (GetRef n t (rvar, _)) = do
@@ -430,35 +368,40 @@ mkCase (GetRef n t (rvar, _)) = do
           else [cexp|act->$id:rvar->value|]
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (SetRef (lvar, t) e) = do
+  params <- map fst . arguments <$> gets procedure
   refs <- map fst <$> gets locals
   let lhs =
         if lvar `elem` refs
           then [cexp|&act->$id:lvar|]
           else [cexp|act->$id:lvar|]
-      rhs = mkExp e
+      rhs = mkExp params e
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (SetLocal n t e) = do
+  params <- map fst . arguments <$> gets procedure
   let lvar = getVarName n
       lhs = [cexp|&act->$id:lvar|]
-      rhs = mkExp e
+      rhs = mkExp params e
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (If c t e) = do
-  let cnd = mkExp c
+  params <- map fst . arguments <$> gets procedure
+  let cnd = mkExp params c
   thn <- concat <$> mapM mkCase t
   els <- concat <$> mapM mkCase e
   return [[cstm| if ($exp:cnd) { $stms:thn } else { $stms:els }|]]
 mkCase (While c b) = do
-  let cnd = mkExp c
+  params <- map fst . arguments <$> gets procedure
+  let cnd = mkExp params c
   bod <- concat <$> mapM mkCase b
   return [[cstm| while ($exp:cnd) { $stms:bod } |]]
 mkCase (After d (lvar, t) v) = do
+  params <- map fst . arguments <$> gets procedure
   refs <- map fst <$> gets locals
-  let del = mkExp d
+  let del = mkExp params d
       lhs =
         if lvar `elem` refs
           then [cexp|&act->$id:lvar|]
           else [cexp|act->$id:lvar|]
-      rhs = mkExp v
+      rhs = mkExp params v
   return [[cstm| $id:(later_ t)($exp:lhs, $exp:del, $exp:rhs);|]]
 mkCase (Changed n t (rvar, _)) = do
   refs <- map fst <$> gets locals
@@ -489,52 +432,49 @@ mkCase (Wait ts) = do
         then [cexp|&act->$id:trig|]
         else [cexp|act->$id:trig|]
 mkCase (Fork cs) = do
-  caseNum <- nextCase
+  params <- map fst . arguments <$> gets procedure
   refs <- map fst <$> gets locals
+  caseNum <- nextCase
+  let depthSub = (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Integer
+      newDepth = [cexp|act->depth - $int:depthSub|]
+      mkArgs i extraArgs =
+        [ [cexp|act|],
+          [cexp|act->priority + $int:i * (1 << $exp:newDepth)|],
+          newDepth
+        ]
+          ++ extraArgs
+
+      mkCall i (r, as) = [cstm|$id:fork(($ty:act_t *) $id:(enter_ r)($args:enterArgs));|]
+        where
+          enterArgs = mkArgs i $ map mkArg as
+      mkArg (Left e) = mkExp params e
+      mkArg (Right (r, _)) =
+        if r `elem` refs
+          then [cexp|&act->$id:r|]
+          else [cexp|act->$id:r|]
   return $
-    zipWith (mkCall refs) [1::Int ..] cs
+    zipWith mkCall [1 :: Int ..] cs
       ++ [ [cstm| gen_act->pc = $int:caseNum; |],
            [cstm| return; |],
            [cstm| case $int:caseNum: ; |]
          ]
-  where
-    depthSub = (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Integer
-    prioInc = 2 ^ depthSub
-    enterArgs i params =
-      [ [cexp|act|],
-        [cexp|act->priority + $int:(prioInc * i)|],
-        [cexp|act->depth - $int:depthSub|]
-      ]
-        ++ params
-
-    mkCall refs i (r, as) = [cstm|$id:fork(($ty:act_t *) $id:(enter_ r)($args:actuals));|]
-      where
-        actuals = enterArgs i $ map (mkArg refs) as
-    mkArg _ (Left e) = mkExp e
-    mkArg refs (Right (r, _)) =
-      if r `elem` refs
-        then [cexp|&act->$id:r|]
-        else [cexp|act->$id:r|]
 mkCase Skip = return []
 
--- | Compile an expression into the string that represent its semantic value.
--- By semantic I mean that the result will be of type `int` or `bool`:
---
 -- TODO: double check that the quasi quote thing handles parenthesization and
 -- precedence for us.
-mkExp :: SSMExp -> C.Exp
-mkExp (Var _ e) = [cexp|act->$id:e.value|]
-mkExp (Lit _ (LInt32 i)) = [cexp|$int:i|]
-mkExp (Lit _ (LUInt8 i)) = [cexp|$int:i|]
-mkExp (Lit _ (LInt64 i)) = [cexp|$int:i|]
-mkExp (Lit _ (LUInt64 i)) = [cexp|$int:i|]
-mkExp (Lit _ (LBool True)) = [cexp|true|]
-mkExp (Lit _ (LBool False)) = [cexp|false|]
-mkExp (UOp _ e Neg) = [cexp|- $exp:(mkExp e)|]
-mkExp (BOp TInt32 e1 e2 OPlus) = [cexp|add($exp:(mkExp e1), $exp:(mkExp e2))|]
-mkExp (BOp _ e1 e2 op) = c op
+mkExp :: [String] -> SSMExp -> C.Exp
+mkExp _ (Lit _ (LInt32 i)) = [cexp|$int:i|]
+mkExp _ (Lit _ (LUInt8 i)) = [cexp|$int:i|]
+mkExp _ (Lit _ (LInt64 i)) = [cexp|$int:i|]
+mkExp _ (Lit _ (LUInt64 i)) = [cexp|$int:i|]
+mkExp _ (Lit _ (LBool True)) = [cexp|true|]
+mkExp _ (Lit _ (LBool False)) = [cexp|false|]
+mkExp params (Var _ n) = if n `elem` params then [cexp|act->$id:n|] else [cexp|act->$id:n.value|]
+mkExp params (UOp _ e Neg) = [cexp|- $exp:(mkExp params e)|]
+mkExp params (BOp TInt32 e1 e2 OPlus) = [cexp|__add($exp:(mkExp params e1), $exp:(mkExp params e2))|]
+mkExp params (BOp _ e1 e2 op) = c op
   where
-    (c1, c2) = (mkExp e1, mkExp e2)
+    (c1, c2) = (mkExp params e1, mkExp params e2)
     c OPlus = [cexp|$exp:c1 + $exp:c2|]
     c OMinus = [cexp|$exp:c1 - $exp:c2|]
     c OTimes = [cexp|$exp:c1 * $exp:c2|]
