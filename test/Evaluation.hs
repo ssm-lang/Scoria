@@ -20,24 +20,13 @@ data Report = Good                     -- ^ Test succeeded!
             | ExecutionError String    -- ^ Error while running the compiled program
   deriving Show
 
-getname :: Program -> String
-getname ssm = main ssm
-
 -- | This function runs a program by creating a temporary directory, copying the
 -- runtime system there, compiling the program and then running the executable.
 -- It will parse the output of the program and return a report.
 runCG :: Program -> Maybe Int -> IO Report
 runCG program mi = do
---    putStrLn "creating test dir"
-    setupTestDir
---    putStrLn "created test dir"
     createTestFile program True mi
---    putStrLn "created test file"
---    putStrLn "starting execution of program"
     output <- runTest program
---    putStrLn "finished executing program"
-    removeTestDir
---    putStrLn "removed test dir"
     case output of
         Left report -> return report
         Right out   -> case parseOutput $ lines out of
@@ -50,14 +39,11 @@ runCG program mi = do
 -- that terminates the thread after that time.
 runCGValgrind :: Program -> Maybe Int -> IO Bool
 runCGValgrind p mi = do
-    setupTestDir
     createTestFile p True mi
     c <- tryCompile p True
     case c of
-        Left _  -> do removeTestDir
-                      return True
-        Right _ -> do b <- runExecutableCheckCode (getname p) wrapValgrind
-                      removeTestDir
+        Left _  -> return True
+        Right _ -> do b <- runExecutableCheckCode "test" wrapValgrind
                       return b
   where
       wrapValgrind :: Maybe (String -> (String, [String]))
@@ -65,10 +51,8 @@ runCGValgrind p mi = do
 
 runCGCompilation :: Program -> IO Bool
 runCGCompilation p = do
-    setupTestDir
     createTestFile p True Nothing
     c <- tryCompile p True
-    removeTestDir
     case c of
         Left _  -> return False
         Right _ -> return True
@@ -108,15 +92,16 @@ cprts = concat ["cp -r ", rtsloc, " ", testdir]
 -- | Set up the temporary test directory by creating the directory and copying the RTS there
 setupTestDir :: IO ()
 setupTestDir = do
+    b <- doesDirectoryExist testdir
+    if b
+        then callProcess "rm" ["-r", testdir]
+        else return ()
     createDirectory testdir
     callProcess "cp" ["-r",rtsloc,testdir]
-    return ()
 
 -- | Remove the temporary test directory
 removeTestDir :: IO ()
-removeTestDir = do
-    callProcess "rm" ["-r",testdir]
-    return ()
+removeTestDir = callProcess "rm" ["-r",testdir]
 
 -- | Utility function that is given a directory in which it should execute the IO action
 inDirectory :: FilePath -> IO a -> IO a
@@ -130,11 +115,10 @@ inDirectory fp ma = do
 -- | Compile the test program and write it to a c-file
 createTestFile :: Program -> Bool -> Maybe Int -> IO ()
 createTestFile program b d = do
-    let name = getname program
     let c = compile_ b d program
 
     inDirectory testdir $ do
-        writeFile (name ++ ".c") c
+        writeFile ("test.c") c
 
 -- | Try to compile a program in the test directory. The bool signifies if the
 -- debug flag should be enabled while compiling. Without the flag the executable is
@@ -142,8 +126,7 @@ createTestFile program b d = do
 -- TODO: It's probably possible to just inspect the returncode here
 tryCompile :: Program -> Bool -> IO (Either String ())
 tryCompile p debug = inDirectory testdir $ do
-    let name = getname p
-    let (cmd, args) = gcc name debug
+    let (cmd, args) = gcc "test" debug
     (_,_,Just gccerr,_) <- createProcess (proc cmd args) {std_err = CreatePipe }
     c <- System.IO.hGetContents gccerr
     if null c
@@ -158,8 +141,8 @@ runExecutable exec m = do
     let cmd'        = "./" ++ exec
     let (cmd, args) = maybe (cmd', []) (\f -> f cmd') m
     inDirectory testdir $ do
-        (_,Just hout, Just herr, _) <- createProcess (proc cmd args) { std_out = CreatePipe --Inherit
-                                                                     , std_err = CreatePipe --Inherit
+        (_,Just hout, Just herr, _) <- createProcess (proc cmd args) { std_out = CreatePipe
+                                                                     , std_err = CreatePipe
                                                                      }
         err <- hGetContents herr
         std <- hGetContents hout
@@ -190,17 +173,12 @@ runExecutableCheckCode exec m = do
 -- | Compile and run a test
 runTest :: Program -> IO (Either Report String)
 runTest program = do
-    let name = getname program
---    putStrLn "got name of executable"
-
---    putStrLn "trying to compile the file"
     comp <- tryCompile program True
---    putStrLn "compiled the file"
     case comp of
         Left c  -> return $ Left $ CompilationError c
         Right _ -> do
             let f = Just (\cmd -> (cmd, []))
-            res <- runExecutable name f
+            res <- runExecutable "test" f
             case res of
                 Left c  -> return $ Left $ ExecutionError c
                 Right s -> return $ Right s

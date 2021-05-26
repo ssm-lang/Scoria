@@ -36,16 +36,22 @@ main = do
 --    print r
 --    return ()
 --    quickCheck $ verboseShrinking $ prop_test_dummy
-      regression_test
+--      regression_test
 --      r <- testSingle singlecase limit
 --      case r of
 --          Good -> putStrLn "Good"
 --          Bad t1 t2 -> putStrLn $ errorStr t1 t2
 --          _         -> return ()
 --      return ()
+--    setupTestDir
 --    quickCheck (withMaxSuccess 15000 $ verboseShrinking prop_correct)
+--    removeTestDir
+--    setupTestDir 
 --    quickCheck (withMaxSuccess 5000 $ prop_compiles_ok)
---    quickCheck (withMaxSuccess 1000 $ prop_valgrind_ok)
+--    removeTestDir 
+    setupTestDir 
+    quickCheck (withMaxSuccess 1000 $ prop_valgrind_ok)
+    removeTestDir 
 
 data Dummy = Dummy Program deriving Show
 
@@ -65,7 +71,7 @@ regression_test = do
         r <- testSingle p limit
         case r of
             Good -> putStrLn "good"
-            _ -> putStrLn "bad"
+            o -> putStrLn $ "bad" --show o
 
 prop_correct :: Program -> Property
 prop_correct p = whenFail (do writeFile "timeout.c" $ compile_ True limit p
