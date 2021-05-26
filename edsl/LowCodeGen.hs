@@ -372,7 +372,9 @@ instance CType SSMExp where
   compArg (Var _ n) = return $ concat ["act->", n, ".value"]
   compArg e = compVal e
 
-  compVal e = return $ compLit e
+  compVal e = do
+    lrefs <- gets localrefs
+    return $ compLit lrefs e
 
   compVar (Var _ n) = return $ concat ["&act->", n]
   compVar e = error $ concat ["compvar - not a variable: ", show e]
@@ -408,8 +410,8 @@ getExpName e         = error $ "getExpName - not a variable: " ++ show e
 
 -- | Compile an expression into the string that represent its semantic value.
 -- By semantic I mean that the result will be of type `int` or `bool`:
-compLit :: SSMExp -> String
-compLit e = case e of
+compLit :: [(String, Type)] -> SSMExp -> String
+compLit lrefs e = case e of
   Var _ e -> "act->" ++ e ++ ".value"
   
   Lit _ l -> case l of
@@ -421,16 +423,24 @@ compLit e = case e of
     LBool True  -> "true"
     LBool False -> "false"
   
-  UOp _ e op -> case op of
-    Neg -> "(-" ++ compLit e ++ ")"
+  UOpE _ e op -> case op of
+    Neg -> concat ["(-", compLit lrefs e, ")"]
 
-  BOp TInt32 e1 e2 OPlus -> concat ["add(", compLit e1, ", ", compLit e2, ")"]
-  BOp _ e1 e2 op -> case op of
-    OPlus  -> "(" ++ compLit e1 ++ " + " ++ compLit e2 ++ ")"
-    OMinus -> "(" ++ compLit e1 ++ " - " ++ compLit e2 ++ ")"
-    OTimes -> "(" ++ compLit e1 ++ " * " ++ compLit e2 ++ ")"
-    OLT    -> "(" ++ compLit e1 ++ " < " ++ compLit e2 ++ ")"
-    OEQ    -> "(" ++ compLit e1 ++ " == " ++ compLit e2 ++ ")"
+  UOpR _ r op -> case op of
+    Changed -> let prefix = if r `elem` lrefs then "&" else ""
+               in concat ["event_on((sv_t *) ", prefix, "act->", fst r, ")"]
+
+  BOp TInt32 e1 e2 OPlus ->
+    concat ["add(", compLit lrefs e1, ", ", compLit lrefs e2, ")"]
+  BOp _ e1 e2 op ->
+    let e1' = compLit lrefs e1
+        e2' = compLit lrefs e2
+    in case op of
+         OPlus  -> concat ["(", e1', " + ", e2', ")"]
+         OMinus -> concat ["(", e1', " - ", e2', ")"]
+         OTimes -> concat ["(", e1', " * ", e2', ")"]
+         OLT    -> concat ["(", e1', " < ", e2', ")"]
+         OEQ    -> concat ["(", e1', " == ", e2', ")"]
 
 -- | Generate a fresh label.
 freshLabel :: TR Label
@@ -494,7 +504,6 @@ structIR p = do
       dynfields xs = concat $ flip map xs $ \x -> case x of
           NewRef n t _  -> [ FieldDec (ScheduledVar (basetype_ t)) (getVarName n) ]
           GetRef n t _  -> [ FieldDec (ScheduledVar (basetype_ t)) (getVarName n) ]
-          Changed n t _ -> [ FieldDec (ScheduledVar (basetype_ t)) (getVarName n) ]
           If _ thn els  -> dynfields thn ++ dynfields els
           While _ bdy   -> dynfields bdy
           _             -> []
@@ -648,7 +657,6 @@ stepIR p = do
             Skip         -> return []
 
             After d r v   -> sequence [Later (basetype r) <$> compVal d <*> compVar r <*> compVal v]
-            Changed n t r -> sequence [EventOn <$> compVar (n,t) <*> compVar r]
 
             Wait refs  -> do
                 modify $ \st -> st { numwaits = max (numwaits st) (length refs)}
@@ -734,7 +742,7 @@ mainIR p = [ Function Void "top_return"
       entryargs = [ "&top"
                   , "PRIORITY_AT_ROOT"
                   , "DEPTH_AT_ROOT"
-                  ] ++ map (either compLit ((++) "&" . fst)) (args p)
+                  ] ++ map (either (compLit []) ((++) "&" . fst)) (args p)
 
       printrefs :: [IR]
       printrefs = mapRight (args p) $ \(r,t) ->

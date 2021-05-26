@@ -235,10 +235,6 @@ runProcess = do
                 now' <- gets now
                 schedule_event ref (now' + d') v'
                 runProcess
-            Changed n t r   -> do
-                b <- wasWritten $ fst r
-                newVar (getVarName n) b
-                runProcess
 
             -- The statements below are blocking statements, so there is no nextInstruction
             -- statements after them. Wait blocks until either of the specified references
@@ -579,7 +575,9 @@ eval e = do
                 eval v
             Nothing -> error $ "interpreter error - variable " ++ n ++ " not found in current process"
         Lit _ l -> return e
-        UOp _ e Neg -> do
+        UOpR _ r op -> case op of
+            Changed -> wasWritten $ fst r
+        UOpE _ e Neg -> do
             e' <- eval e
             return $ neg e'
         BOp TBool e1 e2 op -> do

@@ -71,7 +71,7 @@ instance Arbitrary Program where
     (entrypoint, argtypes) <- elements $ map (\(name,t,_) -> (name, t)) tab
     args <- flip mapM argtypes $ \(n,t) -> if isReference t
       then return $ Right (n,t)
-      else do e <- arbExp t [] 1
+      else do e <- arbExp t [] [] 1
               return $ Left e
     
     let funs = Map.fromList $ [ (fun, Procedure fun params bdy)
@@ -89,7 +89,7 @@ arbProc :: Procedures     -- ^ All procedures in the program
 arbProc _ _ _ c 0          = return ([], c)
 arbProc funs vars refs c n = frequency $
       [ (1, do t         <- elements [TInt32, TBool]
-               e         <- choose (0,3) >>= arbExp t vars
+               e         <- choose (0,3) >>= arbExp t vars refs
                (name,c1) <- fresh c
                let rt     = mkReference t
                let stm    = NewRef name rt e
@@ -98,7 +98,7 @@ arbProc funs vars refs c n = frequency $
                return (stm:rest, c2)
         )
       
-      , (1, do cond      <- choose (0,3) >>= arbExp TBool vars
+      , (1, do cond      <- choose (0,3) >>= arbExp TBool vars refs
                (thn,c1)  <- arbProc funs vars refs c (n `div` 2)
                (els,c2)  <- arbProc funs vars refs c1 (n `div` 2)
                (rest,c3) <- arbProc funs vars refs c2 (n-1)
@@ -120,7 +120,7 @@ arbProc funs vars refs c n = frequency $
 
       (if null vars then [] else
       [ (1, do (name,t) <- elements vars
-               e        <- choose (0,3) >>= arbExp t vars
+               e        <- choose (0,3) >>= arbExp t vars refs
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm   = SetLocal name t e
                return (stm:rest, c')
@@ -136,27 +136,19 @@ arbProc funs vars refs c n = frequency $
         )
       
       , (1, do r@(_,t) <- elements refs
-               e       <- choose (0,3) >>= arbExp (dereference t) vars
+               e       <- choose (0,3) >>= arbExp (dereference t) vars refs
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm = SetRef r e
                return (stm:rest, c')
         )
       
       , (1, do r@(_,t)  <- elements refs
-               v        <- choose (0,3) >>= arbExp (dereference t) vars
+               v        <- choose (0,3) >>= arbExp (dereference t) vars refs
                delay    <- Lit TUInt64 . LUInt64 <$> choose (1, 5000)
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm   = After delay r v
                return (stm:rest, c')
         )
-      
-      , (1, do r         <- elements refs
-               (name,c1) <- fresh c
-               (rest,c2) <- arbProc funs ((name, TBool):vars) refs c1 (n-1)
-               let stm    = Changed name TBool r
-               return (stm:rest, c2)
-        )
-      
       , (1, do refs'  <- sublistOf refs `suchThat` (not . null)
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm = Wait refs'
@@ -179,7 +171,7 @@ arbProc funs vars refs c n = frequency $
             if isReference t
               then do let okrefs = filter ((==) t . snd) refs
                       Right <$> elements okrefs
-              else Left <$> (choose (0,3) >>= arbExp t vars)
+              else Left <$> (choose (0,3) >>= arbExp t vars refs)
           return (n, args)
 
       -- | Predicate that returns True if the given procedure can be forked.
@@ -193,9 +185,13 @@ arbProc funs vars refs c n = frequency $
 -- | Generate a SSMExp.
 arbExp :: Type        -- ^ Type of expression to generate (oneof TInt32 or TBool)
        -> [Variable]  -- ^ Variables that are in scope that the expression can use
+       -> [Reference] -- ^ References that are in scope that the expression can use
        -> Int         -- ^ Size parameter
        -> Gen SSMExp
-arbExp t vars 0 = oneof $ litGen : varGen
+arbExp t vars refs 0 = oneof $ concat [ [litGen]
+                                      , varGen
+                                      , if t == TBool then changedGen else []
+                                      ]
   where
     -- | Generator of SSMExp literals.
     litGen :: Gen SSMExp
@@ -209,27 +205,32 @@ arbExp t vars 0 = oneof $ litGen : varGen
     varGen :: [Gen SSMExp]
     varGen = [ return (Var t' (getVarName n)) | (n,t') <- vars, t == t']
 
-arbExp t vars n = case t of
-  TBool -> oneof [ do e1 <- arbExp TInt32 vars (n `div` 2)
-                      e2 <- arbExp TInt32 vars (n `div` 2)
-                      return $ BOp t e1 e2 OLT
-                 , do typ <- elements [TInt32, TBool]
-                      e1 <- arbExp typ vars (n `div` 2)
-                      e2 <- arbExp typ vars (n `div` 2)
-                      return $ BOp TBool e1 e2 OEQ
-                 ]
+    changedGen :: [Gen SSMExp]
+    changedGen = if null refs
+                   then []
+                   else [ return $ UOpR TBool r Changed | r <- refs]
+
+arbExp t vars refs n = case t of
+  TBool -> oneof $ [ do e1 <- arbExp TInt32 vars refs (n `div` 2)
+                        e2 <- arbExp TInt32 vars refs (n `div` 2)
+                        return $ BOp t e1 e2 OLT
+                   , do typ <- elements [TInt32, TBool]
+                        e1 <- arbExp typ vars refs (n `div` 2)
+                        e2 <- arbExp typ vars refs (n `div` 2)
+                        return $ BOp TBool e1 e2 OEQ
+                   ]
   t | t `elem` [TUInt8, TUInt64] -> do
-      e1 <- arbExp t vars (n `div` 2)
-      e2 <- arbExp t vars (n `div` 2)
+      e1 <- arbExp t vars refs (n `div` 2)
+      e2 <- arbExp t vars refs (n `div` 2)
       elements [ BOp t e1 e2 OPlus
                , BOp t e1 e2 OMinus
                , BOp t e1 e2 OTimes
                ]
-  _ ->    frequency [ (1, do e <- arbExp t vars (n-1)
-                             return $ UOp t e Neg
+  _ ->    frequency [ (1, do e <- arbExp t vars refs (n-1)
+                             return $ UOpE t e Neg
                       )
-                    , (7, do e1 <- arbExp t vars (n `div` 2)
-                             e2 <- arbExp t vars (n `div` 2)
+                    , (7, do e1 <- arbExp t vars refs (n `div` 2)
+                             e2 <- arbExp t vars refs (n `div` 2)
                              elements [ BOp t e1 e2 OPlus
                                       , BOp t e1 e2 OMinus
                                       , BOp t e1 e2 OTimes
@@ -301,38 +302,35 @@ removeRefs p refs =  map fromJust $ filter isJust $ for refs $ \ref -> do
     removeRef' ref vars refs (x:xs) = case x of
       NewRef n t e -> let r = (getVarName n, t) in if r == ref
         then removeRef' ref vars refs xs
-        else let stm = NewRef n t (deleteVars vars e)
+        else let stm = NewRef n t (rewriteExp vars ref e)
              in (:) stm <$> removeRef' ref vars (r:refs) xs
       GetRef n t r -> if r == ref
         then removeRef' ref ((n,t):vars) refs xs
         else (:) x <$> removeRef' ref vars refs xs
       SetRef r e -> if r == ref
         then removeRef' ref vars refs xs
-        else let stm = SetRef r (deleteVars vars e)
+        else let stm = SetRef r (rewriteExp vars ref e)
              in (:) stm <$> removeRef' ref vars refs xs
       SetLocal n t e -> if (n,t) `elem` vars
         then removeRef' ref vars refs xs
-        else let stm = SetLocal n t (deleteVars vars e)
+        else let stm = SetLocal n t (rewriteExp vars ref e)
              in (:) stm <$> removeRef' ref vars refs xs
       If c thn els -> do
-        let c' = deleteVars vars c
+        let c' = rewriteExp vars ref c
         thn'  <- removeRef' ref vars refs thn
         els'  <- removeRef' ref vars refs els
         let stm = If c' thn' els'
         (:) stm <$> removeRef' ref vars refs xs
       While c bdy -> do
-        let c'  = deleteVars vars c
+        let c'  = rewriteExp vars ref c
         bdy'   <- removeRef' ref vars refs bdy
         let stm = While c' bdy'
         (:) stm <$> removeRef' ref vars refs xs
       Skip -> (:) Skip <$> removeRef' ref vars refs xs
       After d r v -> if r == ref
         then removeRef' ref vars refs xs
-        else let stm = After (deleteVars vars d) r (deleteVars vars v)
+        else let stm = After (rewriteExp vars ref d) r (rewriteExp vars ref v)
              in (:) stm <$> removeRef' ref vars refs xs
-      Changed n t r -> if r == ref
-        then           removeRef' ref ((n,t):vars) refs xs
-        else (:) x <$> removeRef' ref vars refs xs
       Wait references -> let references' = filter ((/=) ref) references in
         if null references'
           then Nothing
@@ -348,12 +346,22 @@ removeRefs p refs =  map fromJust $ filter isJust $ for refs $ \ref -> do
                               then defaultValue t
                               else e
           BOp t e1 e2 op -> BOp t (deleteVars vars e1) (deleteVars vars e2) op
-          UOp t e op     -> UOp t (deleteVars vars e) op
+          UOpE t e op    -> UOpE t (deleteVars vars e) op
           otherwise      -> otherwise
           where
             defaultValue :: Type -> SSMExp
             defaultValue TInt32 = Lit TInt32 $ LInt32 1
             defaultValue TBool  = Lit TBool  $ LBool True
+
+        deleteRef :: Reference -> SSMExp -> SSMExp
+        deleteRef r e = case e of
+          BOp t e1 e2 op -> BOp t (deleteRef r e1) (deleteRef r e2) op
+          UOpR t r op    -> case op of
+            Changed -> Lit TBool $ LBool True -- new default value if we remove it
+          otherwise      -> otherwise
+
+        rewriteExp :: [Variable] -> Reference -> SSMExp -> SSMExp
+        rewriteExp vars r e = deleteRef r (deleteVars vars e)
 
         -- | Try to remove a reference from a procedure call. This is done by replacing
         -- it with an arbitrary reference in scope of the same type.
@@ -361,7 +369,7 @@ removeRefs p refs =  map fromJust $ filter isJust $ for refs $ \ref -> do
                           -> Maybe (String, [Either SSMExp Reference])
         removeRefFromFork (n, args) = do
           args' <- sequence $ for args $ \a -> case a of
-                Left e  -> Just $ Left $ deleteVars vars e
+                Left e  -> Just $ Left $ rewriteExp vars ref e
                 Right r -> if r == ref
                              then replaceRef $ snd r
                              else Just $ Right r
@@ -617,9 +625,15 @@ removeArityFromCalls n i (x:xs) = case x of
     
     mapExp :: SSMExp -> SSMExp
     mapExp e = case e of
+      {- I can not remember why I even have this function! It seems like I am
+         always comparing a variable name in an expression against the name of
+         the function of which we reduced the arity? This should obviously
+         never be the case...
+      -}
       Var t name     -> if name == n then defaultVal t else e
       Lit t l        -> Lit t l
-      UOp t e op     -> UOp t (mapExp e) op
+      UOpE t e op    -> UOpE t (mapExp e) op
+      UOpR t r op    -> UOpR t r op -- since I don't know why I am doing this, id!
       BOp t e1 e2 op -> BOp t (mapExp e1) (mapExp e2) op
 
 type ShrinkM a = Reader ShrinkSt a
@@ -694,12 +708,6 @@ shrinkProcedureBody f n i xs = runReader (shrinkArityStm xs) (St f n i [])
                    (:) (After d' r v') <$> shrinkArityStm xs
            else shrinkArityStm xs
 
-       Changed n t r -> do
-         b <- isOK r
-         if b
-           then (:) (Changed n t r) <$> shrinkArityStm xs
-           else tag n $ shrinkArityStm xs
-
        Wait references -> do
          references' <- filterM isOK references
          if null references'
@@ -721,9 +729,15 @@ shrinkProcedureBody f n i xs = runReader (shrinkArityStm xs) (St f n i [])
                             if n `elem` bads || n == tor
                               then return $ defaultVal t
                               else return $ Var t n
-       UOp t e op     -> do
+       UOpR t r op    -> do
+         tor <- asks toremove
+         case op of
+           Changed -> if fst r == tor
+             then return $ defaultVal t
+             else return $ UOpR t r op
+       UOpE t e op    -> do
          e' <- alterExp e
-         return $ UOp t e' op
+         return $ UOpE t e' op
        BOp t e1 e2 op -> do
          e1' <- alterExp e1
          e2' <- alterExp e2

@@ -8,7 +8,8 @@ module LowCore
      , C.SSMExp(..)
      , C.SSMLit(..)
      , C.BinOp(..)
-     , C.UnaryOp(..)
+     , C.UnaryOpE(..)
+     , C.UnaryOpR(..)
      , C.Reference(..)
      , C.Name(..)
      , C.expType
@@ -37,7 +38,6 @@ data Stm = NewRef C.Name C.Type C.SSMExp
          | Skip
 
          | After C.SSMExp C.Reference C.SSMExp
-         | Changed C.Name C.Type C.Reference
          | Wait [C.Reference]
          | Fork [(String, [Either C.SSMExp C.Reference])]
   deriving (Show, Eq, Read)
@@ -109,7 +109,7 @@ transpileProcedure xs = fmap concat $ flip mapM xs $ \x -> case x of
     C.While c bdy  -> transpileProcedure (C.runSSM bdy) >>= \bdy' -> return $ [While c bdy']
     
     C.After d r v -> return $ [After d r v]
-    C.Changed n r -> return $ [Changed n C.TBool r]
+ --   C.Changed n r -> return $ [Changed n C.TBool r]
     C.Wait refs   -> return $ [Wait refs]
     C.Fork procs  -> do
       procs' <- mapM getCall procs

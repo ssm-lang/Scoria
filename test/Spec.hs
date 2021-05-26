@@ -43,15 +43,15 @@ main = do
 --          Bad t1 t2 -> putStrLn $ errorStr t1 t2
 --          _         -> return ()
 --      return ()
---    setupTestDir
---    quickCheck (withMaxSuccess 15000 $ verboseShrinking prop_correct)
---    removeTestDir
+    setupTestDir
+    quickCheck (withMaxSuccess 15000 $ verboseShrinking prop_correct)
+    removeTestDir
 --    setupTestDir 
 --    quickCheck (withMaxSuccess 5000 $ prop_compiles_ok)
 --    removeTestDir 
-    setupTestDir 
-    quickCheck (withMaxSuccess 1000 $ prop_valgrind_ok)
-    removeTestDir 
+--    setupTestDir 
+--    quickCheck (withMaxSuccess 1000 $ prop_valgrind_ok)
+--    removeTestDir 
 
 data Dummy = Dummy Program deriving Show
 
