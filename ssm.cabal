@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a695237c4fa31468f47a86678011e269126fbef59843eb219267a75384f861f9
+-- hash: 5220b998cd2a884827e6960f5c4f183f92ee131fb044daf5cb471eb7b745996f
 
 name:           ssm
 version:        0.1.0.0
@@ -106,6 +106,7 @@ executable ssm-exe
       Foo
       Manyrefs
       NonTerminate
+      Nullary
       Paths_ssm
   hs-source-dirs:
       app
@@ -145,6 +146,7 @@ test-suite ssm-test
       Foo
       Manyrefs
       NonTerminate
+      Nullary
       Paths_ssm
   hs-source-dirs:
       test

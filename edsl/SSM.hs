@@ -30,6 +30,7 @@ module SSM
   , SSM
   , Program
   , box
+  , boxNullary
   , Output
   , SSM.compile
   , SSM.interpret

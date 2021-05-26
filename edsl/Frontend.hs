@@ -34,6 +34,7 @@ module Frontend
      , while'
      , SSM -- reexport so we don't need to import Core and get all the constructors
      , Box(..)
+     , BoxNullary(..)
      , Int64(..)
      , Word64(..)
 ) where

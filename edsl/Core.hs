@@ -166,6 +166,19 @@ class Res b where
 class Box b where
     box :: Arg a => String -> [String] -> (a -> b) -> (a -> b)
 
+-- | Nullary functions can not be used with `box`, as `box` requires a function
+-- to box. Here, we change that representation.
+class BoxNullary b where
+  boxNullary :: String -> b -> b
+
+-- | There is a dummy `Arg` instance for `()`, which we can use to piggyback
+-- on the box machinery that's already in place.
+instance Res b => BoxNullary (SSM b) where
+  boxNullary name b = box name [] (\() -> b) $ ()
+
+instance Arg () where
+  arg name names () = return ((), names)
+
 instance (Arg b, Box c) => Box (b -> c) where
     box name xs f = curry (box name xs (uncurry f))
 
