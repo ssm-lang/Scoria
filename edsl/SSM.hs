@@ -24,6 +24,8 @@ module SSM
   , Frontend.fork
   , changed
   , if'
+  , ifThen
+  , ifThenElse
   , while'
   , SSM
   , Program
@@ -31,7 +33,7 @@ module SSM
   , Output
   , SSM.compile
   , SSM.interpret
-  , prettyProgram
+  , prettyPrint
 ) where
 
 import Frontend

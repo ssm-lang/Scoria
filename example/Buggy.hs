@@ -87,3 +87,32 @@ bfun4 = box "bfun4" ["ref1","ref4"] $ \ref1 ref4 -> do
   after 1 ref4 1
   wait [ ref1 ]
   fork [ bfun4 ref1 ref4 ]
+
+{- Weird enqueues -}
+
+bbfun1 :: Ref Int64 -> Ref Bool -> SSM ()
+bbfun1 = box "bbfun1" ["ref1","ref4"] $ \ref1 ref4 -> do
+  after 2 ref1 5
+  after 1 ref4 true'
+  v1 <- var true'
+  wait [ref4]
+  fork [ bbfun1 ref1 v1
+       , bbfun1 ref1 v1
+       , bbfun1 ref1 ref4
+       ]
+
+{-
+shrinking throws an error at this program, for some reason...
+It shrinks it so that it is no longer well formed.
+
+bbfun1 :: Ref Int64 -> Ref Bool -> SSM ()
+bbfun1 = box "bbfun1" ["ref1","ref4"] $ \ref1 ref4 -> do
+  after 5 ref1 5 -- commenting out this one makes the issue go away
+  after 3 ref4 true'
+  v1 <- var true'
+  wait [ref4]
+  fork [ bbfun1 ref1 v1
+       , bbfun1 ref1 v1
+       , bbfun1 ref1 ref4
+       ]
+-}

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 07ed46726dcef5145711154d60b0ddde9a441d6ca60328b19389a6423ad5ec7a
+-- hash: a695237c4fa31468f47a86678011e269126fbef59843eb219267a75384f861f9
 
 name:           ssm
 version:        0.1.0.0
@@ -96,6 +96,7 @@ executable ssm-exe
   main-is: Main.hs
   other-modules:
       Buggy
+      ButtonBlinky
       Examp
       Examp2
       Example
@@ -134,6 +135,7 @@ test-suite ssm-test
   other-modules:
       Evaluation
       Buggy
+      ButtonBlinky
       Examp
       Examp2
       Example

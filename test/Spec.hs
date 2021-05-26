@@ -43,9 +43,9 @@ main = do
 --          Bad t1 t2 -> putStrLn $ errorStr t1 t2
 --          _         -> return ()
 --      return ()
---    quickCheck (withMaxSuccess 5000 $ verboseShrinking prop_correct)
---    quickCheck (withMaxSuccess 1000 $ prop_valgrind_ok)
-    quickCheck (withMaxSuccess 5000 prop_compiles_ok)
+    quickCheck (withMaxSuccess 5000 $ verboseShrinking prop_correct)
+    quickCheck (withMaxSuccess 5000 $ prop_compiles_ok)
+    quickCheck (withMaxSuccess 1000 $ prop_valgrind_ok)
 
 data Dummy = Dummy Program deriving Show
 

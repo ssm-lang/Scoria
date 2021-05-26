@@ -19,12 +19,18 @@ import Data.Word
 
 import Core hiding (Result, Fork)
 
+import System.IO.Unsafe
+
+trace :: Show a => a -> a
+trace x = unsafePerformIO $ putStrLn (show x) >> return x
+
 type Parser a = Parsec Void T.Text a
 
 data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
                  | Event Word64 SSMExp     -- ^ now, new variable value
                  | Fork [String]        -- ^ Fork call, names of forked procedures
                  | Result String SSMExp -- ^ variable name and final value
+                 | NumConts Int
                  | Crash
                  | EventQueueFull
                  | ContQueueFull
@@ -41,32 +47,71 @@ a priority queue it does not matter which order the events are applied in, as lo
 the same events are applied in the same instant.
 -}
 instance {-# OVERLAPPING #-} Eq Output where
-    [] == [] = True
+    xs == ys = equalSemantics xs ys
 
-    xs@(Event t _:_) == ys@(Event _ _:_) =
-        let pred i = case i of
-              Event t' _ -> t == t'
-              _            -> False
+equalSemantics :: Output -> Output -> Bool
+equalSemantics xs ys = case (xs,ys) of
+    ([],[]) -> True
 
-            (xinsts, xs') = takeWhileAndKeep pred xs
-            (yinsts, ys') = takeWhileAndKeep pred ys
+    (xs@(Event _ _:_), ys@(Event _ _:_)) ->
+        let (xevents, xs') = takeEvents xs
+            (yevents, ys') = takeEvents ys
 
-        in length (union xinsts yinsts) == length xinsts &&
-           length xinsts                == length yinsts &&
-           xs'                          == ys'
-    
-    (x:xs) == (y:ys) = x == y && xs == ys
-    
-    _ == _ = False
+        in equalEvents xevents yevents && equalSemantics xs' ys'
 
-takeWhileAndKeep :: Eq a => (a -> Bool) -> [a] -> ([a],[a])
-takeWhileAndKeep f xs = go f ([], xs)
+    ((x:xs), (y:ys)) -> x == y && equalSemantics xs ys
+
+    (_,_)            -> False
+
   where
-      go _ (xs,[])      = (reverse xs, [])
-      go f (xs, (y:ys)) =
-          if f y
-              then go f (y:xs, ys)
-              else (reverse xs, y:ys)
+      takeEvents :: Output -> (Output, Output)
+      takeEvents xs = takeEvents_ ([], xs)
+
+      takeEvents_ :: (Output, Output) -> (Output, Output)
+      takeEvents_ (xs, [])     = ([], [])
+      takeEvents_ (xs, (y:ys)) =
+          if isEvent y
+              then takeEvents_ (y : xs, ys)
+              else if isCrash y
+                       then ([y], ys)
+                       else (xs, y:ys)
+
+      -- | When we've gathered all events that were applied we have three scenarios.
+      -- 1: There was not enough time for the interpreter and c-code generator to
+      --    generate enough trace to finish applying the events. In this case we might
+      --    have a case where the invariant is broken, so we'll return True since we're
+      --    between instants (where the invariant is allowed to eb broken).
+      -- 2: One of them crashed while the other did not have time to finish applying all
+      --    of its events. In this case we return True after verifying that a crash
+      --    occured.
+      -- 3: Fetching the events went alright, and there were enough time for them to
+      --    finish applying all their events. In that case we'll just make sure that the
+      --    events are the same, but not that they are necessarily applied in the same order.
+      equalEvents :: Output -> Output -> Bool
+      equalEvents [] []  = True
+      equalEvents [x] [] = isCrash x
+      equalEvents [] [x] = isCrash x
+      equalEvents xs ys  =
+          let eventunion     = union xs ys
+              lengthxevents  = length xs
+              lengthyevents  = length ys
+              lengthunion    = length eventunion
+          in lengthunion   == lengthxevents &&
+             lengthxevents == lengthyevents
+
+      -- | Returns True if the entry is an event
+      isEvent :: OutputEntry -> Bool
+      isEvent (Event _ _) = True
+      isEvent _           = False
+
+      -- | Returns True if a crash happened
+      isCrash :: OutputEntry -> Bool
+      isCrash Crash          = True
+      isCrash EventQueueFull = True
+      isCrash ContQueueFull  = True
+      isCrash NegativeDepth  = True
+      isCrash BadAfter       = True
+      isCrash _              = False
 
 testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "event 1 value bool 1"
@@ -77,24 +122,29 @@ testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "now 3 eventqueuesize 3"
                              , "bad after"
                              , "contqueue full"
+                             , "numconts 283"
                              , "now 5 eventqueuesize 5"
                              , "fork mywait mywait mysum"
                              , "event 6 value int 7"
                              , "result x int 1"
                              , "fork mywait"
+                             , "numconts 325"
                              , "contqueue full"
                              , "bad after"
                              , "negative depth"
                              , "eventqueue full"
                              , "result y bool 0"
                              , "bad after"
+                             , "numconts 0"
                              , "contqueue full"
                              , "result zt uint64 3423523234"
                              , "result z bool 1"
+                             , "numconts 28387"
                              , "negative depth"
                              , "eventqueue full"
                              , "contqueue full"
                              , "bad after"
+                             , "numconts 12345"
                              ]
 
 mkTrace :: String -> Output
@@ -120,6 +170,7 @@ pTraceItem = choice [ try pEvent
                     , pBadAfter
                     , pResult
                     , pFork
+                    , pNumConts
                     , pCrash
                     , pEventQueueFull
                     , pContQueueFull
@@ -134,6 +185,14 @@ pFork = do
     procs <- some (try pIdent)
     pSpace
     return $ Fork procs
+
+pNumConts :: Parser OutputEntry
+pNumConts = do
+    pSpace
+    pSymbol "numconts"
+    pSpace
+    num <- Lexer.lexeme pSpace Lexer.decimal
+    return $ NumConts num
 
 pCrash :: Parser OutputEntry
 pCrash = do
@@ -222,6 +281,7 @@ pIdent = do
                  , "eventqueuesize"
                  , "eventqueue"
                  , "contqueue"
+                 , "numconts"
                  , "full"
                  , "negative"
                  , "depth"

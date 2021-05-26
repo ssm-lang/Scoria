@@ -177,6 +177,8 @@ run = do tick
       tick :: Interp s ()
       tick = do
           performEvents
+          nc <- gets numconts
+          tell $ toHughes [T.NumConts nc]
           mainloop
 
 -- | This function will keep popping processes off the ready queue, running them and then
@@ -470,7 +472,7 @@ writeVar_ ref e prio = do
           forM_ variables $ \r -> do
               (ref,procs,b,me,mv) <- lift' $ readSTRef r
               lift' $ writeSTRef r (ref, Map.delete (priority p) procs,b,me,mv)
-          enqueue $ p { waitingOn = Nothing}
+          enqueue $ p { waitingOn = Nothing }
 
 -- | Make the procedure wait for writes to the variable
 sensitize :: String -> Interp s ()
@@ -542,12 +544,6 @@ enqueue p = do
         else modify $ \st -> st { readyQueue = IntMap.insert (priority p) p (readyQueue st)
                                 , numconts   = numconts st + 1
                                 }
-  where
-      insert :: Proc s -> [Proc s] -> [Proc s]
-      insert p []       = [p]
-      insert p1 (p2:ps) = if priority p1 < priority p2
-                            then p1 : p2 : ps
-                            else p2 : insert p1 ps
 
 -- | Inspects the eventqueue and returns the next event time.
 nextEventTime :: Interp s Word64
