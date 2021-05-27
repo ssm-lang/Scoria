@@ -79,6 +79,7 @@ gcc execname debug = ("gcc", ["-o",execname,execname ++ ".c"] ++ flags)
               , rtssrc ++ "peng-bool.c"
               , "-I" ++ rtsloc ++ "include"
               , "-I" ++ rtsloc ++ "linux/include"
+              , "-Wno-overflow"
               , "-g"
               ] ++ if debug then ["-DDEBUG"] else []
 
