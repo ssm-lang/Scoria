@@ -25,68 +25,66 @@ import           Text.PrettyPrint.Mainland.Class
 -- | Use snake_case for c literals
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
--- | This function takes a `Program` and returns a string, which contains the content
--- of the generated C file.
-compile_ :: Bool -> Maybe Int -> Program -> String
-compile_ wantMain tickLimit program = pretty 120 $ pprList compUnit
+-- | This function takes a `Program` and returns a string, which contains the
+-- pretty-printed content of the generated C file.
+compile_
+  :: Bool      -- ^ Whether to generate a main function
+  -> Maybe Int -- ^ An optional tick limit (FIXME: apparently unused?)
+  -> Program   -- ^ The program to be compiled
+  -> String    -- ^ The pretty-printed content of the generated C file
+compile_ m tl program = pretty 120 $ pprList compUnit
  where
-  preamble       = mkPreamble tickLimit
+  compUnit = preamble ++ decls ++ defns ++ if m then genMain program else []
 
-  (decls, defns) = concat2 $ unzip $ map mkProcedure $ Map.elems (funs program)
-
-  compUnit =
-    preamble ++ decls ++ defns ++ if wantMain then mkMain program else []
-
+  preamble = genPreamble tl
+  (decls, defns) =
+    concat2 $ unzip $ map genProcedure $ Map.elems (funs program)
   concat2 (x, y) = (concat x, concat y)
 
--- | State maintained while compiling a procedure
+-- | State maintained while compiling a 'Procedure'.
+--
+-- The information here is populated while generating the step function, so that
+-- should be computed first, before this information is used to generate the act
+-- struct and enter definitions.
 data TRState = TRState
-  { -- | Procedure we are compiling
-    procedure :: Procedure
-      -- | Which number has the next case?
-  , ncase     :: Int
-      -- | The size of the widest wait
-  , numwaits  :: Int
-      -- | Local references declared with var
-  , locals    :: [(String, Type)]
+  { procedure :: Procedure        -- ^ Procedure we are compiling
+  , ncase     :: Int              -- ^ Which number has the next case?
+  , numwaits  :: Int              -- ^ The size of the widest wait
+  , locals    :: [(String, Type)] -- ^ Local references declared with var
   }
 
 -- | Translation monad.
 type TR a = State TRState a
 
--- | Run a TR computation.
+-- | Run a TR computation on a procedure.
 runTR :: Procedure -> TR a -> a
 runTR p tra = evalState tra $ TRState p 0 0 []
 
+-- | Read and increment the number of cases in a procedure, i.e., ncase++.
 nextCase :: TR Int
 nextCase = do
   n <- gets ncase
   modify $ \st -> st { ncase = n + 1 }
   return n
 
+-- | Register a local variable for which an sv should be allocated.
 addLocal :: String -> Type -> TR ()
 addLocal n t = modify $ \st -> st { locals = (n, t) : locals st }
 
-addTemp :: String -> Type -> TR ()
-addTemp n t = modify $ \st -> st { locals = (n, t) : locals st }
-
+-- | Maintain the maximum number of variables a 'Procedure' waits on.
 maxWaits :: Int -> TR ()
 maxWaits rs = modify $ \st -> st { numwaits = rs `max` numwaits st }
 
+{-------- C identifiers --------}
+-- These variables represent the magic identifiers that must be coordinated
+-- between the C runtime and the generated code, as well as some helpers to
+-- generate C type nodes for user-defined types.
+
+-- | Type alias for C identifiers.
 type CIdent = String
 
--- | Maps SSM Type to identifier of base type. Note that this unwraps reference
--- types and returns the base type.
-typeId :: Type -> CIdent
-typeId TInt32  = "int32"
-typeId TInt64  = "int64"
-typeId TUInt64 = "uint64"
-typeId TUInt8  = "uint8"
-typeId TBool   = "bool"
-typeId (Ref t) = typeId t
-
-topReturnId :: CIdent
-topReturnId = "top_return"
+top_return :: CIdent
+top_return = "top_return"
 
 fork :: CIdent
 fork = "fork_routine"
@@ -105,40 +103,6 @@ desensitize = "desensitize"
 
 dequeue_event :: CIdent
 dequeue_event = "dequeue_event"
-
-stepId :: String -> CIdent
-stepId routine = "step_" ++ routine
-
-enter_ :: String -> CIdent
-enter_ routine = "enter_" ++ routine
-
-svtId :: String -> CIdent
-svtId ty = "sv_" ++ ty ++ "_t"
-
-actId :: String -> CIdent
-actId ty = "act_" ++ ty ++ "_t"
-
-trig_ :: Int -> CIdent
-trig_ i = "trig" ++ show i
-
-initialize_ :: Type -> CIdent
-initialize_ ty = "initialize_" ++ typeId ty
-
-assign_ :: Type -> CIdent
-assign_ ty = "assign_" ++ typeId ty
-
-later_ :: Type -> CIdent
-later_ ty = "later_" ++ typeId ty
-
-update_ :: Type -> CIdent
-update_ ty = "update_" ++ typeId ty
-
--- | The type of the activation record base class
-act_t :: C.Type
-act_t = [cty|typename act_t|]
-
-sv_t :: C.Type
-sv_t = [cty|typename sv_t|]
 
 time_t :: C.Type
 time_t = [cty|typename peng_time_t|]
@@ -161,14 +125,70 @@ uint16_t = [cty|typename uint16_t|]
 bool_t :: C.Type
 bool_t = [cty|typename bool|]
 
+{---- Activation record identifiers ----}
+
+-- | The type of the activation record base class.
+act_t :: C.Type
+act_t = [cty|typename act_t|]
+
+-- | Obtain the name of the activation record struct for a routine.
+act_ :: String -> CIdent
+act_ routineName = "act_" ++ routineName ++ "_t"
+
+-- | Obtain the name of the step function of a routine.
+step_ :: String -> CIdent
+step_ routineName = "step_" ++ routineName
+
+-- | Obtain the name for the enter function of a routine.
+enter_ :: String -> CIdent
+enter_ routineName = "enter_" ++ routineName
+
+-- | Obtain the name of each trigger for a routine.
+trig_ :: Int -> CIdent
+trig_ i = "trig" ++ show i
+
+{---- Type identifiers ----}
+
+-- | The type of the scheduled variable base class.
+sv_t :: C.Type
+sv_t = [cty|typename sv_t|]
+
+-- | Maps SSM `Type` to identifier of base type.
+--
+-- Note that this unwraps reference types and returns the base type.
+typeId :: Type -> CIdent
+typeId TInt32  = "int32"
+typeId TInt64  = "int64"
+typeId TUInt64 = "uint64"
+typeId TUInt8  = "uint8"
+typeId TBool   = "bool"
+typeId (Ref t) = typeId t
+
+-- | Obtain the name of the scheduled variable type for an SSM `Type`.
 svt_ :: Type -> C.Type
-svt_ ty = [cty|typename $id:(svtId $ typeId ty)|]
+svt_ ty = [cty|typename $id:("sv_" ++ typeId ty ++ "_t")|]
 
-act_ :: String -> C.Type
-act_ ty = [cty|typename $id:(actId ty)|]
+-- | Obtain the name of the initialize method for an SSM `Type`.
+initialize_ :: Type -> CIdent
+initialize_ ty = "initialize_" ++ typeId ty
 
-mkPreamble :: Maybe Int -> [C.Definition]
-mkPreamble tickLimit = [cunit|
+-- | Obtain the name of the assign method for an SSM `Type`.
+assign_ :: Type -> CIdent
+assign_ ty = "assign_" ++ typeId ty
+
+-- | Obtain the name of the later method for an SSM `Type`.
+later_ :: Type -> CIdent
+later_ ty = "later_" ++ typeId ty
+
+-- | Obtain the name of the update callback for an SSM `Type`.
+update_ :: Type -> CIdent
+update_ ty = "update_" ++ typeId ty
+
+{-------- Code generation --------}
+
+-- | Generate include statements, to be placed at the top of the generated C.
+genPreamble :: Maybe Int -> [C.Definition]
+genPreamble tickLimit = [cunit|
 $esc:("#include \"peng-platform.h\"")
 $esc:("#include \"peng.h\"")
 $esc:("#include \"formatters.h\"")
@@ -177,87 +197,95 @@ $esc:("#include <stdint.h>")
 
 extern $ty:time_t now;
 
+/** Used by DEBUG_PRINT as a microtick threshold */
 $ty:time_t limit = $exp:limit;
 
-static int __add(int a, int b) {
+/**
+ * Circumvent optimizations that take advantage of C's undefined signed
+ * integer wraparound behavior. FIXME: remove this hack, which is probably not
+ * robust anyway if C is aggressive about inlining.
+ */
+static int _add(int a, int b) {
   return a + b;
 }
 |]
- where
-  limit = maybe [cexp|ULONG_MAX|] promoteExp tickLimit
+  where limit = maybe [cexp|ULONG_MAX|] (\i -> [cexp|$int:i|]) tickLimit
 
-  promoteExp i = [cexp|$int:i|]
-
-
--- | Generate C definition for main program
--- TODO items: (1) lift per-type default value and formatters from here
---             (2) remove pointer cast
---             (3) centralize debug logic
-mkMain :: Program -> [C.Definition]
-mkMain program =
-  [ [cedecl| void $id:topReturnId($ty:act_t *act) { return; } |]
+-- | Generate C definition for the main program and the top_return function,
+-- both to be placed at the bottom of the generated C (or at least after the
+-- type definitions and function prototypes).
+genMain :: Program -> [C.Definition]
+genMain program =
+  [ [cedecl| void $id:top_return($ty:act_t *act) { return; } |]
   , [cedecl|
       void main(void) {
-        $ty:act_t top = { .step = $id:topReturnId };
+        $ty:act_t top = { .step = $id:top_return };
 
-        $items:refInits
+        /* Initialize variables to be passed to the main SSM procedure */
+        $items:argInits
 
-        $id:fork(($ty:act_t *) /* FIXME */ $id:enter($args:enterArgs));
+        /* Enter main SSM procedure */
+        $id:fork(($ty:act_t *) $id:enter($args:enterArgs));
 
         tick();
-
         DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
-
         for (;;) {
           now = next_event_time();
-          if(now == NO_EVENT_SCHEDULED)
+          if (now == NO_EVENT_SCHEDULED)
             break;
           tick();
           DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
         }
 
+        /* Print the final values of the arguments declared earlier */
         $items:refPrints
       }
     |]
   ]
  where
   enter = enter_ $ main program
-
   enterArgs =
     [ [cexp|($ty:act_t *) &top|]
       , [cexp|PRIORITY_AT_ROOT|]
       , [cexp|DEPTH_AT_ROOT|]
       ]
       ++ map enterArg (args program)
-
-  enterArg (Left  ssmExp  ) = mkExp [] ssmExp -- FIXME: this is buggy if ssmExp contains a var??
+  enterArg (Left  ssmExp  ) = genExp [] ssmExp
+  -- ^ TODO: this is buggy if ssmExp contains a var?? Maybe double check what's
+  -- going on with that.
   enterArg (Right (ref, _)) = [cexp|&$id:ref|]
 
-  refInits  = concatMap refInit $ rights $ args program
-
-  refPrints = map refPrint $ rights $ args program
-
-  refInit (ref, typ) =
+  argInits = concatMap argInit $ rights $ args program
+  argInit (ref, typ) =
     [ [citem|$ty:(svt_ typ) $id:ref;|]
     , [citem|$id:(initialize_ typ)(&$id:ref);|]
-    , [citem|$id:ref.value = /* FIXME */ 0;|]
+    , [citem|$id:ref.value = 0;|]
+      -- Args to the main SSM procedure are always given default values of 0.
     ]
 
+  refPrints = map refPrint $ rights $ args program
   refPrint (ref, typ) =
-    [citem|printf($string:fmtString, $id:fmtType, /* FIXME */ (long) $id:ref.value);|] {-typ-}
+    [citem|printf($string:fmtString, $id:fmtType, /* FIXME */ (long) $id:ref.value);|]
    where
     fmtString = "result " ++ ref ++ " %s %ld\n"
     fmtType   = "str_" ++ typeId typ
 
-mkProcedure :: Procedure -> ([C.Definition], [C.Definition])
-mkProcedure p = runTR p $ do
-  (stepDecl , stepDefn ) <- mkStep
-  (enterDecl, enterDefn) <- mkEnter
-  structDefn             <- mkStruct
+-- | Generate definitions for an SSM 'Procedure'.
+--
+-- The fst element of the returned tuple contains the struct definition and
+-- function prototype declarations, while the snd element contains the function
+-- definitions.
+genProcedure :: Procedure -> ([C.Definition], [C.Definition])
+genProcedure p = runTR p $ do
+  (stepDecl , stepDefn ) <- genStep
+  (enterDecl, enterDefn) <- genEnter
+  structDefn             <- genStruct
   return ([structDefn, enterDecl, stepDecl], [enterDefn, stepDefn])
 
-mkStruct :: TR C.Definition
-mkStruct = do
+-- | Generate struct definition for an SSM 'Procedure', where local variables,
+-- triggers, and parameter values are stored.
+genStruct :: TR C.Definition
+genStruct = do
   p  <- gets procedure
   ts <- gets numwaits
   ls <- gets locals
@@ -269,7 +297,7 @@ mkStruct = do
       $sdecls:(map local ls)
       $sdecls:(map trig [1..ts])
 
-    } $id:(actId $ name p);
+    } $id:(act_ $ name p);
   |]
  where
   aCTIVATION_RECORD_FIELDS =
@@ -289,14 +317,17 @@ mkStruct = do
 
   trig i = [csdecl|$ty:trigger_t $id:t;|] where t = "trig" ++ show i
 
-mkEnter :: TR (C.Definition, C.Definition)
-mkEnter = do
+-- | Generate the enter function for an SSM 'Procedure', where its struct is
+-- allocated and initialized (partially; local variables' values are left
+-- uninitialized).
+genEnter :: TR (C.Definition, C.Definition)
+genEnter = do
   p  <- gets procedure
   ts <- gets numwaits
   ls <- gets locals
-  let act   = act_ (name p)
-      enter = enter_ (name p)
-      step  = stepId (name p)
+  let act   = [cty|typename $id:(act_ $ name p)|]
+      enter = enter_ $ name p
+      step  = step_ $ name p
       params =
         [cparams|$ty:act_t *caller, $ty:priority_t priority, $ty:depth_t depth|]
           ++ map param (arguments p)
@@ -321,12 +352,9 @@ mkEnter = do
       |]
     )
  where
-  -- | FIXME: This only works because we don't have nested Refs (yet)
+  -- | TODO: This only works because we don't have nested Refs (yet)
   param (n, Ref t) = [cparam|$ty:(svt_ t) *$id:n|]
   param (n, t    ) = [cparam|typename $id:(typeId t) $id:n|]
-    -- param_ :: Type -> C.Type
-    -- param_ (Ref ty) = [cty|$ty:(svt_ ty) *|]
-    -- param_ ty       = [cty|typename $id:(typeId ty)|]
 
   initParam (n, Ref t) = [[cstm|act->$id:n = $id:n;|]]
   initParam (n, t) =
@@ -339,15 +367,20 @@ mkEnter = do
   initTrig i = [cstm| act->$id:trig.act = gen_act;|]
     where trig = "trig" ++ show i
 
-mkStep :: TR (C.Definition, C.Definition)
-mkStep = do
+-- | Generate the step function for an SSM 'Procedure'.
+--
+-- This function just defines the function definition and switch statement that
+-- wraps the statements of the procedure. The heavy lifting is performed by
+-- 'genCase'.
+genStep :: TR (C.Definition, C.Definition)
+genStep = do
   p     <- gets procedure
   _     <- nextCase -- Toss away 0th case
-  cases <- concat <$> mapM mkCase (body p)
+  cases <- concat <$> mapM genCase (body p)
   refs  <- gets locals
   final <- nextCase
-  let step = stepId (name p)
-      act  = act_ (name p)
+  let step = step_ $ name p
+      act  = [cty|typename $id:(act_ $ name p)|]
   return
     ( [cedecl|void $id:step($ty:act_t *gen_act);|]
     , [cedecl|
@@ -369,22 +402,22 @@ mkStep = do
     )
   where dequeue (s, _) = [cstm|$id:dequeue_event(($ty:sv_t *) &act->$id:s);|]
 
--- | TODO: doc
+-- | Generate the list of statements from each 'Stm' in an SSM 'Procedure'.
 --
 -- Note that this compilation scheme might not work if the language were to
--- support return statements. This could be fixed by placing synthesizing
--- a break, and moving the leave call to outside of the switch statement.
+-- support return statements. This could be fixed by generating a break, and
+-- moving the leave call to outside of the switch statement in 'genStep'.
 --
--- TODOs: remove hard-coded `act` stuff
-mkCase :: Stm -> TR [C.Stm]
-mkCase (NewRef n t v) = do
+-- TODOs: remove hard-coded act variable name.
+genCase :: Stm -> TR [C.Stm]
+genCase (NewRef n t v) = do
   locs <- map fst <$> gets locals
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
-      rhs  = mkExp locs v
+      rhs  = genExp locs v
   addLocal lvar t
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
-mkCase (GetRef n t (rvar, _)) = do
+genCase (GetRef n t (rvar, _)) = do
   locs <- map fst <$> gets locals
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
@@ -393,44 +426,44 @@ mkCase (GetRef n t (rvar, _)) = do
         else [cexp|act->$id:rvar->value|]
   addLocal lvar t -- FIXME: I guess GetRef also declares a variable??
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
-mkCase (SetRef (lvar, t) e) = do
+genCase (SetRef (lvar, t) e) = do
   locs <- map fst <$> gets locals
   let lhs = if lvar `elem` locs
         then [cexp|&act->$id:lvar|]
         else [cexp|act->$id:lvar|]
-      rhs = mkExp locs e
+      rhs = genExp locs e
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
-mkCase (SetLocal n t e) = do
+genCase (SetLocal n t e) = do
   locs <- map fst <$> gets locals
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
-      rhs  = mkExp locs e
+      rhs  = genExp locs e
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
-mkCase (If c t e) = do
+genCase (If c t e) = do
   locs <- map fst <$> gets locals
-  let cnd = mkExp locs c
-  thn <- concat <$> mapM mkCase t
-  els <- concat <$> mapM mkCase e
+  let cnd = genExp locs c
+  thn <- concat <$> mapM genCase t
+  els <- concat <$> mapM genCase e
   return [[cstm| if ($exp:cnd) { $stms:thn } else { $stms:els }|]]
-mkCase (While c b) = do
+genCase (While c b) = do
   locs <- map fst <$> gets locals
-  let cnd = mkExp locs c
-  bod <- concat <$> mapM mkCase b
+  let cnd = genExp locs c
+  bod <- concat <$> mapM genCase b
   return [[cstm| while ($exp:cnd) { $stms:bod } |]]
-mkCase (After d (lvar, t) v) = do
+genCase (After d (lvar, t) v) = do
   locs <- map fst <$> gets locals
-  let del = mkExp locs d
+  let del = genExp locs d
       lhs = if lvar `elem` locs
         then [cexp|&act->$id:lvar|]
         else [cexp|act->$id:lvar|]
-      rhs = mkExp locs v
+      rhs = genExp locs v
       -- | NOTE: we add `now` to the delay here.
   return [[cstm| $id:(later_ t)($exp:lhs, now + $exp:del, $exp:rhs);|]]
-mkCase (Wait ts) = do
+genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts
   locs <- map fst <$> gets locals
-  let trigs = zip [1 ..] $ map (mkTrig locs) ts
+  let trigs = zip [1 ..] $ map (genTrig locs) ts
   return
     $  fmap sensitizeTrig trigs
     ++ [ [cstm| gen_act->pc = $int:caseNum; |]
@@ -441,16 +474,14 @@ mkCase (Wait ts) = do
  where
   sensitizeTrig (i, trig) =
     [cstm|$id:sensitize(($ty:sv_t *) $exp:trig, &act->$id:(trig_ i));|]
-
   desensitizeTrig (i, _) = [cstm|$id:desensitize(&act->$id:(trig_ i));|]
-
-  mkTrig refs (trig, _) =
+  genTrig refs (trig, _) =
     if trig `elem` refs then [cexp|&act->$id:trig|] else [cexp|act->$id:trig|]
-mkCase (Fork cs) = do
+genCase (Fork cs) = do
   locs    <- map fst <$> gets locals
   caseNum <- nextCase
   let
-    mkCall i (r, as) =
+    genCall i (r, as) =
       [cstm|$id:fork(($ty:act_t *) $id:(enter_ r)($args:enterArgs));|]
      where
       enterArgs =
@@ -458,47 +489,48 @@ mkCase (Fork cs) = do
           , [cexp|act->priority + $int:i * (1 << $exp:newDepth)|]
           , newDepth
           ]
-          ++ map mkArg as
-
-      mkArg (Left e) = mkExp locs e
-      mkArg (Right (r, _)) =
+          ++ map genArg as
+      genArg (Left e) = genExp locs e
+      genArg (Right (r, _)) =
         if r `elem` locs then [cexp|&act->$id:r|] else [cexp|act->$id:r|]
 
       newDepth = [cexp|act->depth - $int:depthSub|]
       depthSub =
         (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Int
 
-    mkDebug (r, _) = r
+    genDebug (r, _) = r
   return
     $ [cstm| DEBUG_PRINT($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |]
-    : zipWith mkCall [1 :: Int ..] cs
+    : zipWith genCall [1 :: Int ..] cs
     ++ [ [cstm| gen_act->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]
        ]
-mkCase Skip = return []
+genCase Skip = return []
 
--- TODO: double check that the quasi quote thing handles parenthesization and
--- precedence for us.
-mkExp :: [String] -> SSMExp -> C.Exp
-mkExp _  (Var _ n              ) = [cexp|act->$id:n.value|]
-mkExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
-mkExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
-mkExp _  (Lit _ (LInt64  i    )) = [cexp|$int:i|]
-mkExp _  (Lit _ (LUInt64 i    )) = [cexp|$int:i|]
-mkExp _  (Lit _ (LBool   True )) = [cexp|true|]
-mkExp _  (Lit _ (LBool   False)) = [cexp|false|]
-mkExp ls (UOpE _ e      Neg    ) = [cexp|- $exp:(mkExp ls e)|]
-mkExp ls (UOpR _ (n, _) Changed) = [cexp|event_on(($ty:sv_t *) $exp:arg)|]
-  where arg = if n `elem` ls then [cexp|&act->$id:n|] else [cexp|act->$id:n|]
-mkExp ls (BOp TInt32 e1 e2 OPlus) =
-  [cexp|__add($exp:(mkExp ls e1), $exp:(mkExp ls e2))|]
-mkExp ls (BOp _ e1 e2 op) = c op
+-- | Generate C expression from 'SSMExp' and a list of local variables.
+genExp :: [String] -> SSMExp -> C.Exp
+genExp _  (Var _ n              ) = [cexp|act->$id:n.value|]
+genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LInt64  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LUInt64 i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LBool   True )) = [cexp|true|]
+genExp _  (Lit _ (LBool   False)) = [cexp|false|]
+genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
+genExp ls (UOpR _ (n, _) Changed)
+  | n `elem` ls = [cexp|event_on(($ty:sv_t *) &arg->$id:n)|]
+  | otherwise   = [cexp|event_on(($ty:sv_t *) arg->$id:n)|]
+-- | Circumvent optimizations that take advantage of C's undefined signed
+-- integer wraparound behavior. FIXME: remove this hack, which is probably not
+-- robust anyway if C is aggressive about inlining.
+genExp ls (BOp ty e1 e2 op)
+  | ty == TInt32 && op == OPlus = [cexp|_add($exp:c1, $exp:c2)|]
+  | otherwise                   = gen op
  where
-  (c1, c2) = (mkExp ls e1, mkExp ls e2)
-
-  c OPlus  = [cexp|$exp:c1 + $exp:c2|]
-  c OMinus = [cexp|$exp:c1 - $exp:c2|]
-  c OTimes = [cexp|$exp:c1 * $exp:c2|]
-  c OLT    = [cexp|$exp:c1 < $exp:c2|]
-  c OEQ    = [cexp|$exp:c1 == $exp:c2|]
+  (c1, c2) = (genExp ls e1, genExp ls e2)
+  gen OPlus  = [cexp|$exp:c1 + $exp:c2|]
+  gen OMinus = [cexp|$exp:c1 - $exp:c2|]
+  gen OTimes = [cexp|$exp:c1 * $exp:c2|]
+  gen OLT    = [cexp|$exp:c1 < $exp:c2|]
+  gen OEQ    = [cexp|$exp:c1 == $exp:c2|]
