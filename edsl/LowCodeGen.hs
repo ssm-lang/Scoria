@@ -265,10 +265,18 @@ genMain program =
 
   refPrints = map refPrint $ rights $ args program
   refPrint (ref, typ) =
-    [citem|printf($string:fmtString, $id:fmtType, /* FIXME */ (long) $id:ref.value);|]
+    [citem|printf($string:fmtString, $id:fmtType, ($ty:fmtCast) $id:ref.value);|]
    where
-    fmtString = "result " ++ ref ++ " %s %ld\n"
-    fmtType   = "str_" ++ typeId typ
+    -- | We need to explicitly check if typ is an unsigned type to give it the
+    -- appropriate formatter and cast.
+    --
+    -- TODO: once we move the formatters and type gen stuff into Haskell itself,
+    -- we can just look it up from there.
+    fmtString | typ `elem` [TUInt64, TUInt8] = "result " ++ ref ++ " %s %lu\n"
+              | otherwise                    = "result " ++ ref ++ " %s %ld\n"
+    fmtType = "str_" ++ typeId typ
+    fmtCast | typ `elem` [TUInt64, TUInt8] = [cty|unsigned long|]
+            | otherwise                    = [cty|long|]
 
 -- | Generate definitions for an SSM 'Procedure'.
 --
@@ -519,8 +527,8 @@ genExp _  (Lit _ (LBool   True )) = [cexp|true|]
 genExp _  (Lit _ (LBool   False)) = [cexp|false|]
 genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
 genExp ls (UOpR _ (n, _) Changed)
-  | n `elem` ls = [cexp|event_on(($ty:sv_t *) &arg->$id:n)|]
-  | otherwise   = [cexp|event_on(($ty:sv_t *) arg->$id:n)|]
+  | n `elem` ls = [cexp|event_on(($ty:sv_t *) &act->$id:n)|]
+  | otherwise   = [cexp|event_on(($ty:sv_t *) act->$id:n)|]
 -- | Circumvent optimizations that take advantage of C's undefined signed
 -- integer wraparound behavior. FIXME: remove this hack, which is probably not
 -- robust anyway if C is aggressive about inlining.
