@@ -17,6 +17,7 @@ import qualified Language.C.Syntax             as C
 
 import           LowCore
 
+import           Debug.Trace
 import           Text.PrettyPrint.Mainland      ( pretty )
 import           Text.PrettyPrint.Mainland.Class
                                                 ( pprList )
@@ -33,7 +34,8 @@ compile_ wantMain tickLimit program = pretty 120 $ pprList compUnit
 
   (decls, defns) = concat2 $ unzip $ map mkProcedure $ Map.elems (funs program)
 
-  compUnit       = preamble ++ decls ++ defns ++ [ mkMain program | wantMain ]
+  compUnit =
+    preamble ++ decls ++ defns ++ if wantMain then mkMain program else []
 
   concat2 (x, y) = (concat x, concat y)
 
@@ -65,6 +67,9 @@ nextCase = do
 addLocal :: String -> Type -> TR ()
 addLocal n t = modify $ \st -> st { locals = (n, t) : locals st }
 
+addTemp :: String -> Type -> TR ()
+addTemp n t = modify $ \st -> st { locals = (n, t) : locals st }
+
 maxWaits :: Int -> TR ()
 maxWaits rs = modify $ \st -> st { numwaits = rs `max` numwaits st }
 
@@ -87,7 +92,7 @@ fork :: CIdent
 fork = "fork_routine"
 
 act_enter :: CIdent
-act_enter = "act_enter"
+act_enter = "enter"
 
 event_on :: CIdent
 event_on = "event_on"
@@ -159,11 +164,6 @@ bool_t = [cty|typename bool|]
 svt_ :: Type -> C.Type
 svt_ ty = [cty|typename $id:(svtId $ typeId ty)|]
 
--- | FIXME: This only works because we don't have nested Refs (yet)
-param_ :: Type -> C.Type
-param_ (Ref ty) = [cty|$ty:(svt_ ty) *|]
-param_ ty       = [cty|typename $id:(typeId ty)|]
-
 act_ :: String -> C.Type
 act_ ty = [cty|typename $id:(actId ty)|]
 
@@ -171,14 +171,11 @@ mkPreamble :: Maybe Int -> [C.Definition]
 mkPreamble tickLimit = [cunit|
 $esc:("#include \"peng-platform.h\"")
 $esc:("#include \"peng.h\"")
+$esc:("#include \"formatters.h\"")
 $esc:("#include <stdio.h>")
 $esc:("#include <stdint.h>")
-/* Are these comments preserved? */
-
-extern void $id:dequeue_event($ty:sv_t *var);
 
 extern $ty:time_t now;
-extern int can_schedule($ty:sv_t *var);
 
 $ty:time_t limit = $exp:limit;
 
@@ -191,45 +188,49 @@ static int __add(int a, int b) {
 
   promoteExp i = [cexp|$int:i|]
 
-topReturn :: C.Definition
-topReturn = [cedecl| void $id:topReturnId($ty:act_t *act) { return; } |]
 
 -- | Generate C definition for main program
 -- TODO items: (1) lift per-type default value and formatters from here
 --             (2) remove pointer cast
 --             (3) centralize debug logic
-mkMain :: Program -> C.Definition
-mkMain program = [cedecl|
-    void main(void) {
-      $ty:act_t top = { .step = $id:topReturnId };
+mkMain :: Program -> [C.Definition]
+mkMain program =
+  [ [cedecl| void $id:topReturnId($ty:act_t *act) { return; } |]
+  , [cedecl|
+      void main(void) {
+        $ty:act_t top = { .step = $id:topReturnId };
 
-      $items:refInits
+        $items:refInits
 
-      $id:fork(($ty:act_t *) /* FIXME */ $id:enter($args:enterArgs));
+        $id:fork(($ty:act_t *) /* FIXME */ $id:enter($args:enterArgs));
 
-      tick();
-
-      DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
-
-      for (;;) {
-        now = next_event_time();
-        if(now == NO_EVENT_SCHEDULED)
-          break;
         tick();
-        DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
-      }
 
-      $items:refPrints
-    }
-  |]
+        DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
+
+        for (;;) {
+          now = next_event_time();
+          if(now == NO_EVENT_SCHEDULED)
+            break;
+          tick();
+          DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
+        }
+
+        $items:refPrints
+      }
+    |]
+  ]
  where
   enter = enter_ $ main program
 
   enterArgs =
-    [[cexp|&top|], [cexp|PRIORITY_AT_ROOT|], [cexp|DEPTH_AT_ROOT|]]
+    [ [cexp|($ty:act_t *) &top|]
+      , [cexp|PRIORITY_AT_ROOT|]
+      , [cexp|DEPTH_AT_ROOT|]
+      ]
       ++ map enterArg (args program)
 
-  enterArg (Left  ssmExp  ) = mkExp [] ssmExp -- FIXME: this is buggy if ssmExp contains a var
+  enterArg (Left  ssmExp  ) = mkExp ssmExp -- FIXME: this is buggy if ssmExp contains a var??
   enterArg (Right (ref, _)) = [cexp|&$id:ref|]
 
   refInits  = concatMap refInit $ rights $ args program
@@ -242,9 +243,11 @@ mkMain program = [cedecl|
     , [citem|$id:ref.value = /* FIXME */ 0;|]
     ]
 
-  refPrint (ref, _) =
-    [citem|printf($string:fmtString, /* FIXME */ (long) $id:ref.value);|] {-typ-}
-    where fmtString = "result " ++ ref ++ " %ld\n"
+  refPrint (ref, typ) =
+    [citem|printf($string:fmtString, $id:fmtType, /* FIXME */ (long) $id:ref.value);|] {-typ-}
+   where
+    fmtString = "result " ++ ref ++ " %s %ld\n"
+    fmtType   = "str_" ++ typeId typ
 
 mkProcedure :: Procedure -> ([C.Definition], [C.Definition])
 mkProcedure p = runTR p $ do
@@ -279,7 +282,8 @@ mkStruct = do
     , [csdecl|$ty:bool_t scheduled;|]
     ]
 
-  param (n, t) = [csdecl|$ty:(param_ t) $id:n;|]
+  param (n, Ref t) = [csdecl|$ty:(svt_ t) *$id:n;|]
+  param (n, t    ) = [csdecl|$ty:(svt_ t) $id:n;|]
 
   local (n, t) = [csdecl|$ty:(svt_ t) $id:n;|]
 
@@ -294,7 +298,7 @@ mkEnter = do
       enter = enter_ (name p)
       step  = stepId (name p)
       params =
-        [cparams|$ty:act *caller, $ty:priority_t priority, $ty:depth_t depth|]
+        [cparams|$ty:act_t *caller, $ty:priority_t priority, $ty:depth_t depth|]
           ++ map param (arguments p)
   return
     ( [cedecl|$ty:act *$id:enter($params:params);|]
@@ -303,8 +307,13 @@ mkEnter = do
           $ty:act_t *gen_act = $id:act_enter(sizeof($ty:act), $id:step, caller, priority, depth);
           $ty:act *act = ($ty:act *) gen_act;
 
-          $stms:(map initParam (arguments p))
+          /* Initialize and assign parameters */
+          $stms:(concatMap initParam (arguments p))
+
+          /* Initialize locals */
           $stms:(map initLocal ls)
+
+          /* Initialize triggers */
           $stms:(map initTrig [1..ts])
 
           return act;
@@ -312,10 +321,18 @@ mkEnter = do
       |]
     )
  where
-  param (n, t) = [cparam|$ty:(param_ t) $id:n|]
+  -- | FIXME: This only works because we don't have nested Refs (yet)
+  param (n, Ref t) = [cparam|$ty:(svt_ t) *$id:n|]
+  param (n, t    ) = [cparam|typename $id:(typeId t) $id:n|]
+    -- param_ :: Type -> C.Type
+    -- param_ (Ref ty) = [cty|$ty:(svt_ ty) *|]
+    -- param_ ty       = [cty|typename $id:(typeId ty)|]
 
-  -- initParam (n, Ref t) = -- TODO: do we need to treat refs differently?
-  initParam (n, _) = [cstm|act->$id:n = $id:n;|]
+  initParam (n, Ref t) = [[cstm|act->$id:n = $id:n;|]]
+  initParam (n, t) =
+    [ [cstm|$id:(initialize_ t)(&act->$id:n);|]
+    , [cstm|act->$id:n.value = $id:n;|]
+    ]
 
   initLocal (n, t) = [cstm| $id:(initialize_ t)(&act->$id:n);|]
 
@@ -361,10 +378,9 @@ mkStep = do
 -- TODOs: remove hard-coded `act` stuff
 mkCase :: Stm -> TR [C.Stm]
 mkCase (NewRef n t v) = do
-  params <- map fst . arguments <$> gets procedure
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
-      rhs  = mkExp params v
+      rhs  = mkExp v
   addLocal lvar t
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (GetRef n t (rvar, _)) = do
@@ -374,41 +390,38 @@ mkCase (GetRef n t (rvar, _)) = do
       rhs  = if rvar `elem` refs
         then [cexp|act->$id:rvar.value|]
         else [cexp|act->$id:rvar->value|]
+  addLocal lvar t -- FIXME: I guess GetRef also declares a variable??
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (SetRef (lvar, t) e) = do
-  params <- map fst . arguments <$> gets procedure
-  refs   <- map fst <$> gets locals
+  refs <- map fst <$> gets locals
   let lhs = if lvar `elem` refs
         then [cexp|&act->$id:lvar|]
         else [cexp|act->$id:lvar|]
-      rhs = mkExp params e
+      rhs = mkExp e
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (SetLocal n t e) = do
-  params <- map fst . arguments <$> gets procedure
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
-      rhs  = mkExp params e
+      rhs  = mkExp e
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (If c t e) = do
-  params <- map fst . arguments <$> gets procedure
-  let cnd = mkExp params c
+  let cnd = mkExp c
   thn <- concat <$> mapM mkCase t
   els <- concat <$> mapM mkCase e
   return [[cstm| if ($exp:cnd) { $stms:thn } else { $stms:els }|]]
 mkCase (While c b) = do
-  params <- map fst . arguments <$> gets procedure
-  let cnd = mkExp params c
+  let cnd = mkExp c
   bod <- concat <$> mapM mkCase b
   return [[cstm| while ($exp:cnd) { $stms:bod } |]]
 mkCase (After d (lvar, t) v) = do
-  params <- map fst . arguments <$> gets procedure
-  refs   <- map fst <$> gets locals
-  let del = mkExp params d
+  refs <- map fst <$> gets locals
+  let del = mkExp d
       lhs = if lvar `elem` refs
         then [cexp|&act->$id:lvar|]
         else [cexp|act->$id:lvar|]
-      rhs = mkExp params v
-  return [[cstm| $id:(later_ t)($exp:lhs, $exp:del, $exp:rhs);|]]
+      rhs = mkExp v
+      -- | NOTE: we add `now` to the delay here.
+  return [[cstm| $id:(later_ t)($exp:lhs, now + $exp:del, $exp:rhs);|]]
 mkCase (Changed n t (rvar, _)) = do
   refs <- map fst <$> gets locals
   let
@@ -416,6 +429,7 @@ mkCase (Changed n t (rvar, _)) = do
     lhs  = [cexp|&act->$id:lvar|]
     rhs =
       if rvar `elem` refs then [cexp|&act->$id:rvar|] else [cexp|act->$id:rvar|]
+  addLocal lvar t -- FIXME: I guess GetRef also declares a variable??
   return
     [ [cstm| $id:(assign_ t)($exp:lhs, act->priority, $id:event_on(($ty:sv_t *) $exp:rhs));|]
     ]
@@ -440,26 +454,31 @@ mkCase (Wait ts) = do
   mkTrig refs (trig, _) =
     if trig `elem` refs then [cexp|&act->$id:trig|] else [cexp|act->$id:trig|]
 mkCase (Fork cs) = do
-  params  <- map fst . arguments <$> gets procedure
   refs    <- map fst <$> gets locals
   caseNum <- nextCase
-  let depthSub =
-        (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Integer
-      newDepth = [cexp|act->depth - $int:depthSub|]
-      mkArgs i extraArgs =
-        [ [cexp|act|]
+  let
+    mkCall i (r, as) =
+      [cstm|$id:fork(($ty:act_t *) $id:(enter_ r)($args:enterArgs));|]
+     where
+      enterArgs =
+        [ [cexp|gen_act|]
           , [cexp|act->priority + $int:i * (1 << $exp:newDepth)|]
           , newDepth
           ]
-          ++ extraArgs
-      mkCall i (r, as) =
-        [cstm|$id:fork(($ty:act_t *) $id:(enter_ r)($args:enterArgs));|]
-        where enterArgs = mkArgs i $ map mkArg as
-      mkArg (Left e) = mkExp params e
+          ++ map mkArg as
+
+      mkArg (Left e) = mkExp e
       mkArg (Right (r, _)) =
         if r `elem` refs then [cexp|&act->$id:r|] else [cexp|act->$id:r|]
+
+      newDepth = [cexp|act->depth - $int:depthSub|]
+      depthSub =
+        (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Int
+
+    mkDebug (r, _) = r
   return
-    $  zipWith mkCall [1 :: Int ..] cs
+    $ [cstm| DEBUG_PRINT($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |]
+    : zipWith mkCall [1 :: Int ..] cs
     ++ [ [cstm| gen_act->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]
@@ -468,21 +487,20 @@ mkCase Skip = return []
 
 -- TODO: double check that the quasi quote thing handles parenthesization and
 -- precedence for us.
-mkExp :: [String] -> SSMExp -> C.Exp
-mkExp _ (Lit _ (LInt32  i    )) = [cexp|$int:i|]
-mkExp _ (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
-mkExp _ (Lit _ (LInt64  i    )) = [cexp|$int:i|]
-mkExp _ (Lit _ (LUInt64 i    )) = [cexp|$int:i|]
-mkExp _ (Lit _ (LBool   True )) = [cexp|true|]
-mkExp _ (Lit _ (LBool   False)) = [cexp|false|]
-mkExp params (Var _ n) =
-  if n `elem` params then [cexp|act->$id:n|] else [cexp|act->$id:n.value|]
-mkExp params (UOp _ e Neg) = [cexp|- $exp:(mkExp params e)|]
-mkExp params (BOp TInt32 e1 e2 OPlus) =
-  [cexp|__add($exp:(mkExp params e1), $exp:(mkExp params e2))|]
-mkExp params (BOp _ e1 e2 op) = c op
+mkExp :: SSMExp -> C.Exp
+mkExp (Var _ n              ) = [cexp|act->$id:n.value|]
+mkExp (Lit _ (LInt32  i    )) = [cexp|$int:i|]
+mkExp (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
+mkExp (Lit _ (LInt64  i    )) = [cexp|$int:i|]
+mkExp (Lit _ (LUInt64 i    )) = [cexp|$int:i|]
+mkExp (Lit _ (LBool   True )) = [cexp|true|]
+mkExp (Lit _ (LBool   False)) = [cexp|false|]
+mkExp (UOp _ e Neg          ) = [cexp|- $exp:(mkExp e)|]
+mkExp (BOp TInt32 e1 e2 OPlus) =
+  [cexp|__add($exp:(mkExp e1), $exp:(mkExp e2))|]
+mkExp (BOp _ e1 e2 op) = c op
  where
-  (c1, c2) = (mkExp params e1, mkExp params e2)
+  (c1, c2) = (mkExp e1, mkExp e2)
 
   c OPlus  = [cexp|$exp:c1 + $exp:c2|]
   c OMinus = [cexp|$exp:c1 - $exp:c2|]
