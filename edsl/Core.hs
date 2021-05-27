@@ -38,7 +38,6 @@ data SSMStm = -- | Variable/Stream operations
             
               -- | SSM specific operations
             | After SSMExp Reference SSMExp
-            | Changed Name Reference
             | Wait [Reference]
             | Fork [SSM ()]
 
@@ -105,7 +104,8 @@ instance SSMType Word64 where
 expType :: SSMExp -> Type
 expType (Var t _)     = t
 expType (Lit t _)     = t
-expType (UOp t _ _)   = t
+expType (UOpE t _ _)  = t
+expType (UOpR t _ _)  = t
 expType (BOp t _ _ _) = t
 
 refType :: Reference -> Type
@@ -125,7 +125,8 @@ isReference _       = False
 -- | SSM expressions
 data SSMExp = Var Type String               -- ^ Variables
             | Lit Type SSMLit               -- ^ Literals
-            | UOp Type SSMExp UnaryOp       -- ^ Unary operators
+            | UOpE Type SSMExp UnaryOpE     -- ^ Unary operators on expressions
+            | UOpR Type Reference UnaryOpR  -- ^ Unary operators on references
             | BOp Type SSMExp SSMExp BinOp  -- ^ Binary operators
   deriving (Eq, Generic, NFData, Show, Read)
 
@@ -137,8 +138,12 @@ data SSMLit = LInt32 Int32    -- ^ Integer literals
             | LBool Bool      -- ^ Boolean literals
   deriving (Eq, Generic, NFData, Show, Read)
 
-{-- | SSM unary operators -}
-data UnaryOp = Neg  -- ^ negation
+{-- | SSM unary operators on expressions -}
+data UnaryOpE = Neg  -- ^ negation
+  deriving (Show, Eq, Generic, NFData, Read)
+
+{-| SSM unary operators on references -}
+data UnaryOpR = Changed  -- ^ Expression represents if the reference has been written to
   deriving (Show, Eq, Generic, NFData, Read)
 
 {-- | SSM binary operators. We use phantom types to represent the two argument types and

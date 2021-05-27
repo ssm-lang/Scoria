@@ -75,7 +75,6 @@ renameStmt s (Info (Just n) (Just (f,x,y))) =
     in case s of
         NewRef n e  -> NewRef srcinfo e
         GetRef n r  -> GetRef srcinfo r
-        Changed n r -> Changed srcinfo r
         _           -> s
 
 renameExp :: Exp a -> SrcInfo -> Exp a
@@ -165,7 +164,7 @@ Exp e1 <. Exp e2  = Exp $ BOp TBool e1 e2 OLT
 Exp e1 ==. Exp e2 = Exp $ BOp TBool e1 e2 OEQ
 
 neg :: (Num a, SSMType a) => Exp a -> Exp a
-neg e@(Exp e') = Exp $ UOp (typeOf e) e' Neg
+neg e@(Exp e') = Exp $ UOpE (typeOf e) e' Neg
 
 int32 :: Int32 -> Exp Int32
 int32 i = Exp $ Lit TInt32 $ LInt32 i
@@ -207,12 +206,9 @@ after (Exp e) (Ptr r) (Exp v) = emit $ After e r v
 fork :: [SSM ()] -> SSM ()
 fork procs = emit $ Fork procs
 
--- The @-operator
-changed :: Ref a -> SSM (Exp Bool)
-changed (Ptr r) = do
-    n <- fresh
-    emit $ Changed (Fresh n) r
-    return $ Exp $ Var TBool n
+-- | The @-operator
+changed :: Ref a -> Exp Bool
+changed (Ptr r) = Exp $ UOpR TBool r Changed
 
 -- | Conditional executing with a dangling else
 if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()

@@ -98,11 +98,11 @@ prettyStm stm = case stm of
                                     , " = "
                                     , prettySSMExp v
                                     ]
-    Changed n t r  -> emit $ concat [ prettyType t
-                                    , " "
-                                    , getVarName n
-                                    , " = @"
-                                    , fst r]
+ --   Changed n t r  -> emit $ concat [ prettyType t
+ --                                   , " "
+ --                                   , getVarName n
+ --                                   , " = @"
+ --                                   , fst r]
     Wait refs      -> emit $ concat [ "wait ["
                                     , intercalate ", " (map fst refs)
                                     , "]"
@@ -149,7 +149,8 @@ prettySSMExp :: SSMExp -> String
 prettySSMExp e = case e of
     Var t n         -> n
     Lit t l         -> prettyLit l
-    UOp t e Neg     -> concat ["(", prettySSMExp e, ")"]
+    UOpE t e op     -> prettyUnaryOpE op e
+    UOpR t r op     -> prettyUnaryOpR op r
     BOp t e1 e2 bop -> concat [ "("
                               , prettySSMExp e1
                               , " "
@@ -158,6 +159,14 @@ prettySSMExp e = case e of
                               , prettySSMExp e2
                               , ")"
                               ]
+
+prettyUnaryOpE :: UnaryOpE -> SSMExp -> String
+prettyUnaryOpE op e = case op of
+    Neg -> concat ["(-", prettySSMExp e, ")"] 
+
+prettyUnaryOpR :: UnaryOpR -> Reference -> String
+prettyUnaryOpR op r = case op of
+    Changed -> '@' : fst r
 
 prettyBinop :: BinOp -> String
 prettyBinop op = case op of

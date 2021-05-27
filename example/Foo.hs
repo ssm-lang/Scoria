@@ -4,10 +4,10 @@ module Foo where
 import BinderAnn.Monadic
 
 import SSM
+import Data.Int
 
-foo :: Exp Bool -> Ref Int -> SSM ()
+foo :: Exp Bool -> Ref Int32 -> SSM ()
 foo = box "foo" ["a", "b"] $ \a b -> do
-    c <- changed b
     fork [ foo a b
-         , foo c b
+         , foo (changed b) b
          ]

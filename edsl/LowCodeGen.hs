@@ -230,7 +230,7 @@ mkMain program =
       ]
       ++ map enterArg (args program)
 
-  enterArg (Left  ssmExp  ) = mkExp ssmExp -- FIXME: this is buggy if ssmExp contains a var??
+  enterArg (Left  ssmExp  ) = mkExp [] ssmExp -- FIXME: this is buggy if ssmExp contains a var??
   enterArg (Right (ref, _)) = [cexp|&$id:ref|]
 
   refInits  = concatMap refInit $ rights $ args program
@@ -378,66 +378,59 @@ mkStep = do
 -- TODOs: remove hard-coded `act` stuff
 mkCase :: Stm -> TR [C.Stm]
 mkCase (NewRef n t v) = do
+  locs <- map fst <$> gets locals
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
-      rhs  = mkExp v
+      rhs  = mkExp locs v
   addLocal lvar t
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (GetRef n t (rvar, _)) = do
-  refs <- map fst <$> gets locals
+  locs <- map fst <$> gets locals
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
-      rhs  = if rvar `elem` refs
+      rhs  = if rvar `elem` locs
         then [cexp|act->$id:rvar.value|]
         else [cexp|act->$id:rvar->value|]
   addLocal lvar t -- FIXME: I guess GetRef also declares a variable??
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (SetRef (lvar, t) e) = do
-  refs <- map fst <$> gets locals
-  let lhs = if lvar `elem` refs
+  locs <- map fst <$> gets locals
+  let lhs = if lvar `elem` locs
         then [cexp|&act->$id:lvar|]
         else [cexp|act->$id:lvar|]
-      rhs = mkExp e
+      rhs = mkExp locs e
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (SetLocal n t e) = do
+  locs <- map fst <$> gets locals
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
-      rhs  = mkExp e
+      rhs  = mkExp locs e
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 mkCase (If c t e) = do
-  let cnd = mkExp c
+  locs <- map fst <$> gets locals
+  let cnd = mkExp locs c
   thn <- concat <$> mapM mkCase t
   els <- concat <$> mapM mkCase e
   return [[cstm| if ($exp:cnd) { $stms:thn } else { $stms:els }|]]
 mkCase (While c b) = do
-  let cnd = mkExp c
+  locs <- map fst <$> gets locals
+  let cnd = mkExp locs c
   bod <- concat <$> mapM mkCase b
   return [[cstm| while ($exp:cnd) { $stms:bod } |]]
 mkCase (After d (lvar, t) v) = do
-  refs <- map fst <$> gets locals
-  let del = mkExp d
-      lhs = if lvar `elem` refs
+  locs <- map fst <$> gets locals
+  let del = mkExp locs d
+      lhs = if lvar `elem` locs
         then [cexp|&act->$id:lvar|]
         else [cexp|act->$id:lvar|]
-      rhs = mkExp v
+      rhs = mkExp locs v
       -- | NOTE: we add `now` to the delay here.
   return [[cstm| $id:(later_ t)($exp:lhs, now + $exp:del, $exp:rhs);|]]
-mkCase (Changed n t (rvar, _)) = do
-  refs <- map fst <$> gets locals
-  let
-    lvar = getVarName n
-    lhs  = [cexp|&act->$id:lvar|]
-    rhs =
-      if rvar `elem` refs then [cexp|&act->$id:rvar|] else [cexp|act->$id:rvar|]
-  addLocal lvar t -- FIXME: I guess GetRef also declares a variable??
-  return
-    [ [cstm| $id:(assign_ t)($exp:lhs, act->priority, $id:event_on(($ty:sv_t *) $exp:rhs));|]
-    ]
 mkCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts
-  refs <- map fst <$> gets locals
-  let trigs = zip [1 ..] $ map (mkTrig refs) ts
+  locs <- map fst <$> gets locals
+  let trigs = zip [1 ..] $ map (mkTrig locs) ts
   return
     $  fmap sensitizeTrig trigs
     ++ [ [cstm| gen_act->pc = $int:caseNum; |]
@@ -454,7 +447,7 @@ mkCase (Wait ts) = do
   mkTrig refs (trig, _) =
     if trig `elem` refs then [cexp|&act->$id:trig|] else [cexp|act->$id:trig|]
 mkCase (Fork cs) = do
-  refs    <- map fst <$> gets locals
+  locs    <- map fst <$> gets locals
   caseNum <- nextCase
   let
     mkCall i (r, as) =
@@ -467,9 +460,9 @@ mkCase (Fork cs) = do
           ]
           ++ map mkArg as
 
-      mkArg (Left e) = mkExp e
+      mkArg (Left e) = mkExp locs e
       mkArg (Right (r, _)) =
-        if r `elem` refs then [cexp|&act->$id:r|] else [cexp|act->$id:r|]
+        if r `elem` locs then [cexp|&act->$id:r|] else [cexp|act->$id:r|]
 
       newDepth = [cexp|act->depth - $int:depthSub|]
       depthSub =
@@ -487,20 +480,22 @@ mkCase Skip = return []
 
 -- TODO: double check that the quasi quote thing handles parenthesization and
 -- precedence for us.
-mkExp :: SSMExp -> C.Exp
-mkExp (Var _ n              ) = [cexp|act->$id:n.value|]
-mkExp (Lit _ (LInt32  i    )) = [cexp|$int:i|]
-mkExp (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
-mkExp (Lit _ (LInt64  i    )) = [cexp|$int:i|]
-mkExp (Lit _ (LUInt64 i    )) = [cexp|$int:i|]
-mkExp (Lit _ (LBool   True )) = [cexp|true|]
-mkExp (Lit _ (LBool   False)) = [cexp|false|]
-mkExp (UOp _ e Neg          ) = [cexp|- $exp:(mkExp e)|]
-mkExp (BOp TInt32 e1 e2 OPlus) =
-  [cexp|__add($exp:(mkExp e1), $exp:(mkExp e2))|]
-mkExp (BOp _ e1 e2 op) = c op
+mkExp :: [String] -> SSMExp -> C.Exp
+mkExp _  (Var _ n              ) = [cexp|act->$id:n.value|]
+mkExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
+mkExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
+mkExp _  (Lit _ (LInt64  i    )) = [cexp|$int:i|]
+mkExp _  (Lit _ (LUInt64 i    )) = [cexp|$int:i|]
+mkExp _  (Lit _ (LBool   True )) = [cexp|true|]
+mkExp _  (Lit _ (LBool   False)) = [cexp|false|]
+mkExp ls (UOpE _ e      Neg    ) = [cexp|- $exp:(mkExp ls e)|]
+mkExp ls (UOpR _ (n, _) Changed) = [cexp|event_on(($ty:sv_t *) $exp:arg)|]
+  where arg = if n `elem` ls then [cexp|&act->$id:n|] else [cexp|act->$id:n|]
+mkExp ls (BOp TInt32 e1 e2 OPlus) =
+  [cexp|__add($exp:(mkExp ls e1), $exp:(mkExp ls e2))|]
+mkExp ls (BOp _ e1 e2 op) = c op
  where
-  (c1, c2) = (mkExp e1, mkExp e2)
+  (c1, c2) = (mkExp ls e1, mkExp ls e2)
 
   c OPlus  = [cexp|$exp:c1 + $exp:c2|]
   c OMinus = [cexp|$exp:c1 - $exp:c2|]
