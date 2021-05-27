@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5220b998cd2a884827e6960f5c4f183f92ee131fb044daf5cb471eb7b745996f
+-- hash: 5448f3731bc5880458657470967b5c86e1e700c777833dd1db5512aa028f6092
 
 name:           ssm
 version:        0.1.0.0
@@ -30,6 +30,7 @@ library
       Core
       Frontend
       HughesList
+      HW.Board
       LowCodeGen
       LowCore
       LowGenerator
@@ -63,6 +64,7 @@ executable print-ssm-from-file
       Core
       Frontend
       HughesList
+      HW.Board
       LowCodeGen
       LowCore
       LowGenerator
