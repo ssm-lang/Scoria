@@ -272,10 +272,10 @@ genMain program =
     --
     -- TODO: once we move the formatters and type gen stuff into Haskell itself,
     -- we can just look it up from there.
-    fmtString | typ `elem` [TUInt64, TUInt8] = "result " ++ ref ++ " %s %lu\n"
+    fmtString | typ `elem` [Ref TUInt64, Ref TUInt8] = "result " ++ ref ++ " %s %lu\n"
               | otherwise                    = "result " ++ ref ++ " %s %ld\n"
     fmtType = "str_" ++ typeId typ
-    fmtCast | typ `elem` [TUInt64, TUInt8] = [cty|unsigned long|]
+    fmtCast | typ `elem` [Ref TUInt64, Ref TUInt8] = [cty|unsigned long|]
             | otherwise                    = [cty|long|]
 
 -- | Generate definitions for an SSM 'Procedure'.
