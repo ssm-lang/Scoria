@@ -32,6 +32,7 @@ dependencies:
 - parser-combinators
 - deepseq
 - extra
+- mainland-pretty
 
 library:
   source-dirs: edsl
