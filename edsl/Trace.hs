@@ -285,7 +285,7 @@ pIdent = do
                  , "full"
                  , "negative"
                  , "depth"
-                 , "int"
+                 , "int32"
                  , "int64"
                  , "uint64"
                  , "bool"]
@@ -297,7 +297,7 @@ pRes = do
       pInt :: Parser SSMExp
       pInt = do
           pSpace
-          pSymbol "int"
+          pSymbol "int32"
           pSpace
           num <- choice [try (parens signed), signed]
           pSpace

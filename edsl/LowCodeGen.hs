@@ -1,887 +1,544 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module LowCodeGen where
 
-import Control.Monad.State.Lazy
-import Control.Monad.Writer.Lazy
-import Control.Monad.Reader
-import qualified Data.Map as Map
-import Data.List
-import LowCore
-import HughesList
+import           Control.Monad.State.Lazy       ( State
+                                                , evalState
+                                                , gets
+                                                , modify
+                                                )
 
-import System.IO.Unsafe
+import           Data.Either                    ( rights )
+import qualified Data.Map                      as Map
 
-trace :: Show a => a -> a
-trace x = unsafePerformIO $ putStrLn (show x) >> return x
+import           Language.C.Quote.GCC
+import qualified Language.C.Syntax             as C
 
--- | Different kind of field declarations we can do in the generated struct.
-data FieldDec
-  = -- | Declare a trigger with name "trig#".
-    TriggerDec Int
-  | -- | Declare a field with this type and name.
-    FieldDec RTSType String
-  | -- | Include the generic activation record fields.
-    GenericFields
-  deriving Show
+import           LowCore
 
--- | This datatype is used to render C code. The translation from [Stm] to [IR] will
--- remove any SSMExp and Reference and replace them with strings representing the C
--- code that means the same thing. E.g the reference "r0" would become "act->r0".
-data IR
-  = -- | `Function typ nam args bdy` == "typ nam(args) { bdy }" in c
-    Function RTSType String [Param] [IR]
-  | -- | Function prototype.
-    Prototype RTSType String [Param]
-  | -- | In the step function a generic `act_t*` argument is casted to a more specific
-    -- `act_name_t*` type. This constructor represents that statement.
-    -- Type to cast to and name of variable to cast.
-    UpcastAct RTSType String
-  | -- | Similarly there's a generic call to `enter` that's done in every enter function.
-    -- Result type and name of procedure.
-    UpcastEnter RTSType String
-  | -- | `AssignStruct v1 v2` == "act->v1 = v2".
-    AssignStruct String String
-  | -- | Struct declaration. First argument is the name (renders as "act_name_t") and
-    -- second field are the field declarations in the struct.
-    Struct String [FieldDec]
-  | -- | Dequeue an event on this variable if there is any
-    DequeueEvent String
+import           Debug.Trace
+import           Text.PrettyPrint.Mainland      ( pretty )
+import           Text.PrettyPrint.Mainland.Class
+                                                ( pprList )
 
-  | -- | Switch statement that renders to "switch(act->pc) { ... }".
-    Switch [IR]
-  | -- | `IfFalse c l` == "if (!(c)) goto l;".
-    IfFalse String Label
-  | -- | `Label l` = "l:".
-    Label Label
-  | -- | `Goto l` == "goto l;".
-    Goto Label
-  | -- | `Case i bdy` == "case i: { bdy }".
-    Case Int [IR]
-  | -- | `IncPC i` = "act->pc = i".
-    IncPC Int
-  | -- | `Return` == `return;`
-    Return
-  | -- | `ReturnEnter` == `return act;`
-    ReturnEnter
-  | -- | Renders into a debug print statement "DEBUG_PRINT(x)"
-    DebugPrint String
+-- | Use snake_case for c literals
+{-# ANN module "HLint: ignore Use camelCase" #-}
 
-  | -- | Initialize a variable of the specific base type.
-    Initialize BaseType String
-  | -- | Initialize a trigger. Renders as "act->trig#.rar = (act_t *) act;"
-    -- Only done in the enter function.
-    InitializeTrigger Int
-  | -- | Assign a value of the base type to a variable. The second field is the variable
-    -- to receive the new value and the third field is the new value.
-    Assign BaseType String String
-  | -- | Schedule a delayed assignment. The second field is the delay, the third field
-    -- is the variable to later receive the update and the fourth field is the new value.
-    Later BaseType String String String
-  | -- | In the variable represented by the first field, store the boolean which represents
-    -- if the variable in the second field has been written to in this instant in time.
-    EventOn String String
-  | -- | Wait for any of these variables to be written to. The variables are paired up
-    -- with an integer denoting which trigger in the struct that will be used.
-    Sensitize [(String, Int)]
-  | -- | Stop waiting for this trigger.
-    Desensitize Int
-  | -- | Fork a single call to this procedure with these arguments.
-    Call (String, [String])
-  | -- | Fork many procedures with these names and these arguments.
-    ForkProcedures [(String, [String])]
-  | -- | At the end of a step function we need to call leave to free up the struct memory.
-    Leave String
+-- | This function takes a `Program` and returns a string, which contains the
+-- pretty-printed content of the generated C file.
+compile_
+  :: Bool      -- ^ Whether to generate a main function
+  -> Maybe Int -- ^ An optional tick limit (FIXME: apparently unused?)
+  -> Program   -- ^ The program to be compiled
+  -> String    -- ^ The pretty-printed content of the generated C file
+compile_ m tl program = pretty 120 $ pprList compUnit
+ where
+  compUnit = preamble ++ decls ++ defns ++ if m then genMain program else []
 
-  | -- | Render a blank line in the C file, for readability.
-    Blank
-  | -- | Verbatim code at a specified indentation level, rendered with a semicolon.
-    Literal Int String
-  | -- | Same as above but without a semicolon at the EOL.
-    LiteralNoSemi Int String
-  deriving (Show)
+  preamble = genPreamble tl
+  (decls, defns) =
+    concat2 $ unzip $ map genProcedure $ Map.elems (funs program)
+  concat2 (x, y) = (concat x, concat y)
 
--- | Labels to use in conjunction with goto statements.
-type Label = String
-
-data BaseType
-  = CInt
-  | CInt64
-  | CUInt64
-  | CUInt8
-  | -- | from stdbool.h
-    CBool
-
-instance Show BaseType where
-    show CInt    = "int"
-    show CInt64  = "int64"
-    show CUInt64 = "uint64"
-    show CUInt8  = "uint8"
-    show CBool   = "bool"
-
--- | Types recognized (not exhaustive) by the runtime system.
-data RTSType
-  = -- | Standard void type
-    Void
-  | -- | Act name renders as "act_name_t"
-    Act String
-  | -- | Signed integers, size not necessary
-    SInt
-  | SInt64
-  | UInt64
-  | UInt8
-  | -- | Unsigned integers, specify the size from [8, 16, 32, 64]
-    UInt Int
-  | -- | Booleans
-    UBool
-  | -- | Renders as trigger_t
-    Trigger
-  | -- | Types such as sv_int_t
-    ScheduledVar BaseType
-  | -- | Pointer to a type
-    Pointer RTSType
-
-instance Show RTSType where
-    show Void              = "void"
-    show (Act name)        = if null name
-                               then "act_t"
-                               else concat ["act_", name, "_t"]
-    show SInt              = "int"
-    show SInt64            = "int64"
-    show UInt64            = "uint64"
-    show UInt8             = "uint8"
-    show UBool             = "bool"
-    show (UInt i)          = concat ["uint", show i, "_t"]
-    show Trigger           = "trigger_t"
-    show (ScheduledVar bt) = concat ["sv_", show bt, "_t"]
-    show (Pointer t)       = concat [show t, "*"]
-
--- | A parameter to a function. The string is the name of the parameter and the
--- RTSType is the type of the parameter.
-type Param = (String, RTSType)
-
--- | State maintained while compiling a program
+-- | State maintained while compiling a 'Procedure'.
+--
+-- The information here is populated while generating the step function, so that
+-- should be computed first, before this information is used to generate the act
+-- struct and enter definitions.
 data TRState = TRState
-  { -- | Counter to generate fresh labels
-    nextLabel :: Int,
-    -- | Which number has the next case?
-    ncase :: Int,
-    -- | The size of the widest wait
-    numwaits :: Int,
-    -- | Local references declared with var
-    localrefs :: [(String, Type)]
+  { procedure :: Procedure        -- ^ Procedure we are compiling
+  , ncase     :: Int              -- ^ Which number has the next case?
+  , numwaits  :: Int              -- ^ The size of the widest wait
+  , locals    :: [(String, Type)] -- ^ Local references declared with var
   }
 
 -- | Translation monad.
 type TR a = State TRState a
 
--- | Run a TR computation.
-runTR :: TR a -> a
-runTR tra = evalState tra st
-  where
-      st :: TRState
-      st = TRState 0 0 0 []
-
-compile_ :: Bool -> Maybe Int -> Program -> String
-compile_ False _ p = compile p Nothing
-compile_ True c p  = let f = compile p c
-                         m = generateC $ mainIR p
-                     in unlines [f,m]
-
--- | This function takes a `Program` and returns a string, which contains the content
--- of the generated C file.
-compile :: Program -> Maybe Int -> String
-compile p mi = unlines code
-  where
-      -- | Entire C file.
-      code :: [String]
-      code = concat [ header
-                    , schedule
-                    , debug_fork
-                    , add_macro
-                    , generatedcode
-                    ]
-
-      -- | Generated code content.
-      generatedcode :: [String]
-      generatedcode = map generateC [ intersperse Blank structs
-                                    , prototypes
-                                    , intersperse Blank enters
-                                    , intersperse Blank steps]
-
-      -- | A sequence of `IR` statements representing all the structs, enter functions
-      -- and step functions to appear in the C file.
-      structs, enters, steps :: [IR]
-      (structs, enters, steps) = unzip3 $ map compileProcedure $ Map.elems (funs p)
-
-      -- | All function prototypes required in the C file.
-      prototypes :: [IR]
-      prototypes = concat $ flip map (Map.elems (funs p)) $ \f ->
-          let (enter, step) = prototypeIR f
-          in [enter, step, Blank]
-
-      -- | Header to include in the generated C file.
-      header :: [String]
-      header = [ "#include \"peng-platform.h\""
-               , "#include \"peng.h\""
-               , "#include <stdio.h>"
-               , ""
-               , "extern void dequeue_event(sv_t *var);"
-               , ""
-               ] ++ limit mi
-
-      limit :: Maybe Int -> [String]
-      limit mc = let ticks = maybe "ULONG_MAX" show mc
-                 in [ "#ifdef DEBUG"
-                    , "#include <stdint.h>"
-                    , "uint64_t limit = " ++ ticks ++ ";"
-                    , "#endif"
-                    ]
-      
-      schedule :: [String]
-      schedule = [ "#ifdef DEBUG"
-                 , ""
-                 , "extern peng_time_t now;"
-                 , "extern int can_schedule(sv_t *var);"
-                 , "#define SCHEDULE(schedule_fun, var, then, value)    \\"
-                 , "if(now >= then) {                                   \\"
-                 , "  printf(\"bad after\\n\");                            \\"
-                 , "  exit(1);                                          \\"
-                 , "}                                                   \\"
-                 , "if(!can_schedule((sv_t *) var)) {                   \\"
-                 , "  printf(\"eventqueue full\\n\");                      \\"
-                 , "  exit(1);                                          \\"
-                 , "}                                                   \\"
-                 , "(*schedule_fun)(var, then, value);"
-                 , ""
-                 , "#else"
-                 , ""
-                 , "#define SCHEDULE(schedule_fun, var, then, value) \\"
-                 , "(*schedule_fun)(var, then, value);"
-                 , ""
-                 , "#endif"
-                 ]
-      
-      debug_fork :: [String]
-      debug_fork = [ "#ifdef DEBUG"
-                   , ""
-                   , "extern int can_fork();"
-                   , "#define FORK(act, new_depth)     \\"
-                   , "if((int8_t) new_depth < 0) {     \\"
-                   , "  printf(\"negative depth\\n\");    \\"
-                   , "  exit(1);                       \\"
-                   , "}                                \\"
-                   , "if(!can_fork()) {                \\"
-                   , "  printf(\"contqueue full\\n\");    \\"
-                   , "  exit(1);                       \\"
-                   , "}                                \\"
-                   , "fork_routine(act);"
-                   , ""
-                   , "#else"
-                   , ""
-                   , "#define FORK(act, new_depth) \\"
-                   , "fork_routine(act);"
-                   , ""
-                   , "#endif"
-                   ]
-
-      add_macro :: [String]
-      add_macro = [ "#ifdef DEBUG"
-                  , ""
-                  , "int add(int a, int b) { return a + b; }"
-                  , ""
-                  , "#define ADD(a,b) add(a,b)"
-                  , ""
-                  , "#else"
-                  , ""
-                  , "#define ADD(a,b) (a + b)"
-                  , ""
-                  , "#endif"
-                  ]
-
--- | This function takes a procedure and returns three `IR` statements that
--- represents the struct, enter function and step function of the procedure.
-compileProcedure :: Procedure -> (IR, IR, IR)
-compileProcedure p = (structTR, enterTR, stepTR)
-  where
-      (structTR,enterTR,stepTR) = runTR $ do
-          step   <- stepIR p
-          enter  <- enterIR p
-          struct <- structIR p
-          return (struct, enter, step)
-
--- | Returns the base type of a type. If the type is a reference it will unwrap the reference
--- to find the underlying basetype.
-basetype_ :: Type -> BaseType
-basetype_ TInt32  = CInt
-basetype_ TInt64  = CInt64
-basetype_ TUInt64 = CUInt64
-basetype_ TUInt8  = CUInt8
-basetype_ TBool   = CBool
-basetype_ (Ref t) = basetype_ t
-
--- | `paramtype t` returns the RTSType a parameter to a function, whose type in the
--- SSM EDSL is t, would have. E.g `Ref Int` would be `sv_int_t*`, `Exp Int` would be `int`.
-paramtype :: Type -> RTSType
-paramtype TInt32  = SInt
-paramtype TUInt8  = UInt8
-paramtype TInt64  = SInt64
-paramtype TUInt64  = UInt64
-paramtype TBool   = UBool
-paramtype (Ref t) = Pointer $ ScheduledVar $ basetype_ t
-
--- | This class collects methods that helps us render expressions or
--- references appropriately depending on the situation we want to use it in.
-class CType a where
-  -- | The basetype of a value. A int* has the basetype int, and a normal int is already
-  -- in the basetype form.
-  basetype :: a -> BaseType
-
-  -- | compArg returns the string that represents an `a` that we can pass to a call
-  -- of `fork_routine`. E.g references are passed as sv_type_t* and expressions are
-  -- passed as either ints or booleans.
-  compArg :: a -> TR String
-
-  -- | compVal returns the string that represents the underlying value, e.g and Int.
-  compVal :: a -> TR String
-
-  -- | compVar returns the string that symbolises a value of type sv_type_t*.
-  -- This is used when we need a value of type sv_type_t* to pass to later_type,
-  -- assign_type, initialize_type etc.
-  compVar :: a -> TR String
-
-instance CType Reference where
-  basetype (_, t) = basetype_ t
-
-  compArg (n, _) = do
-    refs <- map fst <$> gets localrefs
-    let prefix = if n `elem` refs then "&" else ""
-    return $ concat [prefix, "act->", n]
-
-  compVal (n, _) = do
-    refs <- map fst <$> gets localrefs
-    let accessor = if n `elem` refs then "." else "->"
-    return $ concat ["act->", n, accessor, "value"]
-
-  compVar r = compArg r
-
-instance CType SSMExp where
-  basetype e = basetype_ $ expType e
-
-  compArg (Var _ n) = return $ concat ["act->", n, ".value"]
-  compArg e = compVal e
-
-  compVal e = do
-    lrefs <- gets localrefs
-    return $ compLit lrefs e
-
-  compVar (Var _ n) = return $ concat ["&act->", n]
-  compVar e = error $ concat ["compvar - not a variable: ", show e]
-
--- | Operations such as GetRef read a reference and assign the result to a variable
--- with this name and type. Such local variables end up in the struct as a sv_type_t
--- instead of sv_type_t* like input references does. When we use them they are
--- rendered identically to how expression variables are rendered, so we will just
--- reuse the instance for expressions and make sure to apply it to variables.
-instance CType (Name, Type) where
-  basetype (n,t) = basetype_ t
-  compArg (n,t)  = compArg $ Var t $ getVarName n
-  compVal (n,t)  = compVal $ Var t $ getVarName n
-  compVar (n,t)  = compVar $ Var t $ getVarName n
-
-instance (CType a, CType b) => CType (Either a b) where
-    basetype (Left a)  = basetype a
-    basetype (Right b) = basetype b
-
-    compArg (Left a)  = compArg a
-    compArg (Right b) = compArg b
-
-    compVal (Left a)  = compVal a
-    compVal (Right b) = compVal b
-
-    compVar (Left a)  = compVar a
-    compVar (Right b) = compVar b
-
--- | Get the name of a variable expression. Throws an error if expression is not a variable.
-getExpName :: SSMExp -> String
-getExpName (Var _ n) = n
-getExpName e         = error $ "getExpName - not a variable: " ++ show e
-
--- | Compile an expression into the string that represent its semantic value.
--- By semantic I mean that the result will be of type `int` or `bool`:
-compLit :: [(String, Type)] -> SSMExp -> String
-compLit lrefs e = case e of
-  Var _ e -> "act->" ++ e ++ ".value"
-  
-  Lit _ l -> case l of
-    LInt32 i    -> if i >= 0 then show i else "(" ++ show i ++ ")"
-    LInt64 i    -> let lit = show i ++ "L" in
-                   if i >= 0 then lit else "(" ++ lit ++ ")"
-    LUInt64 i   -> show i ++ "UL"
-    LUInt8 i    -> show i
-    LBool True  -> "true"
-    LBool False -> "false"
-  
-  UOpE _ e op -> case op of
-    Neg -> concat ["(-", compLit lrefs e, ")"]
-
-  UOpR _ r op -> case op of
-    Changed -> let prefix = if r `elem` lrefs then "&" else ""
-               in concat ["event_on((sv_t *) ", prefix, "act->", fst r, ")"]
-
-  BOp TInt32 e1 e2 OPlus ->
-    concat ["add(", compLit lrefs e1, ", ", compLit lrefs e2, ")"]
-  BOp _ e1 e2 op ->
-    let e1' = compLit lrefs e1
-        e2' = compLit lrefs e2
-    in case op of
-         OPlus  -> concat ["(", e1', " + ", e2', ")"]
-         OMinus -> concat ["(", e1', " - ", e2', ")"]
-         OTimes -> concat ["(", e1', " * ", e2', ")"]
-         OLT    -> concat ["(", e1', " < ", e2', ")"]
-         OEQ    -> concat ["(", e1', " == ", e2', ")"]
-
--- | Generate a fresh label.
-freshLabel :: TR Label
-freshLabel = do
-    i <- gets nextLabel
-    modify $ \st -> st { nextLabel = i + 1 }
-    return $ "L" ++ show i
-
--- | Infix operator for applying a unlifted argument to a lifted function.
--- Surprised that I did not find this anywhere.
-(<#>) :: Applicative f => f (a -> b) -> a -> f b
-fa <#> b = fa <*> pure b
-infixl 4 <#>
-
--- | This function generates two `IR` statements that represents the two function
--- prototypes for the enter and step function.
-prototypeIR :: Procedure -> (IR, IR)
-prototypeIR p = ( Prototype (Pointer $ Act (name p)) (concat ["enter_", name p]) args
-                , Prototype Void (concat ["step_", name p]) [("gen_act", Pointer $ Act "")]
-                )
-  where
-      -- | All procedure arguments.
-      args :: [Param]
-      args = genargs ++ dynargs (arguments p)
-
-      -- | Procedure arguments that all procedures need.
-      genargs :: [Param]
-      genargs = [ ("caller"  , Pointer $ Act "")
-                , ("priority", UInt 32)
-                , ("depth"   , UInt 8)
-                ]
-    
-      -- | The procedure specific arguments.
-      dynargs :: [(String, Type)] -> [Param]
-      dynargs xs = flip map xs $ \(n,t) -> (n, paramtype t)
-
--- | This function generates a `IR` statement that represents the struct declaration
--- of this procedure.
-structIR :: Procedure -> TR IR
-structIR p = do
-    let paramfields = map paramfield $ arguments p
-    let dynfields' = dynfields $ body p
-    triggerfields <- triggerdecs
-    return $ Struct (name p) $ concat [ [GenericFields]
-                                  , paramfields
-                                  , dynfields'
-                                  , triggerfields
-                                  ]
-  where
-      -- | The field declarations that arise from the procedure arguments.
-      paramfield :: (String, Type) -> FieldDec
-      paramfield (n,t) = FieldDec t' n
-        where
-            t' = if isReference t
-                then Pointer $ ScheduledVar $ basetype_ t
-                else ScheduledVar $ basetype_ t
-
-      -- | The field declarations that arise from us creating variables in a
-      -- procedure body, e.g from NewRef and GetRef.
-      dynfields :: [Stm] -> [FieldDec]
-      dynfields xs = concat $ flip map xs $ \x -> case x of
-          NewRef n t _  -> [ FieldDec (ScheduledVar (basetype_ t)) (getVarName n) ]
-          GetRef n t _  -> [ FieldDec (ScheduledVar (basetype_ t)) (getVarName n) ]
-          If _ thn els  -> dynfields thn ++ dynfields els
-          While _ bdy   -> dynfields bdy
-          _             -> []
-    
-      -- | Generate trigger declarations. The only variable thing in a trigger
-      -- declaration is the number in its variable name.
-      triggerdecs :: TR [FieldDec]
-      triggerdecs = do
-          i <- gets numwaits
-          return $ flip map [1..i] $ \j -> TriggerDec j
-
--- | This function generates an `IR` statement that represents the enter function
--- of this procedure.
-enterIR :: Procedure -> TR IR
-enterIR p = do
-    let fun    = Function (Pointer $ Act $ name p) (concat ["enter_", name p]) args
-    let cast   = UpcastEnter (Pointer $ Act $ name p) $ name p
-    let assvar = concat $ map assignParam $ arguments p
-    setuptrigs <- setupTriggers
-    initrefs   <- initializeLocalRefs
-    return $ fun $ concat [ [cast]
-                          , assvar
-                          , setuptrigs
-                          , initrefs
-                          , [ReturnEnter]
-                          ]
-    
-  where
-      -- | All arguments to this enter function.
-      args :: [Param]
-      args = genargs ++ dynargs (arguments p)
-
-      -- | Generic arguments that goes into all enter function.
-      genargs :: [Param]
-      genargs = [ ("caller"  , Pointer $ Act "")
-                , ("priority", UInt 32)
-                , ("depth"   , UInt 8)
-                ]
-    
-      -- | Procedure dynamic arguments to enter function.
-      dynargs :: [(String, Type)] -> [Param]
-      dynargs xs = flip map xs $ \(n,t) -> (n, paramtype t)
-
-      -- | This function generates `IR` statements that initializes the procedure
-      -- arguments in the enter function. This is done by assigning them to the struct
-      -- fields after (maybe) having initialized the struct variable.
-      assignParam :: (String, Type) -> [IR]
-      assignParam (n,Ref t) = [AssignStruct n n]
-      assignParam (n,t)     = [ Initialize (basetype_ t) (concat ["&act->", n])
-                              , Assign (basetype_ t) (concat ["&act->", n]) n
-                              ]
-
-      -- | This function will generate a sequence of `IR` instructions that represents
-      -- trigger initialization calls meant to appear in the enter function.
-      setupTriggers :: TR [IR]
-      setupTriggers = do
-          i <- gets numwaits
-          return $ map InitializeTrigger [1..i]
-      
-      initializeLocalRefs :: TR [IR]
-      initializeLocalRefs = do
-        refs <- gets localrefs
-        return $ map (\(n,t) -> Initialize (basetype_ t) (concat ["&act->", n])) refs
-
--- | This function takes a procedure and generates an `IR` instruction that represents
--- the step function of this procedure.
-stepIR :: Procedure -> TR IR
-stepIR p = do
-    let fun = Function Void (concat ["step_", name p]) [("gen_act", Pointer $ Act "")]
-    let cast = UpcastAct (Pointer $ Act $ name p) "gen_act"
-    
-    cases      <- gencase (body p)
-    dequeues   <- dequeueLocalEvents
-    let end    = dequeues ++ [Leave (name p)]
-    let switch = flip createBlocks end cases
-    return $ fun $ [ cast
-                   , switch
-                   ]
-  where
-      dequeueLocalEvents :: TR [IR]
-      dequeueLocalEvents = do
-        refs <- map fst <$> gets localrefs
-        return $ map (\s -> DequeueEvent $ concat ["&act->", s]) refs
-
-      -- | Return a `IR` statement that increments the program counter to the next case.
-      incpc :: TR IR
-      incpc = do
-          i <- gets ncase
-          modify $ \st -> st { ncase = i + 1 }
-          return $ IncPC $ i + 1
-
-      -- | Put the step functions body in a switch expression, after turning it
-      -- into a sequence of cases.
-      createBlocks :: [IR] -> [IR] -> IR
-      createBlocks ir end = Switch $ (createBlocks' 0 ir) ++ end
-        where
-          -- | Create the case expressions.
-          createBlocks' :: Int -> [IR] -> [IR]
-          createBlocks' i ir = case untilRet ir of
-            ([],[]) -> [Case i []]
-            (b,xs)  -> Case i b : createBlocks' (i+1) xs
-
-          -- | Fetch instructions until and including the next return statement.
-          untilRet :: [IR] -> ([IR],[IR])
-          untilRet []     = ([],[])
-          untilRet (x:xs) = case x of
-            Return -> ([x],xs)
-            _      -> ([x],[]) <> untilRet xs
-
-      -- | This function will generate a sequence of `IR` statements for each `Stm`.
-      gencase :: [Stm] -> TR [IR]
-      gencase xs = fmap concat $
-        flip mapM xs $ \x -> case x of
-            NewRef n t v     -> do
-                modify $ \st -> st { localrefs = (getVarName n, t) : localrefs st }
-                assi <- Assign (basetype_ t) <$> compVar (n,t) <*> compVal v
-                return $ [assi]
-            GetRef n t r    -> sequence [Assign (basetype_ t) <$> compVar (n,t) <*> compVal r]
-            SetRef r e      -> sequence [Assign (basetype r)  <$> compVar r     <*> compVal e]
-            SetLocal n t e2 -> sequence [Assign (basetype_ t) <$> compVar (n,t) <*> compVal e2]
-
-            If c thn els -> do
-                l1 <- freshLabel
-                l2 <- freshLabel
-
-                iffalse <- IfFalse <$> compVal c <#> l1
-                thn' <- gencase thn
-                els' <- gencase els
-
-                return $ concat [ [iffalse]
-                                , thn'
-                                , [Goto l2
-                                , Blank
-                                , Label l1]
-                                , els'
-                                , [Blank
-                                , Label l2]
-                                ]
-            While c bdy  -> do
-                l1 <- freshLabel
-                l2 <- freshLabel
-
-                iffalse <- IfFalse <$> compVal c <#> l2
-                bdy' <- gencase bdy
-                return $ concat [ [Label l1
-                                , iffalse]
-                                , bdy'
-                                , [Goto l1
-                                , Label l2]
-                                ]
-            Skip         -> return []
-
-            After d r v   -> sequence [Later (basetype r) <$> compVal d <*> compVar r <*> compVal v]
-
-            Wait refs  -> do
-                modify $ \st -> st { numwaits = max (numwaits st) (length refs)}
-                sensitizes <- forM (zip refs [1..]) $ \(r,i) -> do
-                    var <- compVar r
-                    return (var,i)
-                pc <- incpc
-                desensitizes <- mapM (return . Desensitize . snd) sensitizes
-                return $ concat [[Sensitize sensitizes, pc, Return], desensitizes]
-            Fork calls -> do
-                let debugstr = unwords (["fork"] ++ (fst . unzip) calls) ++ "\\n"
-                callstrings <- forM calls $ \(n,args) -> do
-                    args' <- mapM compArg args
-                    return (n, args')
-                pc <- incpc
-                return $ if length callstrings == 1
-                        then [DebugPrint debugstr, pc, Call (head callstrings), Return]
-                        else [DebugPrint debugstr, ForkProcedures callstrings, pc, Return]
-          
-
--- | Returns a tuple where the first cell list contains the statements up to and including
--- the next blocking statement, and the second cell contains the statements left after
--- the blocking statement.
-untilBlock :: [Stm] -> ([Stm], [Stm])
-untilBlock [] = ([], [])
-untilBlock (x : xs) = case x of
-  Wait _ -> ([x], xs)
-  Fork _ -> ([x], xs)
-  _      -> ([x],[]) <> untilBlock xs
-
-mainIR :: Program -> [IR]
-mainIR p = [ Function Void "top_return"
-                       [("act", Pointer $ Act "")]
-                       [Return]
-             , Blank
-             , Function Void "main" [] bdy
-             ]
-  where
-      bdy :: [IR]
-      bdy = concat $ [ [
-                       Blank
-                     , Literal 4 $ "act_t top = { .step = top_return }"]
-                     , refinits
-                     , [Literal 4 $ concat $ ["fork_routine((act_t *) enter_", main p
-                                             ,"(", intercalate ", " entryargs, "))"]
-                     , Literal 4 "tick()"
-                     , debugprint 4
-                     , LiteralNoSemi 4 "while(1) {"
-                     , Literal 8 "now = next_event_time()"
-                     , LiteralNoSemi 8 "if(now == NO_EVENT_SCHEDULED)"
-                     , Literal 12 "break"
-                     , Literal 8 "tick()"
-                     , debugprint 8
-                     , LiteralNoSemi 4 "}"]
-                     , printrefs
-                     ]
-
-      -- | The sequence of `IR` statements that represent the initialization of
-      -- the program input references.
-      refinits :: [IR]
-      refinits = concat $ mapRight (args p) $ \(r,t) ->
-          [ Literal 4 $ concat $ ["sv_", show (basetype_ t), "_t ", r]
-          , Literal 4 $ concat $ ["initialize_", show (basetype_ t), "(&", r, ")"]
-          , Literal 4 $ concat $ [r, ".value = ", defaultValue t]]
-
-      -- | Default value for references of different types.
-      defaultValue :: Type -> String
-      defaultValue TInt32  = "0"
-      defaultValue TInt64  = "0L"
-      defaultValue TUInt64  = "0UL"
-      defaultValue TUInt8  = "0"
-      defaultValue TBool   = "false"
-      defaultValue (Ref t) = defaultValue t
-
-      -- | Map over a list of eithers and only keep the results obtained by mapping
-      -- a function over the `Right` elements.
-      mapRight :: [Either a b] -> (b -> c) -> [c]
-      mapRight [] _           = []
-      mapRight (Right a:xs) f = f a : mapRight xs f
-      mapRight (_:xs) f       = mapRight xs f
-
-      entryargs :: [String]
-      entryargs = [ "&top"
-                  , "PRIORITY_AT_ROOT"
-                  , "DEPTH_AT_ROOT"
-                  ] ++ map (either (compLit []) ((++) "&" . fst)) (args p)
-
-      printrefs :: [IR]
-      printrefs = mapRight (args p) $ \(r,t) ->
-          Literal 4 $ concat ["printf(\"result ", r, " ", formatter t, "\\n\", ", r, ".value)"]
-      
-      formatter :: Type -> String
-      formatter (Ref TInt32)  = "int %d"
-      formatter (Ref TInt64)  = "int64 %ld"
-      formatter (Ref TUInt64) = "uint64 %lu"
-      formatter (Ref TUInt8)  = "uint8 %u"
-      formatter (Ref TBool)   = "bool %d"
-
-      debugprint :: Int -> IR
-      debugprint i = Literal i $ concat ["DEBUG_PRINT(\"now %lu eventqueuesize %d\\n\", now, event_queue_len)"]
-
-{- ***************** Code generation *************** -}
-
--- | Monad for generating C code. The read only integer represents the indentation level at
--- which to output code, and the writer output is the actual code that was generated.
-type CGen a = ReaderT Int (Writer (Hughes String)) a
-
--- | Run the code generating function `irToC` and return the output emitted.
-generateC :: [IR] -> String
-generateC xs = unlines $ fromHughes $ execWriter $ runReaderT (irToC xs) $ 0
-
--- | Generate output in the form of C code from the input IR instructions.
-irToC :: [IR] -> CGen ()
-irToC ir = flip mapM_ ir $ \x -> case x of
-    Function typ name params bdy -> do
-        let args = intercalate ", " $ flip map params $ \(n,t) -> concat [show t, " ", n]
-        emit $ concat [show typ, " ", name, "(", args, ") {"]
-        indent $ irToC bdy
-        emit "}"
-    Prototype typ name params -> do
-        let args = intercalate ", " $ flip map params $ \(n,t) -> concat [show t, " ", n]
-        emit $ concat [show typ, " ", name, "(", args, ");"]
-    UpcastAct typ name         ->
-        emit $ concat [show typ, " act = (", show typ, ") ", name, ";"]
-    UpcastEnter typ name       ->
-        emit $ concat [ show typ
-                      , " act = ("
-                      , show typ
-                      , ") enter(sizeof(act_", name, "_t), step_"
-                      , name
-                      , ", caller, priority, depth);"]
-    AssignStruct var val       ->
-        emit $ concat ["act->", var, " = ", val, ";"]
-    Struct typedef fields      -> do
-        emit "typedef struct {"
-        indent $ forM_ fields $ \f -> case f of
-            TriggerDec i     -> emit $ concat ["trigger_t trig", show i, ";"]
-            FieldDec typ var -> emit $ concat [show typ, " ", var, ";"]
-            GenericFields    -> emit "ACTIVATION_RECORD_FIELDS;"
-        emit $ concat ["} act_", typedef, "_t;"]
-    DequeueEvent var -> emit $ concat ["dequeue_event((sv_t *)", var, ");"]
-
-    Switch stmts    -> do
-        emit "switch(act->pc) {"
-        indent $ irToC stmts
-        emit "}"
-    IfFalse tst lbl ->
-        emit $ concat ["if (!(", tst, ")) goto ", lbl, ";"]
-    Label lbl       -> emit $ concat [lbl, ":"]
-    Goto lbl        -> emit $ concat ["goto ", lbl, ";"]
-    Case i bdy      -> do
-        emit $ concat ["case ", show i, ":"]
-        indent $ irToC bdy
-    IncPC i         -> emit $ concat ["act->pc = ", show i, ";"]
-    Return          -> emit "return;"
-    ReturnEnter     -> emit "return act;"
-    DebugPrint str  -> emit $ concat ["DEBUG_PRINT(\"", str, "\");"]
-
-    Initialize bt var   ->
-        emit $ concat ["initialize_", show bt, "(", var, ");"]
-    InitializeTrigger i ->
-        emit $ concat ["act->trig", show i, ".act = (act_t *) act;"]
-    Assign bt var val   ->
-        emit $ concat ["assign_", show bt, "(", var, ", act->priority, ", val, ");"]
-    Later bt t var val  ->
-        emit $ concat ["SCHEDULE(&later_", show bt, ", ", var, ", now + ", t, ", ", val, ");"]
---        emit $ concat ["later_", show bt, "(", var, ", now + ", t, ", ", val, ");"]
-    EventOn res ref     -> do
-        let eventon = concat ["event_on((sv_t *) ", ref, ")"]
-        irToC [Assign (basetype_ TBool) res eventon]
-    Sensitize waits     -> 
-        forM_ waits $ \(v,i) -> do
-            emit $ concat ["sensitize((sv_t *)", v, ", &act->trig", show i, ");"]
-    Desensitize i       ->
-        emit $ concat ["desensitize(&act->trig", show i, ");"]
-    Call (fun,args)     ->
-        emit $ concat ["call((act_t *) ", enter_ fun "act->priority" "act->depth" args, ");"]
-    ForkProcedures funs -> do
-        emit "{"
-        indent $ do
-            let new_depth = ceiling (logBase 2 (fromIntegral (length funs)))
-            emit $ concat ["uint8_t new_depth = act->depth - ", show new_depth,";"]
-            emit "uint32_t pinc = 1 << new_depth;"
-            emit "uint32_t new_priority = act->priority;"
-            intercalateM (emit "new_priority += pinc;") $ flip map funs $ \(fun,args) -> do
-                emit $ concat ["FORK((act_t *) "
-                              , enter_ fun "new_priority" "new_depth" args
-                              , ", "
-                              , "new_depth"
-                              , ");"]
-        emit "}"
-    Leave name          ->
-        emit $ concat ["leave((act_t *) act, sizeof(act_", name, "_t));"]
-
-    Blank                 -> emit ""
-    Literal ind str       -> tell $ toHughes [concat [replicate ind ' ', str, ";"]]
-    LiteralNoSemi ind str -> tell $ toHughes [concat [replicate ind ' ', str]]
-  where
-      -- | Emit a string output at the indentation level indicated by the reader environment.
-      emit :: String -> CGen ()
-      emit str = do
-          i <- ask
-          tell $ toHughes [replicate i ' ' ++ str]
-          --tell [replicate i ' ' ++ str]
-
-      -- | Run a code generating computation with increased indentation, making all output
-      -- generated by `emit` appear one indentation level deeper.
-      indent :: CGen a -> CGen a
-      indent = local (+4)
-
-      -- | Given the name of the procedure to enter, the string representing the priority
-      -- argument, a string representing the depth argument and the actual procedure
-      -- arguments themselves, generates the enter_name function call.
-      enter_ :: String -> String -> String -> [String] -> String
-      enter_ name prio depth args =
-          let args' = intercalate ", " $ ["(act_t *) act", prio, depth] ++ args
-          in  concat $ ["enter_", name, "(", args', ")"]
-    
-      -- | This function will intercalate a monadic computation between a list of
-      -- monadic computations. intercalate ma [m1,m2,m3] == m1 >> ma >> m2 >> ma >> m3.
-      intercalateM :: Monad m => m a -> [m a] -> m [a]
-      intercalateM _ [] = return []
-      intercalateM _ [x] = x >>= (return . flip (:) [])
-      intercalateM ma (x:y:xs) = do
-          x' <- x
-          y' <- ma
-          xs' <- intercalateM ma (y:xs)
-          return $ x' : y' : xs'
+-- | Run a TR computation on a procedure.
+runTR :: Procedure -> TR a -> a
+runTR p tra = evalState tra $ TRState p 0 0 []
+
+-- | Read and increment the number of cases in a procedure, i.e., ncase++.
+nextCase :: TR Int
+nextCase = do
+  n <- gets ncase
+  modify $ \st -> st { ncase = n + 1 }
+  return n
+
+-- | Register a local variable for which an sv should be allocated.
+addLocal :: String -> Type -> TR ()
+addLocal n t = modify $ \st -> st { locals = (n, t) : locals st }
+
+-- | Maintain the maximum number of variables a 'Procedure' waits on.
+maxWaits :: Int -> TR ()
+maxWaits rs = modify $ \st -> st { numwaits = rs `max` numwaits st }
+
+{-------- C identifiers --------}
+-- These variables represent the magic identifiers that must be coordinated
+-- between the C runtime and the generated code, as well as some helpers to
+-- generate C type nodes for user-defined types.
+
+-- | Type alias for C identifiers.
+type CIdent = String
+
+top_return :: CIdent
+top_return = "top_return"
+
+fork :: CIdent
+fork = "fork_routine"
+
+act_enter :: CIdent
+act_enter = "enter"
+
+event_on :: CIdent
+event_on = "event_on"
+
+sensitize :: CIdent
+sensitize = "sensitize"
+
+desensitize :: CIdent
+desensitize = "desensitize"
+
+dequeue_event :: CIdent
+dequeue_event = "dequeue_event"
+
+time_t :: C.Type
+time_t = [cty|typename peng_time_t|]
+
+trigger_t :: C.Type
+trigger_t = [cty|typename trigger_t|]
+
+priority_t :: C.Type
+priority_t = [cty|typename priority_t|]
+
+depth_t :: C.Type
+depth_t = [cty|typename depth_t|]
+
+stepf_t :: C.Type
+stepf_t = [cty|typename stepf_t|]
+
+uint16_t :: C.Type
+uint16_t = [cty|typename uint16_t|]
+
+bool_t :: C.Type
+bool_t = [cty|typename bool|]
+
+{---- Activation record identifiers ----}
+
+-- | The type of the activation record base class.
+act_t :: C.Type
+act_t = [cty|typename act_t|]
+
+-- | Obtain the name of the activation record struct for a routine.
+act_ :: String -> CIdent
+act_ routineName = "act_" ++ routineName ++ "_t"
+
+-- | Obtain the name of the step function of a routine.
+step_ :: String -> CIdent
+step_ routineName = "step_" ++ routineName
+
+-- | Obtain the name for the enter function of a routine.
+enter_ :: String -> CIdent
+enter_ routineName = "enter_" ++ routineName
+
+-- | Obtain the name of each trigger for a routine.
+trig_ :: Int -> CIdent
+trig_ i = "trig" ++ show i
+
+{---- Type identifiers ----}
+
+-- | The type of the scheduled variable base class.
+sv_t :: C.Type
+sv_t = [cty|typename sv_t|]
+
+-- | Maps SSM `Type` to identifier of base type.
+--
+-- Note that this unwraps reference types and returns the base type.
+typeId :: Type -> CIdent
+typeId TInt32  = "int32"
+typeId TInt64  = "int64"
+typeId TUInt64 = "uint64"
+typeId TUInt8  = "uint8"
+typeId TBool   = "bool"
+typeId (Ref t) = typeId t
+
+-- | Obtain the name of the scheduled variable type for an SSM `Type`.
+svt_ :: Type -> C.Type
+svt_ ty = [cty|typename $id:("sv_" ++ typeId ty ++ "_t")|]
+
+-- | Obtain the name of the initialize method for an SSM `Type`.
+initialize_ :: Type -> CIdent
+initialize_ ty = "initialize_" ++ typeId ty
+
+-- | Obtain the name of the assign method for an SSM `Type`.
+assign_ :: Type -> CIdent
+assign_ ty = "assign_" ++ typeId ty
+
+-- | Obtain the name of the later method for an SSM `Type`.
+later_ :: Type -> CIdent
+later_ ty = "later_" ++ typeId ty
+
+-- | Obtain the name of the update callback for an SSM `Type`.
+update_ :: Type -> CIdent
+update_ ty = "update_" ++ typeId ty
+
+{-------- Code generation --------}
+
+-- | Generate include statements, to be placed at the top of the generated C.
+genPreamble :: Maybe Int -> [C.Definition]
+genPreamble tickLimit = [cunit|
+$esc:("#include \"peng-platform.h\"")
+$esc:("#include \"peng.h\"")
+$esc:("#include \"formatters.h\"")
+$esc:("#include <stdio.h>")
+$esc:("#include <stdint.h>")
+
+extern $ty:time_t now;
+
+/** Used by DEBUG_PRINT as a microtick threshold */
+$ty:time_t limit = $exp:limit;
+
+/**
+ * Circumvent optimizations that take advantage of C's undefined signed
+ * integer wraparound behavior. FIXME: remove this hack, which is probably not
+ * robust anyway if C is aggressive about inlining.
+ */
+static int _add(int a, int b) {
+  return a + b;
+}
+|]
+  where limit = maybe [cexp|ULONG_MAX|] (\i -> [cexp|$int:i|]) tickLimit
+
+-- | Generate C definition for the main program and the top_return function,
+-- both to be placed at the bottom of the generated C (or at least after the
+-- type definitions and function prototypes).
+genMain :: Program -> [C.Definition]
+genMain program =
+  [ [cedecl| void $id:top_return($ty:act_t *act) { return; } |]
+  , [cedecl|
+      void main(void) {
+        $ty:act_t top = { .step = $id:top_return };
+
+        /* Initialize variables to be passed to the main SSM procedure */
+        $items:argInits
+
+        /* Enter main SSM procedure */
+        $id:fork(($ty:act_t *) $id:enter($args:enterArgs));
+
+        tick();
+        DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
+        for (;;) {
+          now = next_event_time();
+          if (now == NO_EVENT_SCHEDULED)
+            break;
+          tick();
+          DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
+        }
+
+        /* Print the final values of the arguments declared earlier */
+        $items:refPrints
+      }
+    |]
+  ]
+ where
+  enter = enter_ $ main program
+  enterArgs =
+    [ [cexp|($ty:act_t *) &top|]
+      , [cexp|PRIORITY_AT_ROOT|]
+      , [cexp|DEPTH_AT_ROOT|]
+      ]
+      ++ map enterArg (args program)
+  enterArg (Left  ssmExp  ) = genExp [] ssmExp
+  -- ^ TODO: this is buggy if ssmExp contains a var?? Maybe double check what's
+  -- going on with that.
+  enterArg (Right (ref, _)) = [cexp|&$id:ref|]
+
+  argInits = concatMap argInit $ rights $ args program
+  argInit (ref, typ) =
+    [ [citem|$ty:(svt_ typ) $id:ref;|]
+    , [citem|$id:(initialize_ typ)(&$id:ref);|]
+    , [citem|$id:ref.value = 0;|]
+      -- Args to the main SSM procedure are always given default values of 0.
+    ]
+
+  refPrints = map refPrint $ rights $ args program
+  refPrint (ref, typ) =
+    [citem|printf($string:fmtString, $id:fmtType, ($ty:fmtCast) $id:ref.value);|]
+   where
+    -- | We need to explicitly check if typ is an unsigned type to give it the
+    -- appropriate formatter and cast.
+    --
+    -- TODO: once we move the formatters and type gen stuff into Haskell itself,
+    -- we can just look it up from there.
+    fmtString | typ `elem` [Ref TUInt64, Ref TUInt8] = "result " ++ ref ++ " %s %lu\n"
+              | otherwise                    = "result " ++ ref ++ " %s %ld\n"
+    fmtType = "str_" ++ typeId typ
+    fmtCast | typ `elem` [Ref TUInt64, Ref TUInt8] = [cty|unsigned long|]
+            | otherwise                    = [cty|long|]
+
+-- | Generate definitions for an SSM 'Procedure'.
+--
+-- The fst element of the returned tuple contains the struct definition and
+-- function prototype declarations, while the snd element contains the function
+-- definitions.
+genProcedure :: Procedure -> ([C.Definition], [C.Definition])
+genProcedure p = runTR p $ do
+  (stepDecl , stepDefn ) <- genStep
+  (enterDecl, enterDefn) <- genEnter
+  structDefn             <- genStruct
+  return ([structDefn, enterDecl, stepDecl], [enterDefn, stepDefn])
+
+-- | Generate struct definition for an SSM 'Procedure', where local variables,
+-- triggers, and parameter values are stored.
+genStruct :: TR C.Definition
+genStruct = do
+  p  <- gets procedure
+  ts <- gets numwaits
+  ls <- gets locals
+  return [cedecl|
+    typedef struct {
+      $sdecls:aCTIVATION_RECORD_FIELDS
+
+      $sdecls:(map param (arguments p))
+      $sdecls:(map local ls)
+      $sdecls:(map trig [1..ts])
+
+    } $id:(act_ $ name p);
+  |]
+ where
+  aCTIVATION_RECORD_FIELDS =
+    [ [csdecl|$ty:stepf_t *step;|]
+    , [csdecl|struct act *caller;|]
+    , [csdecl|$ty:uint16_t pc;|]
+    , [csdecl|$ty:uint16_t children;|]
+    , [csdecl|$ty:priority_t priority;|]
+    , [csdecl|$ty:depth_t depth;|]
+    , [csdecl|$ty:bool_t scheduled;|]
+    ]
+
+  param (n, Ref t) = [csdecl|$ty:(svt_ t) *$id:n;|]
+  param (n, t    ) = [csdecl|$ty:(svt_ t) $id:n;|]
+
+  local (n, t) = [csdecl|$ty:(svt_ t) $id:n;|]
+
+  trig i = [csdecl|$ty:trigger_t $id:t;|] where t = "trig" ++ show i
+
+-- | Generate the enter function for an SSM 'Procedure', where its struct is
+-- allocated and initialized (partially; local variables' values are left
+-- uninitialized).
+genEnter :: TR (C.Definition, C.Definition)
+genEnter = do
+  p  <- gets procedure
+  ts <- gets numwaits
+  ls <- gets locals
+  let act   = [cty|typename $id:(act_ $ name p)|]
+      enter = enter_ $ name p
+      step  = step_ $ name p
+      params =
+        [cparams|$ty:act_t *caller, $ty:priority_t priority, $ty:depth_t depth|]
+          ++ map param (arguments p)
+  return
+    ( [cedecl|$ty:act *$id:enter($params:params);|]
+    , [cedecl|
+        $ty:act *$id:enter($params:params) {
+          $ty:act_t *gen_act = $id:act_enter(sizeof($ty:act), $id:step, caller, priority, depth);
+          $ty:act *act = ($ty:act *) gen_act;
+
+          /* Initialize and assign parameters */
+          $stms:(concatMap initParam (arguments p))
+
+          /* Initialize locals */
+          $stms:(map initLocal ls)
+
+          /* Initialize triggers */
+          $stms:(map initTrig [1..ts])
+
+          return act;
+        }
+      |]
+    )
+ where
+  -- | TODO: This only works because we don't have nested Refs (yet)
+  param (n, Ref t) = [cparam|$ty:(svt_ t) *$id:n|]
+  param (n, t    ) = [cparam|typename $id:(typeId t) $id:n|]
+
+  initParam (n, Ref t) = [[cstm|act->$id:n = $id:n;|]]
+  initParam (n, t) =
+    [ [cstm|$id:(initialize_ t)(&act->$id:n);|]
+    , [cstm|act->$id:n.value = $id:n;|]
+    ]
+
+  initLocal (n, t) = [cstm| $id:(initialize_ t)(&act->$id:n);|]
+
+  initTrig i = [cstm| act->$id:trig.act = gen_act;|]
+    where trig = "trig" ++ show i
+
+-- | Generate the step function for an SSM 'Procedure'.
+--
+-- This function just defines the function definition and switch statement that
+-- wraps the statements of the procedure. The heavy lifting is performed by
+-- 'genCase'.
+genStep :: TR (C.Definition, C.Definition)
+genStep = do
+  p     <- gets procedure
+  _     <- nextCase -- Toss away 0th case
+  cases <- concat <$> mapM genCase (body p)
+  refs  <- gets locals
+  final <- nextCase
+  let step = step_ $ name p
+      act  = [cty|typename $id:(act_ $ name p)|]
+  return
+    ( [cedecl|void $id:step($ty:act_t *gen_act);|]
+    , [cedecl|
+        void $id:step($ty:act_t *gen_act) {
+          $ty:act *act = ($ty:act *) gen_act; /* FIXME: remove cast */
+          switch (gen_act->pc) {
+          case 0:;
+            $stms:cases
+
+          case $int:final:; /* FIXME: this last case is not needed */
+            $stms:(map dequeue refs)
+            leave(gen_act, sizeof($ty:act));
+            return;
+          }
+          printf("Error: Unreachable\n");
+          assert(0);
+        }
+      |]
+    )
+  where dequeue (s, _) = [cstm|$id:dequeue_event(($ty:sv_t *) &act->$id:s);|]
+
+-- | Generate the list of statements from each 'Stm' in an SSM 'Procedure'.
+--
+-- Note that this compilation scheme might not work if the language were to
+-- support return statements. This could be fixed by generating a break, and
+-- moving the leave call to outside of the switch statement in 'genStep'.
+--
+-- TODOs: remove hard-coded act variable name.
+genCase :: Stm -> TR [C.Stm]
+genCase (NewRef n t v) = do
+  locs <- map fst <$> gets locals
+  let lvar = getVarName n
+      lhs  = [cexp|&act->$id:lvar|]
+      rhs  = genExp locs v
+  addLocal lvar t
+  return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
+genCase (GetRef n t (rvar, _)) = do
+  locs <- map fst <$> gets locals
+  let lvar = getVarName n
+      lhs  = [cexp|&act->$id:lvar|]
+      rhs  = if rvar `elem` locs
+        then [cexp|act->$id:rvar.value|]
+        else [cexp|act->$id:rvar->value|]
+  addLocal lvar t -- FIXME: I guess GetRef also declares a variable??
+  return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
+genCase (SetRef (lvar, t) e) = do
+  locs <- map fst <$> gets locals
+  let lhs = if lvar `elem` locs
+        then [cexp|&act->$id:lvar|]
+        else [cexp|act->$id:lvar|]
+      rhs = genExp locs e
+  return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
+genCase (SetLocal n t e) = do
+  locs <- map fst <$> gets locals
+  let lvar = getVarName n
+      lhs  = [cexp|&act->$id:lvar|]
+      rhs  = genExp locs e
+  return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
+genCase (If c t e) = do
+  locs <- map fst <$> gets locals
+  let cnd = genExp locs c
+  thn <- concat <$> mapM genCase t
+  els <- concat <$> mapM genCase e
+  return [[cstm| if ($exp:cnd) { $stms:thn } else { $stms:els }|]]
+genCase (While c b) = do
+  locs <- map fst <$> gets locals
+  let cnd = genExp locs c
+  bod <- concat <$> mapM genCase b
+  return [[cstm| while ($exp:cnd) { $stms:bod } |]]
+genCase (After d (lvar, t) v) = do
+  locs <- map fst <$> gets locals
+  let del = genExp locs d
+      lhs = if lvar `elem` locs
+        then [cexp|&act->$id:lvar|]
+        else [cexp|act->$id:lvar|]
+      rhs = genExp locs v
+      -- | NOTE: we add `now` to the delay here.
+  return [[cstm| $id:(later_ t)($exp:lhs, now + $exp:del, $exp:rhs);|]]
+genCase (Wait ts) = do
+  caseNum <- nextCase
+  maxWaits $ length ts
+  locs <- map fst <$> gets locals
+  let trigs = zip [1 ..] $ map (genTrig locs) ts
+  return
+    $  fmap sensitizeTrig trigs
+    ++ [ [cstm| gen_act->pc = $int:caseNum; |]
+       , [cstm| return; |]
+       , [cstm| case $int:caseNum: ; |]
+       ]
+    ++ fmap desensitizeTrig trigs
+ where
+  sensitizeTrig (i, trig) =
+    [cstm|$id:sensitize(($ty:sv_t *) $exp:trig, &act->$id:(trig_ i));|]
+  desensitizeTrig (i, _) = [cstm|$id:desensitize(&act->$id:(trig_ i));|]
+  genTrig refs (trig, _) =
+    if trig `elem` refs then [cexp|&act->$id:trig|] else [cexp|act->$id:trig|]
+genCase (Fork cs) = do
+  locs    <- map fst <$> gets locals
+  caseNum <- nextCase
+  let
+    genCall i (r, as) =
+      [cstm|$id:fork(($ty:act_t *) $id:(enter_ r)($args:enterArgs));|]
+     where
+      enterArgs =
+        [ [cexp|gen_act|]
+          , [cexp|act->priority + $int:i * (1 << $exp:newDepth)|]
+          , newDepth
+          ]
+          ++ map genArg as
+      genArg (Left e) = genExp locs e
+      genArg (Right (r, _)) =
+        if r `elem` locs then [cexp|&act->$id:r|] else [cexp|act->$id:r|]
+
+      newDepth = [cexp|act->depth - $int:depthSub|]
+      depthSub =
+        (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Int
+
+    genDebug (r, _) = r
+  return
+    $ [cstm| DEBUG_PRINT($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |]
+    : zipWith genCall [1 :: Int ..] cs
+    ++ [ [cstm| gen_act->pc = $int:caseNum; |]
+       , [cstm| return; |]
+       , [cstm| case $int:caseNum: ; |]
+       ]
+genCase Skip = return []
+
+-- | Generate C expression from 'SSMExp' and a list of local variables.
+genExp :: [String] -> SSMExp -> C.Exp
+genExp _  (Var _ n              ) = [cexp|act->$id:n.value|]
+genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename int64) $int:i|]
+genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename uint64) $int:i|]
+genExp _  (Lit _ (LBool   True )) = [cexp|true|]
+genExp _  (Lit _ (LBool   False)) = [cexp|false|]
+genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
+genExp ls (UOpR _ (n, _) Changed)
+  | n `elem` ls = [cexp|event_on(($ty:sv_t *) &act->$id:n)|]
+  | otherwise   = [cexp|event_on(($ty:sv_t *) act->$id:n)|]
+-- | Circumvent optimizations that take advantage of C's undefined signed
+-- integer wraparound behavior. FIXME: remove this hack, which is probably not
+-- robust anyway if C is aggressive about inlining.
+genExp ls (BOp ty e1 e2 op)
+  | ty == TInt32 && op == OPlus = [cexp|_add($exp:c1, $exp:c2)|]
+  | otherwise                   = gen op
+ where
+  (c1, c2) = (genExp ls e1, genExp ls e2)
+  gen OPlus  = [cexp|$exp:c1 + $exp:c2|]
+  gen OMinus = [cexp|$exp:c1 - $exp:c2|]
+  gen OTimes = [cexp|$exp:c1 * $exp:c2|]
+  gen OLT    = [cexp|$exp:c1 < $exp:c2|]
+  gen OEQ    = [cexp|$exp:c1 == $exp:c2|]
