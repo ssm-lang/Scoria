@@ -1,0 +1,6 @@
+/ {
+     aliases {
+          ssm-timer = &timer4;
+	     svm-led0 = &led0;
+     };
+};
