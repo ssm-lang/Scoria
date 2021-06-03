@@ -2,5 +2,6 @@
      aliases {
           ssm-timer = &timer4;
 	     svm-led0 = &led0;
+          svm-button0 = &button0;
      };
 };

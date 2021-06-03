@@ -11,6 +11,8 @@
 
 #include <ll/ll_driver.h>
 #include <ll/ll_led.h>
+#include <ll/ll_button.h>
+#include <hal/zephyr/svm_zephyr.h>
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -254,119 +256,144 @@ struct k_thread tick_thread;
 /* NOTE: Here we define the LED */
 sv_led_t led0;
 
-void tick_thread_main(void * a, void* b, void *c) {
-  (void)a;
-  (void)b;
-  (void)c;
+// void tick_thread_main(void * a, void* b, void *c) {
+//   (void)a;
+//   (void)b;
+//   (void)c;
 
-  /* NOTE: Here the LED is initialized*/
-  initialize_led(&led0, 0);
-  led0.value = false;
+//   /* NOTE: Here the LED is initialized*/
+//   initialize_led(&led0, 0);
+//   led0.value = false;
 
-  now = 0;
+//   now = 0;
 
-  uint8_t recv_msg;
+//   uint8_t recv_msg;
 
-  fork_routine( (act_t *) enter_flipled(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT) );
+//   fork_routine( (act_t *) enter_flipled(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT) );
 
-  int i = 0;
-  while (1) {
+//   int i = 0;
+//   while (1) {
 
-    /* get a data item, waiting as long as needed */
-    k_msgq_get(&tick_msgq, &recv_msg, K_FOREVER);
+//     /* get a data item, waiting as long as needed */
+//     k_msgq_get(&tick_msgq, &recv_msg, K_FOREVER);
 
-    now = next_event_time();
-    tick();
+//     now = next_event_time();
+//     tick();
 
-    uint64_t next = next_event_time();
+//     uint64_t next = next_event_time();
 
-    if (next == ULLONG_MAX) {
-      /* This just means that there are no events in the queue (or a remarkable coincidence) */
-      /* What to do in this case ?*/
-      /*  - Go to sleep and await being woken from outside source */
+//     if (next == ULLONG_MAX) {
+//       /* This just means that there are no events in the queue (or a remarkable coincidence) */
+//       /* What to do in this case ?*/
+//       /*  - Go to sleep and await being woken from outside source */
 
-      PRINT("NOTHING IN THE QUEUE\r\n");
-    }
+//       PRINT("NOTHING IN THE QUEUE\r\n");
+//     }
 
-    uint64_t wake_time = next_event_time(); /* Absolute time */
+//     uint64_t wake_time = next_event_time(); /* Absolute time */
 
-    //PRINT("sleep_time = %lld\r\n", sleep_time);
+//     //PRINT("sleep_time = %lld\r\n", sleep_time);
 
-    alarm_cfg.flags = COUNTER_ALARM_CFG_ABSOLUTE | COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE;
-    alarm_cfg.ticks = wake_time;
+//     alarm_cfg.flags = COUNTER_ALARM_CFG_ABSOLUTE | COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE;
+//     alarm_cfg.ticks = wake_time;
 
-    int r = counter_set_channel_alarm(counter_dev, 0, &alarm_cfg);
-    if (!r) {
-      //PRINT("hw_tick: Alarm set\r\n");
-    } else {
-      if (r == - ENOTSUP ) {
-	PRINT("hw_tick: Error setting alarm (ENOTSUP)\r\n");
-      } else if ( r == - EINVAL ) {
-	PRINT("hw_tick: Error setting alarm (EINVAL)\r\n");
-      } else if ( r == - ETIME ) {
-	PRINT("hw_tick: Error setting alarm (ETIME)\r\n");
-      } else {
-	PRINT("hw_tick: Error setting alarm\r\n");
-      }
-    }
+//     int r = counter_set_channel_alarm(counter_dev, 0, &alarm_cfg);
+//     if (!r) {
+//       //PRINT("hw_tick: Alarm set\r\n");
+//     } else {
+//       if (r == - ENOTSUP ) {
+// 	PRINT("hw_tick: Error setting alarm (ENOTSUP)\r\n");
+//       } else if ( r == - EINVAL ) {
+// 	PRINT("hw_tick: Error setting alarm (EINVAL)\r\n");
+//       } else if ( r == - ETIME ) {
+// 	PRINT("hw_tick: Error setting alarm (ETIME)\r\n");
+//       } else {
+// 	PRINT("hw_tick: Error setting alarm\r\n");
+//       }
+//     }
 
-    i++;
-  }
+//     i++;
+//   }
+// }
+
+// void start_tick_thread(void) {
+
+//   k_thread_create(&tick_thread, tick_thread_stack,
+// 		  K_THREAD_STACK_SIZEOF(tick_thread_stack),
+// 		  tick_thread_main,
+// 		  NULL, NULL, NULL,
+// 		  5, 0, K_NO_WAIT);
+// }
+
+// /* ************************************************************ */
+// /* MAIN                                                         */
+// /* ************************************************************ */
+
+
+// void main(void) {
+
+//   PRINT("Sleeping 1 seconds\r\n");
+//   k_sleep(K_SECONDS(1)); // Wait enough for starting up a terminal.
+//   PRINT("WOKE UP\r\n");
+
+//   /* ************************* */
+//   /* Hardware timer experiment */
+//   counter_dev = device_get_binding(TIMER);
+//   if (!counter_dev) {
+//     PRINT("HWCounter: Device not found error\r\n");
+//   }
+
+//   if (counter_get_frequency(counter_dev) > 1000000) {
+//     PRINT("HWCounter: Running at %dMHz\r\n", counter_get_frequency(counter_dev) / 1000000);
+//   } else {
+//     PRINT("HWCounter: Running at %dHz\r\n", counter_get_frequency(counter_dev));
+//   } // Här kanske jag kan räkna ut hur många ticks som är en ms
+
+//   alarm_cfg.flags = COUNTER_ALARM_CFG_ABSOLUTE | COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE;
+//   alarm_cfg.ticks = 10; //counter_us_to_ticks(counter_dev, 0);
+//   alarm_cfg.callback = hw_tick;
+//   alarm_cfg.user_data = &alarm_cfg;
+
+
+//   if (!counter_set_channel_alarm(counter_dev, 0, &alarm_cfg)) {
+//     PRINT("HWCounter: Alarm set\r\n");
+//   } else {
+//     PRINT("HWCounter: Error setting alarm\r\n");
+//   }
+//   if (!counter_set_guard_period(counter_dev, UINT_MAX/2, COUNTER_GUARD_PERIOD_LATE_TO_SET)) {
+//     PRINT("HWCounter: Guard period set\r\n");
+//   } else {
+//     PRINT("HWCounter: Error setting guard period\r\n");
+//   }
+
+//   counter_start(counter_dev);
+
+//   /* configure uart */
+
+//   PRINT("Starting Tick-Thread\r\n");
+//   start_tick_thread();
+// }
+
+
+int send_message(zephyr_interop_t* this, ll_driver_msg_t msg) {
+  return k_msgq_put(this->msgq,(void*)&msg, K_NO_WAIT);
 }
-
-void start_tick_thread(void) {
-
-  k_thread_create(&tick_thread, tick_thread_stack,
-		  K_THREAD_STACK_SIZEOF(tick_thread_stack),
-		  tick_thread_main,
-		  NULL, NULL, NULL,
-		  5, 0, K_NO_WAIT);
-}
-
-/* ************************************************************ */
-/* MAIN                                                         */
-/* ************************************************************ */
 
 void main(void) {
+  char buffer[10 * sizeof(ll_driver_msg_t)];
+  struct k_msgq q;
+  k_msgq_init(&q, buffer, sizeof(ll_driver_msg_t), 10);
 
-  PRINT("Sleeping 1 seconds\r\n");
-  k_sleep(K_SECONDS(1)); // Wait enough for starting up a terminal.
-  PRINT("WOKE UP\r\n");
+  zephyr_interop_t t;
+  t.msgq         = &q;
+  t.send_message = send_message;
 
-  /* ************************* */
-  /* Hardware timer experiment */
-  counter_dev = device_get_binding(TIMER);
-  if (!counter_dev) {
-    PRINT("HWCounter: Device not found error\r\n");
+  ll_driver_t button;
+  ll_button_init(&button, 0, &t, 0);
+
+  while(1) {
+    ll_driver_msg_t msg;
+    k_msgq_get(&q, &msg, K_FOREVER);
+    printk("felt click, drive value: %u\n", msg.data);
   }
-
-  if (counter_get_frequency(counter_dev) > 1000000) {
-    PRINT("HWCounter: Running at %dMHz\r\n", counter_get_frequency(counter_dev) / 1000000);
-  } else {
-    PRINT("HWCounter: Running at %dHz\r\n", counter_get_frequency(counter_dev));
-  }
-
-  alarm_cfg.flags = COUNTER_ALARM_CFG_ABSOLUTE | COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE;
-  alarm_cfg.ticks = 10; //counter_us_to_ticks(counter_dev, 0);
-  alarm_cfg.callback = hw_tick;
-  alarm_cfg.user_data = &alarm_cfg;
-
-
-  if (!counter_set_channel_alarm(counter_dev, 0, &alarm_cfg)) {
-    PRINT("HWCounter: Alarm set\r\n");
-  } else {
-    PRINT("HWCounter: Error setting alarm\r\n");
-  }
-  if (!counter_set_guard_period(counter_dev, UINT_MAX/2, COUNTER_GUARD_PERIOD_LATE_TO_SET)) {
-    PRINT("HWCounter: Guard period set\r\n");
-  } else {
-    PRINT("HWCounter: Error setting guard period\r\n");
-  }
-
-  counter_start(counter_dev);
-
-  /* configure uart */
-
-  PRINT("Starting Tick-Thread\r\n");
-  start_tick_thread();
 }

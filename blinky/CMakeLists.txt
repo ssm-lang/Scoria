@@ -18,7 +18,9 @@ file(GLOB app_sources src/*.c)
 file(GLOB extra_sources
   ${LLBC}/ll_driver.c
   ${LLBC}/ll_led.c
+  ${LLBC}/ll_button.c
   ${LLBC}/os/zephyr/led.c
+  ${LLBC}/os/zephyr/button.c
   ${SSM}/src/peng-scheduler.c)
 
 target_sources(app PRIVATE ${app_sources} ${extra_sources})
