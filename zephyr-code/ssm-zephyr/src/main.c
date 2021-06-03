@@ -29,9 +29,13 @@
 /* Not sure how to do the similar thing on the STM32 yet. */
 
 
-struct  counter_alarm_cfg alarm_cfg;
+struct counter_alarm_cfg alarm_cfg;
+struct counter_top_cfg   top_cfg;   /* what to do when hitting counter max */ 
+
+uint32_t counter_high_word = 0;     /* most significant 32 bits of 64bit counter */
 
 const struct device *counter_dev = NULL;
+
 
 /* *************** */
 /*   TOP           */
@@ -59,6 +63,42 @@ void hw_tick(const struct device *dev, uint8_t chan, uint32_t ticks, void *user_
   uint8_t msg = 1;
   k_msgq_put(&tick_msgq, &msg, K_NO_WAIT);
   /* this can fail to send the message. then what? */
+}
+
+void top_callback(const struct device *dev, void* user_data) {
+
+  counter_high_word++;
+  /* if the counter hits the top value, increment the counter_high_word. */
+  /* dont care about overflow */
+
+  /* The top callback is issued when the timer hits UINT_MAX.
+     while we are updating counter_high_word, the counter will 
+     keep running! and I guess it could potentially hit an 
+     alarm... what happens then ? 
+  */
+
+  /* This function also needs to do some kind of bookkeeping.
+     It should do that in the shortest time possible. 
+     
+     * find all events that should expire while 
+       the high word of event time is equal to counter_high_word. 
+       reschedule these using only the low word of the event time.. 
+       
+     * Set an alarm at the smallest of the newly computed event times. 
+
+     * Probably deal with some other details as well! 
+     
+  */
+
+  /* 
+     If we can figure out how to give the top interrupt priority 
+     over the alarm interrupt, then we can be guaranteed to not 
+     handling an alarm while updating the data above. 
+
+     * See if this is a problem that can happen.. 
+     
+   */ 
+
 }
 
 
@@ -99,16 +139,16 @@ void tick_thread_main(void * a, void* b, void *c) {
     counter_get_value(counter_dev, &count);
 
 
-    PRINT("*** *** *** *** *** ***\r\n");
-    PRINT("ctr: %u\r\n", count);
-    PRINT("now: %llu\r\n", now);
-    PRINT("next: %llu\r\n", next_event_time());
+    /* PRINT("*** *** *** *** *** ***\r\n"); */
+    /* PRINT("ctr: %u\r\n", count); */
+    /* PRINT("now: %llu\r\n", now); */
+    /* PRINT("next: %llu\r\n", next_event_time()); */
 
     now = next_event_time();
     tick();
 
     uint64_t next = next_event_time();
-    PRINT("next after tick: %llu\r\n", next);
+    //    PRINT("next after tick: %llu\r\n", next);
 
     if (next == ULLONG_MAX) {
       /* This just means that there are no events in the queue (or a remarkable coincidence) */
@@ -193,6 +233,21 @@ void main(void) {
   }
 
 
+  /* Order is important. The top config has to be set before you set an alarm cfg */
+  top_cfg.ticks = UINT_MAX;
+  top_cfg.callback = top_callback;
+  top_cfg.flags = 0;
+  top_cfg.user_data = NULL;
+  
+  if (!counter_set_top_value(counter_dev, &top_cfg)) {
+    PRINT("HWCounter: Top interrupt set\r\n");
+  }
+  else { 
+    PRINT("HWCounter: Error setting top interrupt\r\n");
+  }
+
+
+  
 
   alarm_cfg.flags = COUNTER_ALARM_CFG_ABSOLUTE | COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE;
   alarm_cfg.ticks = 10; //counter_us_to_ticks(counter_dev, 0);
@@ -210,7 +265,7 @@ void main(void) {
   } else {
     PRINT("HWCounter: Error setting guard period\r\n");
   }
-
+  
   counter_start(counter_dev);
 
   /* configure uart */
@@ -221,6 +276,11 @@ void main(void) {
   int led0_state = 0;
 
   while(1) {
+
+    PRINT("____________________________\r\n");
+    PRINT("high word: %u\r\n", counter_high_word);
+    PRINT("----------------------------\r\n");
+    
     led_set(led0,led0_state);
     led0_state = 1 - led0_state;
     k_sleep(K_SECONDS(4));
