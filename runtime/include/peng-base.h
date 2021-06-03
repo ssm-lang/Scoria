@@ -21,7 +21,7 @@ typedef uint8_t  uint8;
    64 bits of microseconds gives 19 bits of years, over 500ky: plenty.
  */
 typedef uint64_t peng_time_t;         // timestamps: assumed never to overflow
-#define NO_EVENT_SCHEDULED ULONG_MAX
+#define NO_EVENT_SCHEDULED UINT64_MAX
 
 extern peng_time_t now;               // Name of current instant
 

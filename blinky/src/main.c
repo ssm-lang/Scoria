@@ -19,9 +19,125 @@
 
 #include <peng.h>
 
-/********** This code will be generated when LED IO is required **********/
-
 extern peng_time_t now;
+
+typedef struct {
+  uint8_t driverid;
+  uint8_t buttonevent;
+} button_msg;
+
+struct tick_message {
+  uint8_t type; // 0 for nothing, 1 for button
+  union {
+    bool nothing;
+    button_msg button_data;
+  } data;
+};
+
+#define MAX_MESSAGES  100
+#define MSG_ALIGNMENT 1
+
+K_MSGQ_DEFINE(tick_msgq, sizeof(struct tick_message), MAX_MESSAGES,MSG_ALIGNMENT);
+
+/********** This code will be generated when button IO is required **********/
+
+/*
+ * Button variable
+ */
+typedef struct {
+  /* Generic SV fields */
+  void (*update)(sv_t *);
+  struct trigger *triggers;
+  peng_time_t last_updated;
+  peng_time_t event_time;
+  void (*to_string)(sv_t *, char *, size_t);
+
+  /* Button specific fields */
+  ll_driver_t driver;
+  bool value;
+  bool event_value;
+} sv_button_t;
+
+sv_button_t buttons[4];
+
+void to_string_button(sv_t *v, char *buffer, size_t size);
+void initialize_button(sv_button_t *v, uint32_t driverid, uint32_t buttonid); // NOTE: Extra fields here
+void assign_button(sv_button_t *v,  priority_t priority, bool value);
+void later_button(sv_button_t *v, peng_time_t time, bool value);
+void update_button(sv_t *var);
+
+char buttons_buffer[10*sizeof(ll_driver_msg_t)];
+struct k_msgq button_queue;
+
+extern int send_message(zephyr_interop_t* this, ll_driver_msg_t msg);
+zephyr_interop_t button_interop = { .msgq         = &button_queue
+                                  , .send_message = send_message
+                                  };
+
+void init_button_interop() {
+  k_msgq_init(&button_queue, buttons_buffer, sizeof(ll_driver_msg_t), 10);
+}
+
+void to_string_button(sv_t *v, char *buffer, size_t size) {
+    sv_button_t* iv = (sv_button_t *) v;
+    char str[] = "button %s";
+    snprintf(buffer, size, str, iv->value ? "button-down" : "button-up");
+}
+
+void initialize_button(sv_button_t *v, uint32_t driverid, uint32_t buttonid) {
+  assert(v);
+  /* Generic initialization */
+  *v = (sv_button_t) { .to_string = to_string_button,
+                    .update       = update_button,
+                    .triggers     = NULL,
+			              .last_updated = now,
+			              .event_time   = NO_EVENT_SCHEDULED };
+
+  /* Button specific initialization */
+  if(ll_button_init(&v->driver, driverid, &button_interop, buttonid)) {
+      printk("Button-driver %d successfully initialized\n", buttonid);
+  } else {
+      printk("driver failed to initialize\n");
+  }
+}
+
+void assign_button(sv_button_t *v,  priority_t priority, bool value) {
+  v->value = value;
+  v->last_updated = now;
+  schedule_sensitive((sv_t *) v, priority);
+}
+
+void later_button(sv_button_t *v, peng_time_t time, bool value) {
+  assert(v);
+  v->event_value = value;
+  later_event((sv_t *) v, time);
+}
+
+void update_button(sv_t *var)
+{
+  assert(var);
+  assert(var->event_time == now);
+  sv_button_t *v = (sv_button_t *) var;
+  v->value = v->event_value;
+}
+
+void button_thread_loop() {
+  ll_driver_msg_t btn_msg;
+  struct tick_message tick_msg;
+  while(1) {
+    k_msgq_get(&button_queue, &btn_msg, K_FOREVER);
+    tick_msg.type = 1;
+    button_msg button_data = { .driverid = btn_msg.driver_id
+                             , .buttonevent = btn_msg.data
+                             };
+    tick_msg.data.button_data = button_data;
+    k_msgq_put(&tick_msgq, &tick_msg, K_NO_WAIT);
+  }
+}
+
+/********** End of button code **********/
+
+/********** This code will be generated when LED IO is required **********/
 
 /*
  * LED variable
@@ -124,6 +240,7 @@ act_flipled_t *enter_flipled(act_t *caller, priority_t priority, depth_t depth)
 }
 
 extern sv_led_t led0;
+extern sv_button_t *button0;
 
 /* The idea is that when this procedure was written in the EDSL, the programmer
  * would get access to the LED by calling e.g `getLed 0`. When this call is made all
@@ -138,22 +255,33 @@ void step_flipled(act_t *gen_act)
         case 0:
             // while
             L0:
+            printf("ACT: enter while\n");
             if (!(true)) goto L1;
-            later_led(&led0, now + 8000000UL, true);
+//            later_led(&led0, now + 8000000UL, true);
             // if this was e.g a button, only enable the button
             // callback when someone waits for the button.
             // Disable it when no one is waiting for it.
-            sensitize((sv_t *)&led0, &act->trig1);
+            printf("ACT: going to wait for button0\n");
+            sensitize((sv_t *)button0, &act->trig1);
             act->pc = 1;
             return;
         case 1:
             desensitize(&act->trig1);
-            later_led(&led0, now + 8000000UL, false);
+            printf("ACT: woke up, button0 was pressed\n");
+            printf("ACT: scheduling event on led0\n");
+            later_led(&led0, now + 16000000UL, true);
+            printf("ACT: waiting for button0\n");
             sensitize((sv_t *)&led0, &act->trig1);
             act->pc = 2;
             return;
         case 2:
             desensitize(&act->trig1);
+            later_led(&led0, now + 16000000UL, false);
+//            sensitize((sv_t *)&led0, &act->trig1);
+            printf("ACT: wake up, button0 was pressed\n");
+            printf("ACT: scheduling event on led0\n");
+//            later_led(&led0, now + 16000000UL, false);
+            
             goto L0;
             L1:
         case 3:
@@ -236,16 +364,13 @@ act_t top = { .step = top_return };
 /* hw_tick                                                      */
 /* ************************************************************ */
 
-#define MAX_MESSAGES  100
-#define MSG_ALIGNMENT 1
-
-
-K_MSGQ_DEFINE(tick_msgq, 1, MAX_MESSAGES,MSG_ALIGNMENT);
-
 void hw_tick(const struct device *dev, uint8_t chan, uint32_t ticks, void *user_data) {
 
   /* Put a tick on the messagebox */
-  uint8_t msg = 1;
+  struct tick_message msg = { .type         = 0
+                            , .data.nothing = 0
+                            };
+//  uint8_t msg = 1;
   k_msgq_put(&tick_msgq, &msg, K_NO_WAIT);
   /* this can fail to send the message. then what? */
 }
@@ -255,145 +380,176 @@ struct k_thread tick_thread;
 
 /* NOTE: Here we define the LED */
 sv_led_t led0;
+sv_button_t *button0;
 
-// void tick_thread_main(void * a, void* b, void *c) {
-//   (void)a;
-//   (void)b;
-//   (void)c;
+void tick_thread_main(void * a, void* b, void *c) {
+  (void)a;
+  (void)b;
+  (void)c;
 
-//   /* NOTE: Here the LED is initialized*/
-//   initialize_led(&led0, 0);
-//   led0.value = false;
+  /* NOTE: Here the LEDs is initialized*/
+  initialize_led(&led0, 0);
+  led0.value = false;
 
-//   now = 0;
+  /* NOTE: Here the Buttons are initialized*/
+  init_button_interop();
+  button0 = &buttons[0];
+  initialize_button(button0, 0, 0);
+  button0->value = false;
 
-//   uint8_t recv_msg;
+  now = 0;
 
-//   fork_routine( (act_t *) enter_flipled(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT) );
+  struct tick_message recv_msg;
 
-//   int i = 0;
-//   while (1) {
+  fork_routine( (act_t *) enter_flipled(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT) );
 
-//     /* get a data item, waiting as long as needed */
-//     k_msgq_get(&tick_msgq, &recv_msg, K_FOREVER);
+  int i = 0;
+  while (1) {
 
-//     now = next_event_time();
-//     tick();
+    /* get a data item, waiting as long as needed */
+    k_msgq_get(&tick_msgq, &recv_msg, K_FOREVER);
+    if(recv_msg.type == 1 && recv_msg.data.button_data.buttonevent == 1) {
+      uint32_t count;
+      counter_get_value(counter_dev, &count);
+      now = count;
 
-//     uint64_t next = next_event_time();
+      button_msg bd = recv_msg.data.button_data;
+      printk("button_press! driverid: %u, buttonstatus: %u\n", bd.driverid, bd.buttonevent);
+      printk("scheduling update...\n");
+      sv_button_t* button = &buttons[bd.driverid];
+      later_button(button, now + 1, bd.buttonevent);
+//      assign_button(button, 0, bd.buttonevent); // 0 because we want to wake up everyone
+      continue;
+    }
 
-//     if (next == ULLONG_MAX) {
-//       /* This just means that there are no events in the queue (or a remarkable coincidence) */
-//       /* What to do in this case ?*/
-//       /*  - Go to sleep and await being woken from outside source */
+    now = next_event_time();
+    tick();
 
-//       PRINT("NOTHING IN THE QUEUE\r\n");
-//     }
+    peng_time_t next = next_event_time();
 
-//     uint64_t wake_time = next_event_time(); /* Absolute time */
+    if (next == ULLONG_MAX) {
+      /* This just means that there are no events in the queue (or a remarkable coincidence) */
+      /* What to do in this case ?*/
+      /*  - Go to sleep and await being woken from outside source */
 
-//     //PRINT("sleep_time = %lld\r\n", sleep_time);
+      PRINT("NOTHING IN THE QUEUE\r\n");
+      continue;
+    }
 
-//     alarm_cfg.flags = COUNTER_ALARM_CFG_ABSOLUTE | COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE;
-//     alarm_cfg.ticks = wake_time;
+    uint64_t wake_time = next_event_time(); /* Absolute time */
 
-//     int r = counter_set_channel_alarm(counter_dev, 0, &alarm_cfg);
-//     if (!r) {
-//       //PRINT("hw_tick: Alarm set\r\n");
-//     } else {
-//       if (r == - ENOTSUP ) {
-// 	PRINT("hw_tick: Error setting alarm (ENOTSUP)\r\n");
-//       } else if ( r == - EINVAL ) {
-// 	PRINT("hw_tick: Error setting alarm (EINVAL)\r\n");
-//       } else if ( r == - ETIME ) {
-// 	PRINT("hw_tick: Error setting alarm (ETIME)\r\n");
-//       } else {
-// 	PRINT("hw_tick: Error setting alarm\r\n");
-//       }
-//     }
+    //PRINT("sleep_time = %lld\r\n", sleep_time);
 
-//     i++;
-//   }
-// }
+    alarm_cfg.flags = COUNTER_ALARM_CFG_ABSOLUTE | COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE;
+    alarm_cfg.ticks = wake_time;
 
-// void start_tick_thread(void) {
+    int r = counter_set_channel_alarm(counter_dev, 0, &alarm_cfg);
+    if (!r) {
+      //PRINT("hw_tick: Alarm set\r\n");
+    } else {
+      if (r == - ENOTSUP ) {
+	PRINT("hw_tick: Error setting alarm (ENOTSUP)\r\n");
+      } else if ( r == - EINVAL ) {
+	PRINT("hw_tick: Error setting alarm (EINVAL)\r\n");
+      } else if ( r == - ETIME ) {
+	PRINT("hw_tick: Error setting alarm (ETIME)\r\n");
+  printk("wake time = %llu\n", wake_time);
+      } else {
+	PRINT("hw_tick: Error setting alarm\r\n");
+      }
+    }
 
-//   k_thread_create(&tick_thread, tick_thread_stack,
-// 		  K_THREAD_STACK_SIZEOF(tick_thread_stack),
-// 		  tick_thread_main,
-// 		  NULL, NULL, NULL,
-// 		  5, 0, K_NO_WAIT);
-// }
-
-// /* ************************************************************ */
-// /* MAIN                                                         */
-// /* ************************************************************ */
-
-
-// void main(void) {
-
-//   PRINT("Sleeping 1 seconds\r\n");
-//   k_sleep(K_SECONDS(1)); // Wait enough for starting up a terminal.
-//   PRINT("WOKE UP\r\n");
-
-//   /* ************************* */
-//   /* Hardware timer experiment */
-//   counter_dev = device_get_binding(TIMER);
-//   if (!counter_dev) {
-//     PRINT("HWCounter: Device not found error\r\n");
-//   }
-
-//   if (counter_get_frequency(counter_dev) > 1000000) {
-//     PRINT("HWCounter: Running at %dMHz\r\n", counter_get_frequency(counter_dev) / 1000000);
-//   } else {
-//     PRINT("HWCounter: Running at %dHz\r\n", counter_get_frequency(counter_dev));
-//   } // Här kanske jag kan räkna ut hur många ticks som är en ms
-
-//   alarm_cfg.flags = COUNTER_ALARM_CFG_ABSOLUTE | COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE;
-//   alarm_cfg.ticks = 10; //counter_us_to_ticks(counter_dev, 0);
-//   alarm_cfg.callback = hw_tick;
-//   alarm_cfg.user_data = &alarm_cfg;
-
-
-//   if (!counter_set_channel_alarm(counter_dev, 0, &alarm_cfg)) {
-//     PRINT("HWCounter: Alarm set\r\n");
-//   } else {
-//     PRINT("HWCounter: Error setting alarm\r\n");
-//   }
-//   if (!counter_set_guard_period(counter_dev, UINT_MAX/2, COUNTER_GUARD_PERIOD_LATE_TO_SET)) {
-//     PRINT("HWCounter: Guard period set\r\n");
-//   } else {
-//     PRINT("HWCounter: Error setting guard period\r\n");
-//   }
-
-//   counter_start(counter_dev);
-
-//   /* configure uart */
-
-//   PRINT("Starting Tick-Thread\r\n");
-//   start_tick_thread();
-// }
-
-
-int send_message(zephyr_interop_t* this, ll_driver_msg_t msg) {
-  return k_msgq_put(this->msgq,(void*)&msg, K_NO_WAIT);
-}
-
-void main(void) {
-  char buffer[10 * sizeof(ll_driver_msg_t)];
-  struct k_msgq q;
-  k_msgq_init(&q, buffer, sizeof(ll_driver_msg_t), 10);
-
-  zephyr_interop_t t;
-  t.msgq         = &q;
-  t.send_message = send_message;
-
-  ll_driver_t button;
-  ll_button_init(&button, 0, &t, 0);
-
-  while(1) {
-    ll_driver_msg_t msg;
-    k_msgq_get(&q, &msg, K_FOREVER);
-    printk("felt click, drive value: %u\n", msg.data);
+    i++;
   }
 }
+
+K_THREAD_STACK_DEFINE(button_thread_stack, 512);
+struct k_thread button_thread;
+
+void start_tick_thread(void) {
+
+  k_thread_create(&tick_thread, tick_thread_stack,
+		  K_THREAD_STACK_SIZEOF(tick_thread_stack),
+		  tick_thread_main,
+		  NULL, NULL, NULL,
+		  5, 0, K_NO_WAIT);
+  
+  k_thread_create(&button_thread, button_thread_stack,
+      K_THREAD_STACK_SIZEOF(tick_thread_stack),
+      button_thread_loop,
+      NULL, NULL, NULL,
+      5, 0, K_NO_WAIT);
+}
+
+/* ************************************************************ */
+/* MAIN                                                         */
+/* ************************************************************ */
+
+
+void main(void) {
+
+  PRINT("Sleeping 1 seconds\r\n");
+  k_sleep(K_SECONDS(1)); // Wait enough for starting up a terminal.
+  PRINT("WOKE UP\r\n");
+
+  /* ************************* */
+  /* Hardware timer experiment */
+  counter_dev = device_get_binding(TIMER);
+  if (!counter_dev) {
+    PRINT("HWCounter: Device not found error\r\n");
+  }
+
+  if (counter_get_frequency(counter_dev) > 1000000) {
+    PRINT("HWCounter: Running at %dMHz\r\n", counter_get_frequency(counter_dev) / 1000000);
+  } else {
+    PRINT("HWCounter: Running at %dHz\r\n", counter_get_frequency(counter_dev));
+  } // Här kanske jag kan räkna ut hur många ticks som är en ms
+
+  alarm_cfg.flags = COUNTER_ALARM_CFG_ABSOLUTE | COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE;
+  alarm_cfg.ticks = 10; //counter_us_to_ticks(counter_dev, 0);
+  alarm_cfg.callback = hw_tick;
+  alarm_cfg.user_data = &alarm_cfg;
+
+
+  if (!counter_set_channel_alarm(counter_dev, 0, &alarm_cfg)) {
+    PRINT("HWCounter: Alarm set\r\n");
+  } else {
+    PRINT("HWCounter: Error setting alarm\r\n");
+  }
+  if (!counter_set_guard_period(counter_dev, UINT_MAX/2, COUNTER_GUARD_PERIOD_LATE_TO_SET)) {
+    PRINT("HWCounter: Guard period set\r\n");
+  } else {
+    PRINT("HWCounter: Error setting guard period\r\n");
+  }
+
+  counter_start(counter_dev);
+
+  /* configure uart */
+
+  PRINT("Starting Tick-Thread\r\n");
+  start_tick_thread();
+}
+
+
+ int send_message(zephyr_interop_t* this, ll_driver_msg_t msg) {
+   return k_msgq_put(this->msgq,(void*)&msg, K_NO_WAIT);
+ }
+
+// void main(void) {
+//   char buffer[10 * sizeof(ll_driver_msg_t)];
+//   struct k_msgq q;
+//   k_msgq_init(&q, buffer, sizeof(ll_driver_msg_t), 10);
+
+//   zephyr_interop_t t;
+//   t.msgq         = &q;
+//   t.send_message = send_message;
+
+//   ll_driver_t button;
+//   ll_button_init(&button, 0, &t, 0);
+
+//   while(1) {
+//     ll_driver_msg_t msg;
+//     k_msgq_get(&q, &msg, K_FOREVER);
+//     printk("felt click, drive value: %u\n", msg.data);
+//   }
+// }
