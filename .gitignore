@@ -12,6 +12,7 @@ stack.yaml.lock
 /zephyr-code/ssm-zephyr/build/
 
 .ccls-cache
+compile_commands.json
 
 build
 
