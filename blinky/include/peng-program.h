@@ -1,5 +1,5 @@
-#ifndef PENG_PROGRAM_H_
-#define PENG_PROGRAM_H_
+#ifndef PENG_PROGRAM_
+#define PENG_PROGRAM_
 
 #include <peng.h>
 

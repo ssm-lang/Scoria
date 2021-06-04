@@ -1,5 +1,5 @@
-#ifndef PENG_BUTTON_H_
-#define PENG_BUTTON_H_
+#ifndef PENG_BUTTON_
+#define PENG_BUTTON_
 
 #include <zephyr.h>
 
@@ -42,4 +42,4 @@ void assign_button(sv_button_t *v,  priority_t priority, bool value);
 void later_button(sv_button_t *v, peng_time_t time, bool value);
 void update_button(sv_t *var);
 
-#endif // PENG_BUTTON_H
+#endif // PENG_BUTTON

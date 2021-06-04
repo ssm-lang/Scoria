@@ -1,5 +1,5 @@
-#ifndef PENG_LED_H_
-#define PENG_LED_H_
+#ifndef PENG_LED_
+#define PENG_LED_
 
 #include <zephyr.h>
 
@@ -39,4 +39,4 @@ void assign_led(sv_led_t *v,  priority_t priority, bool value);
 void later_led(sv_led_t *v, peng_time_t time, bool value);
 void update_led(sv_t *var);
 
-#endif // PENG_LED_H
+#endif // PENG_LED
