@@ -1,5 +1,7 @@
 ##
 # Master Makefile. Sets up build directory for multi-platform build environment.
+# Based on Paul D. Smith's multi-architecture build recommendation:
+# http://make.mad-scientist.net/papers/multi-architecture-builds
 #
 # If this Makefile isn't invoked from inside the build directory, this will
 # determine the platform being built for, and set up the build environment
@@ -10,16 +12,15 @@
 #
 #   ROOTDIR := absolute path of the directory where this Makefile lives
 #   PLATFORM := name of the platform being targeted
-#   RUNTIMEDIR := directory where platform-generic runtime is located
 #   PLATFORMDIR := platform-specific directory
+#   RUNTIMEDIR := directory where platform-generic runtime is located
 #   GENCDIR := directory where generated C code can be found
 #
-# The build directory is located at build/$(PLATFORM).
+# The build directory is located at build/$(PLATFORM). This Makefile also sets
+# up a clean target to remove the build directory.
 #
-# This file also sets up a clean targets.
-#
-# Based on Paul D. Smith's multi-architecture build recommendation:
-# http://make.mad-scientist.net/papers/multi-architecture-builds
+# Header dependencies are generated for any .c source files added to the SRCS
+# variable. See ./Build.mk for details.
 ##
 
 ifeq (,$(filter build, $(notdir $(abspath $(CURDIR)/..))))
@@ -72,12 +73,12 @@ RUNTIMEDIR := $(ROOTDIR)/runtime
 PLATFORMDIR := $(ROOTDIR)/platform/$(PLATFORM)
 GENCDIR := $(ROOTDIR)/genc
 
-include $(ROOTDIR)/Build.mk
-
 include $(RUNTIMEDIR)/Build.mk
 
 include $(PLATFORMDIR)/Build.mk
 
 include $(GENCDIR)/Build.mk
+
+include $(ROOTDIR)/Build.mk
 
 endif

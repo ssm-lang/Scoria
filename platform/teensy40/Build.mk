@@ -19,28 +19,34 @@ CPUOPTIONS = -mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-d16 -mthumb
 #     Not clear it's useful
 CFLAGS += -Wall -O2 -std=gnu99 $(CPUOPTIONS) -ffunction-sections -fdata-sections
 
-LDFLAGS += -Os -Wl,--gc-sections,--relax $(CPUOPTIONS) -T$(PLATFORMDIR)/imxrt1062.ld
-
 vpath %.c $(PLATFORMDIR)/src
 
-LIBSRC += startup.c
+SRCS += startup.c teensy_loader_cli.c
 
-# .DEFAULT_GOAL := libpeng.a
+LDFLAGS += -Os -Wl,--gc-sections,--relax $(CPUOPTIONS)
+LDFLAGS += -T$(PLATFORMDIR)/imxrt1062.ld
+LDFLAGS += -lplatform
+
+libplatform.a: libplatform.a(startup.o)
 
 $(MODULE).hex : $(MODULE).elf
 
-LOADER = ./teensy_loader_cli
+##
+# Loader program (which runs on host)
+##
+
+LOADER = teensy_loader_cli
 LOADERFLAGS = --mcu=imxrt1062
 
-teensy_loader_cli : teensy_loader_cli.c
-	$(HOSTCC) -O2 -Wall -s -DUSE_LIBUSB -o teensy_loader_cli $< -lusb
+$(LOADER) : $(LOADER).c
+	$(HOSTCC) -O2 -Wall -s -DUSE_LIBUSB -o $@ $< -lusb
 
 .PHONY : program
 program : $(MODULE).hex $(LOADER)
 	@echo "Press the key on the Teensy"
-	$(LOADER) $(LOADERFLAGS) -w $(MODULE).hex
+	./$(LOADER) $(LOADERFLAGS) -w $(MODULE).hex
 
 .PHONY : reboot
 reboot : $(LOADER)
 	@echo "Press the key on the Teensy"
-	$(LOADER) $(LOADERFLAGS) -w -b
+	./$(LOADER) $(LOADERFLAGS) -w -b
