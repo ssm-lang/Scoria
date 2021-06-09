@@ -30,7 +30,7 @@ ifeq (,$(filter build, $(notdir $(abspath $(CURDIR)/..))))
 .SUFFIXES:
 
 ifndef PLATFORM
-PLATFORM := test
+PLATFORM := trace
 export PLATFORM
 endif
 

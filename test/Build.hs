@@ -21,30 +21,26 @@ import           Report                         ( (</>)
                                                 )
 
 -- | Tick limit compiled into the test target
-testLimit :: Maybe Int
-testLimit = Just 7500
+tickLimit :: Maybe Int
+tickLimit = Just 7500
 
--- | Name of the build directory
-buildDir :: FilePath
-buildDir = "build/test"
-
--- | Directory where module
+-- | Directory where generated C files are written to
 cSrcDir :: FilePath
 cSrcDir = "genc"
 
--- | Name of test target
-targetName :: String
-targetName = "quickcheckgen"
+-- | Name of the build platform
+buildPlatform :: String
+buildPlatform = "trace"
 
--- | Helper function that adds an extension to the target name
-targetExt :: String -> FilePath
-targetExt ext = targetName ++ ext
+-- | Name of the build directory
+buildDir :: FilePath
+buildDir = "build" </> buildPlatform
 
--- |
-doCompile :: Monad m => Slug -> Program -> QC.PropertyM m String
-doCompile sl program = do
-  let cSrc = compile_ True testLimit program
-  reportOnFail sl (targetExt ".c") cSrc
+-- | Compile an SSM program to a C program's string representation
+doCompile :: Monad m => Slug -> String -> Program -> QC.PropertyM m String
+doCompile sl name program = do
+  let cSrc = compile_ True tickLimit program
+  reportOnFail sl (name ++ ".c") cSrc
   return cSrc
 
 -- | Try to compile a C program using make.
@@ -54,21 +50,21 @@ doCompile sl program = do
 --
 -- TODO: It's probably possible to just inspect the returncode here
 -- TODO: pass in DEBUG flag here
-doMake :: Slug -> String -> QC.PropertyM IO FilePath
-doMake sl cSrc = do
+doMake :: Slug -> String -> String -> QC.PropertyM IO FilePath
+doMake sl name cSrc = do
   QC.run $ writeFile srcPath cSrc
 
   (code, out, err) <- QC.run $ readProcessWithExitCode "make" makeArgs ""
-  reportFileOnFail sl execPath (targetExt ".exe")
+  reportFileOnFail sl execPath (name ++ ".exe")
 
   case code of
     ExitSuccess   -> return execPath
     ExitFailure c -> printUnixError c out err >> fail "Make error"
 
  where
-  srcPath  = cSrcDir </> targetExt ".c"
-  execPath = buildDir </> targetName
-  makeArgs = ["PLATFORM=test", targetName]
+  srcPath  = cSrcDir </> name ++ ".c"
+  execPath = buildDir </> name
+  makeArgs = ["PLATFORM=" ++ buildPlatform, name]
 
 -- | Test compiled program with valgrind.
 --

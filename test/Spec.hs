@@ -14,22 +14,29 @@ import qualified Test.QuickCheck.Monadic       as QC
 
 -- import           TestCases
 
+-- | Name of test target
+genName :: String
+genName = "quickcheckgen"
+
+genNameSsm :: String
+genNameSsm = genName ++ ".ssm"
+
 -- | Tests that generated SSM programs compile successfully
 propCompiles :: Slug -> Program -> QC.Property
 propCompiles sl program = QC.monadicIO $ do
   reportSlug sl
-  reportProgramOnFail sl "quickcheckgen.ssm" program
-  cSrc <- C.doCompile sl program
-  C.doMake sl cSrc
+  reportProgramOnFail sl genNameSsm program
+  cSrc <- C.doCompile sl genName program
+  C.doMake sl genName cSrc
   return ()
 
 -- | Tests an SSM program by evaluating it under valgrind.
 propValgrind :: Slug -> Program -> QC.Property
 propValgrind sl program = QC.monadicIO $ do
   reportSlug sl
-  reportProgramOnFail sl "quickcheckgen.ssm" program
-  cSrc <- C.doCompile sl program
-  fp   <- C.doMake sl cSrc
+  reportProgramOnFail sl genNameSsm program
+  cSrc <- C.doCompile sl genName program
+  fp   <- C.doMake sl genName cSrc
   _    <- C.doVg sl fp
   return ()
 
@@ -42,15 +49,14 @@ propValgrind sl program = QC.monadicIO $ do
 propCorrect :: Slug -> Program -> QC.Property
 propCorrect sl program = QC.monadicIO $ do
   reportSlug sl
-  reportProgramOnFail sl "quickcheckgen.ssm" program
-  cSrc        <- C.doCompile sl program
-  fp          <- C.doMake sl cSrc
+  reportProgramOnFail sl genNameSsm program
+  cSrc        <- C.doCompile sl genName program
+  fp          <- C.doMake sl genName cSrc
   _           <- C.doVg sl fp
   (_, out, _) <- C.doExec sl fp
   cTrace      <- O.doParseOutput sl out
   iTrace      <- O.doInterpret sl program (length $ lines out)
   O.doCompareTraces sl cTrace iTrace
-  QC.assert False
 
 -- | Entry point for test harness
 main :: IO ()

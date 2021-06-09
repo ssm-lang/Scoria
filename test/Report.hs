@@ -21,9 +21,12 @@ import           System.Directory               ( createDirectoryIfMissing
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
 
--- | Identifier for each test, used to determine report directory name
+-- | Identifier for each test, used to determine report directory name.
 type Slug = String
 
+-- | Generate a test Slug using the current POSIX time.
+--
+-- Useful for generated test cases with no user-defined name.
 getTimestamp :: IO Slug
 getTimestamp = show . round . (* 1000) <$> getPOSIXTime
 
