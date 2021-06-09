@@ -30,6 +30,7 @@ library
       Core
       Frontend
       HughesList
+      HW.Board
       LowCodeGen
       LowCore
       LowGenerator
@@ -66,6 +67,7 @@ executable print-ssm-from-file
       Core
       Frontend
       HughesList
+      HW.Board
       LowCodeGen
       LowCore
       LowGenerator

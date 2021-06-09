@@ -86,9 +86,9 @@ You can fork processes with `fork`. A very nice thing here is that the things we
 ```Haskell
 fork       :: [SSM ()] -> SSM ()
 ```
-To see if a variable has been written to in the current instant we can use `changed`. Right now this is a statement, and can not be used directly as an expression. I can't remember why I designed it like this, but I don't believe changing it to be an expression is difficult, if we want to do that instead.
+To see if a variable has been written to in the current instant we can use `changed`. 
 ```Haskell
-changed    :: Ref a -> SSM (Exp Bool)
+changed    :: Ref a -> Exp Bool
 ```
 Conditional executions. The `if'` _might_ have an else. It might look neater to just make two functions here instead, like `ifThen` and `ifThenElse`.
 ```
