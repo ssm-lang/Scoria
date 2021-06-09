@@ -3,7 +3,11 @@ module Report
   , reportOnFail
   , reportFileOnFail
   , printUnixError
+  , reportProgramOnFail
   ) where
+
+import           LowCore                        ( Program )
+import           LowPretty                      ( prettyProgram )
 
 import qualified Data.ByteString               as B
 import           System.Directory               ( createDirectoryIfMissing
@@ -68,3 +72,5 @@ reportFileOnFail src dst = do
     B.writeFile (reportDir </> dst) exec
     setPermissions (reportDir </> dst) perm
 
+reportProgramOnFail :: Monad m => FilePath -> Program -> QC.PropertyM m ()
+reportProgramOnFail fp program = reportOnFail fp $ prettyProgram program

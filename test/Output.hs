@@ -29,6 +29,10 @@ import           System.Timeout                 ( timeout )
 testTimeout :: Int
 testTimeout = 15000000
 
+linesOfContext :: Int
+linesOfContext = 8
+
+
 -- | Parse the output line by line. If parsing fails, report the line at which
 -- failure takes place.
 doParseOutput :: Monad m => String -> QC.PropertyM m T.Output
@@ -43,8 +47,9 @@ doParseOutput outs = do
     Just line -> do
       rest <- go xs
       return $ line : rest
-    Nothing -> reportParseError >> fail "Parse error"
-    where reportParseError = QC.monitor $ QC.counterexample x
+    Nothing -> do
+      QC.monitor $ QC.counterexample x
+      fail "Parse error"
 
 -- | Interpret a program and produce a (potentially trucated) output trace
 --
@@ -85,18 +90,69 @@ doInterpret program limit = do
 
 -- | Compare two traces, and fail if they differ
 doCompareTraces :: Monad m => T.Output -> T.Output -> QC.PropertyM m ()
-doCompareTraces = go 1
+doCompareTraces = go 1 []
  where
-  go :: Monad m => Int -> T.Output -> T.Output -> QC.PropertyM m ()
-  go _ [] [] = return ()
-  go i (t : ts) (t' : ts')
-    | t == t' = go (i + 1) ts ts'
+  go
+    :: Monad m
+    => Int
+    -> [T.OutputEntry]
+    -> T.Output
+    -> T.Output
+    -> QC.PropertyM m ()
+  go _ _ [] [] = return ()
+  go i ctx (t : ts) (t' : ts')
+    | t == t' = go (i + 1) (t : ctx) ts ts'
     | otherwise = do
-      QC.monitor $ QC.counterexample diff
+      QC.monitor $ QC.counterexample report
       fail $ "Traces differ at line " ++ show i
-    where diff = show i ++ ":   " ++ show t ++ " /= " ++ show t'
-  go i ts ts' = fail $ "Trace lengths differ: " ++ diff
    where
-    tsl  = show $ i + length ts
-    tsl' = show $ i + length ts'
-    diff = tsl ++ " /= " ++ tsl'
+    report    = unlines $ preamble ++ beforeCtx ++ [diff] ++ afterCtx
+
+    preamble  = ["Output differs:", ""]
+    beforeCtx = reverse $ take linesOfContext $ zipWith addLine rnum before
+    afterCtx  = take linesOfContext $ zipWith addLine lnum after
+
+    diff      = addLine i $ infixJoin " /= " (rpad $ show t) (rpad $ show t')
+    before    = map show ctx
+    after =
+      zipWith (infixJoin " || ") (map (rpad . show) ts) (map (rpad . show) ts')
+
+    rnum = reverse [1 .. i - 1]
+    lnum = [i + 1 ..]
+
+  go i ctx ts ts' = do
+    QC.monitor $ QC.counterexample report
+    fail "Trace lengths differ"
+   where
+    report    = unlines $ preamble ++ beforeCtx ++ afterCtx
+
+    preamble  = ["Lengths differ: " ++ tsl ++ " /= " ++ tsl', "", "tail:"]
+    tsl       = show $ i + length ts
+    tsl'      = show $ i + length ts'
+
+    beforeCtx = reverse $ take linesOfContext $ zipWith addLine rnum before
+    afterCtx  = []
+
+    before    = map show ctx
+    after =
+      zipWith (infixJoin " || ") (map (rpad . show) ts) (map (rpad . show) ts')
+
+    rnum = reverse [1 .. i - 1]
+    lnum = [i ..]
+
+{-- Diff output formatting helpers --}
+-- | Width
+diffColumnWidth :: Int
+diffColumnWidth = 40
+
+-- | Right pad a string with `diffColumnWidth` spaces
+rpad :: String -> String
+rpad s = take diffColumnWidth $ s ++ repeat ' '
+
+-- | Join two strings with infix
+infixJoin :: [a] -> [a] -> [a] -> [a]
+infixJoin i l r = l ++ i ++ r
+
+-- | Decorate string with tab-padded line number
+addLine :: Show a => a -> [Char] -> [Char]
+addLine num l = show num ++ ":\t" ++ l

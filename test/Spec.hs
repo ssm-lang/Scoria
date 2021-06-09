@@ -3,11 +3,10 @@
 
 import qualified Build                         as C
 import qualified Output                        as O
-import Report
+import           Report                         ( reportProgramOnFail )
 
 import           LowCore                        ( Program )
 import           LowGenerator                   ( ) -- for instance Arbitrary Program
-import           LowPretty
 
 import           Test.QuickCheck                ( Property
                                                 , quickCheck
@@ -22,6 +21,7 @@ import           Test.QuickCheck.Monadic        ( monadicIO )
 -- | Tests that generated SSM programs compile successfully
 propCompiles :: Program -> Property
 propCompiles program = monadicIO $ do
+  reportProgramOnFail "quickcheckgen.ssm" program
   cSrc <- C.doCompile program
   C.doMake cSrc
   return ()
@@ -29,6 +29,7 @@ propCompiles program = monadicIO $ do
 -- | Tests an SSM program by evaluating it under valgrind.
 propValgrind :: Program -> Property
 propValgrind program = monadicIO $ do
+  reportProgramOnFail "quickcheckgen.ssm" program
   cSrc <- C.doCompile program
   fp   <- C.doMake cSrc
   _    <- C.doVg fp
@@ -42,6 +43,7 @@ propValgrind program = monadicIO $ do
 -- QuickCheck's PropertyM here?
 propCorrect :: Program -> Property
 propCorrect program = monadicIO $ do
+  reportProgramOnFail "quickcheckgen.ssm" program
   cSrc        <- C.doCompile program
   fp          <- C.doMake cSrc
   (_, out, _) <- C.doExec fp
@@ -52,6 +54,6 @@ propCorrect program = monadicIO $ do
 -- | Entry point for test harness
 main :: IO ()
 main = do
-  quickCheck (withMaxSuccess 1000 propValgrind)
+  -- quickCheck (withMaxSuccess 1000 propValgrind)
   quickCheck (withMaxSuccess 1000 propCorrect)
   return ()
