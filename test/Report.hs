@@ -15,7 +15,9 @@ import qualified Test.QuickCheck.Monadic       as QC
 
 -- | Cheap shorthand to concat a directory to a path with /
 --
--- TODO: make sure this is lower precedence than ++
+-- In base (++) is given its presedence with infixr 5 ++, so infixr 4 </>
+-- seems appropriate.
+infixr 4 </>
 (</>) :: FilePath -> FilePath -> FilePath
 dir </> f = dir ++ "/" ++ f
 
