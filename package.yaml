@@ -33,6 +33,8 @@ dependencies:
 - deepseq
 - extra
 - mainland-pretty
+- time
+- bytestring
 
 library:
   source-dirs: edsl
@@ -42,7 +44,7 @@ executables:
     main:                Main.hs
     source-dirs:
     - app
-    - example
+    # - example
     ghc-options:
     - -threaded
     - -rtsopts
@@ -69,7 +71,7 @@ tests:
     main:                Spec.hs
     source-dirs:
     - test
-    - example
+    # - example
     ghc-options:
     - -threaded
     - -rtsopts
