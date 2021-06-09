@@ -10,6 +10,7 @@ stack.yaml.lock
 /runtest
 /zephyr-code/ssm-zephyr/peng/
 /zephyr-code/ssm-zephyr/build/
+/qc-report/
 
 .ccls-cache
 compile_commands.json
