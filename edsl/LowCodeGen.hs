@@ -218,7 +218,7 @@ genMain :: Program -> [C.Definition]
 genMain program =
   [ [cedecl| void $id:top_return($ty:act_t *act) { return; } |]
   , [cedecl|
-      void main(void) {
+      int main(void) {
         $ty:act_t top = { .step = $id:top_return };
 
         /* Initialize variables to be passed to the main SSM procedure */
