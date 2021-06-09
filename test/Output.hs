@@ -9,7 +9,9 @@ import           LowCore                        ( Program )
 import           LowInterpreter                 ( interpret )
 import qualified Trace                         as T
 
-import           Report                         ( reportOnFail )
+import           Report                         ( Slug(..)
+                                                , reportOnFail
+                                                )
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
 
@@ -35,10 +37,10 @@ linesOfContext = 8
 
 -- | Parse the output line by line. If parsing fails, report the line at which
 -- failure takes place.
-doParseOutput :: Monad m => String -> QC.PropertyM m T.Output
-doParseOutput outs = do
+doParseOutput :: Monad m => Slug -> String -> QC.PropertyM m T.Output
+doParseOutput sl outs = do
   cTrace <- go $ lines outs
-  reportOnFail "executed.out" $ show cTrace
+  reportOnFail sl "executed.out" $ show cTrace
   return cTrace
  where
   go :: Monad m => [String] -> QC.PropertyM m T.Output
@@ -55,10 +57,10 @@ doParseOutput outs = do
 --
 -- The evaluation is functionally limited to the number of steps specified by
 -- limit, but also time-limited using the timeout function.
-doInterpret :: Program -> Int -> QC.PropertyM IO T.Output
-doInterpret program limit = do
+doInterpret :: Slug -> Program -> Int -> QC.PropertyM IO T.Output
+doInterpret sl program limit = do
   iTrace <- QC.run timeoutEval
-  reportOnFail "interpreted.out" $ show iTrace
+  reportOnFail sl "interpreted.out" $ show iTrace
   return iTrace
  where
   timeoutEval :: IO T.Output
@@ -89,8 +91,8 @@ doInterpret program limit = do
     eval xs (lim - 1) ref
 
 -- | Compare two traces, and fail if they differ
-doCompareTraces :: Monad m => T.Output -> T.Output -> QC.PropertyM m ()
-doCompareTraces = go 1 []
+doCompareTraces :: Monad m => Slug -> T.Output -> T.Output -> QC.PropertyM m ()
+doCompareTraces sl = go 1 []
  where
   go
     :: Monad m
@@ -104,6 +106,7 @@ doCompareTraces = go 1 []
     | t == t' = go (i + 1) (t : ctx) ts ts'
     | otherwise = do
       QC.monitor $ QC.counterexample report
+      reportOnFail sl "output.diff" report
       fail $ "Traces differ at line " ++ show i
    where
     report    = unlines $ preamble ++ beforeCtx ++ [diff] ++ afterCtx
@@ -126,9 +129,9 @@ doCompareTraces = go 1 []
    where
     report    = unlines $ preamble ++ beforeCtx ++ afterCtx
 
-    preamble  = ["Lengths differ: " ++ tsl ++ " /= " ++ tsl', "", "tail:"]
-    tsl       = show $ i + length ts
-    tsl'      = show $ i + length ts'
+    preamble  = ["Lengths differ: " ++ tll ++ " /= " ++ tll', "", "tail:"]
+    tll       = show $ i + length ts
+    tll'      = show $ i + length ts'
 
     beforeCtx = reverse $ take linesOfContext $ zipWith addLine rnum before
     afterCtx  = []

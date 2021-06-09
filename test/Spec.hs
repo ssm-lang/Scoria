@@ -1,38 +1,36 @@
-{-# LANGUAGE ScopedTypeVariables #-}
--- import           NonTerminate
-
 import qualified Build                         as C
 import qualified Output                        as O
-import           Report                         ( reportProgramOnFail )
+import           Report                         ( Slug(..)
+                                                , getTimestamp
+                                                , reportProgramOnFail
+                                                , reportSlug
+                                                )
 
 import           LowCore                        ( Program )
-import           LowGenerator                   ( ) -- for instance Arbitrary Program
+import           LowGenerator                   ( ) -- instance Arbitrary Program
 
-import           Test.QuickCheck                ( Property
-                                                , quickCheck
-                                                , withMaxSuccess
-                                                )
-import           Test.QuickCheck.Monadic        ( monadicIO )
+import qualified Test.QuickCheck               as QC
+import qualified Test.QuickCheck.Monadic       as QC
 
 -- import           TestCases
 
--- timestamp <- round . (* 1000) <$> getPOSIXTime
-
 -- | Tests that generated SSM programs compile successfully
-propCompiles :: Program -> Property
-propCompiles program = monadicIO $ do
-  reportProgramOnFail "quickcheckgen.ssm" program
-  cSrc <- C.doCompile program
-  C.doMake cSrc
+propCompiles :: Slug -> Program -> QC.Property
+propCompiles sl program = QC.monadicIO $ do
+  reportSlug sl
+  reportProgramOnFail sl "quickcheckgen.ssm" program
+  cSrc <- C.doCompile sl program
+  C.doMake sl cSrc
   return ()
 
 -- | Tests an SSM program by evaluating it under valgrind.
-propValgrind :: Program -> Property
-propValgrind program = monadicIO $ do
-  reportProgramOnFail "quickcheckgen.ssm" program
-  cSrc <- C.doCompile program
-  fp   <- C.doMake cSrc
-  _    <- C.doVg fp
+propValgrind :: Slug -> Program -> QC.Property
+propValgrind sl program = QC.monadicIO $ do
+  reportSlug sl
+  reportProgramOnFail sl "quickcheckgen.ssm" program
+  cSrc <- C.doCompile sl program
+  fp   <- C.doMake sl cSrc
+  _    <- C.doVg sl fp
   return ()
 
 -- | Tests an SSM program by evaluating both the interpreter and running the
@@ -41,19 +39,22 @@ propValgrind program = monadicIO $ do
 -- TODO: these nested case statements is exactly why Haskell has monads; figure
 -- out how to rewrite this with monads. In particular, maybe try using
 -- QuickCheck's PropertyM here?
-propCorrect :: Program -> Property
-propCorrect program = monadicIO $ do
-  reportProgramOnFail "quickcheckgen.ssm" program
-  cSrc        <- C.doCompile program
-  fp          <- C.doMake cSrc
-  (_, out, _) <- C.doExec fp
-  cTrace      <- O.doParseOutput out
-  iTrace      <- O.doInterpret program (length $ lines out)
-  O.doCompareTraces cTrace iTrace
+propCorrect :: Slug -> Program -> QC.Property
+propCorrect sl program = QC.monadicIO $ do
+  reportSlug sl
+  reportProgramOnFail sl "quickcheckgen.ssm" program
+  cSrc        <- C.doCompile sl program
+  fp          <- C.doMake sl cSrc
+  _           <- C.doVg sl fp
+  (_, out, _) <- C.doExec sl fp
+  cTrace      <- O.doParseOutput sl out
+  iTrace      <- O.doInterpret sl program (length $ lines out)
+  O.doCompareTraces sl cTrace iTrace
+  QC.assert False
 
 -- | Entry point for test harness
 main :: IO ()
 main = do
-  -- quickCheck (withMaxSuccess 1000 propValgrind)
-  quickCheck (withMaxSuccess 1000 propCorrect)
+  sl <- getTimestamp
+  QC.quickCheck (QC.withMaxSuccess 1000 $ propCorrect sl)
   return ()
