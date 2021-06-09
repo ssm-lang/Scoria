@@ -25,7 +25,9 @@ SRCS += startup.c teensy_loader_cli.c
 
 LDFLAGS += -Os -Wl,--gc-sections,--relax $(CPUOPTIONS)
 LDFLAGS += -T$(PLATFORMDIR)/imxrt1062.ld
-LDFLAGS += -lplatform
+
+LDLIBS += -lplatform
+LIBS += libplatform.a
 
 libplatform.a: libplatform.a(startup.o)
 

@@ -5,9 +5,11 @@
 CC = gcc
 AR = ar
 
-CPPFLAGS += -I $(PLATFORMDIR)/include
+CPPFLAGS += -I $(PLATFORMDIR)/include -DDEBUG
 vpath %.c $(PLATFORMDIR)/src
-LDFLAGS += -lplatform
+
+LDLIBS += -lplatform
+LIBS += libplatform.a
 
 PLATFORMSRC = ssm-debug.c
 

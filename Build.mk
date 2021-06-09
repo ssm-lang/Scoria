@@ -10,7 +10,8 @@
 #
 # The list of dependency files is determined using the SRCS variable, which
 # should be populated by each of the other build directories (which is why this
-# should be included last).
+# should be included last). The LIBS variable is similarly used to determine
+# libraries that the main target should depend on.
 #
 # Auto-dependency generation based on technique described by Paul D. Smith:
 # http://make.mad-scientist.net/papers/advanced-auto-dependency-generation/
@@ -38,8 +39,12 @@ $(DEPFILES):
 # Gather header dependency information from dependency files
 include $(wildcard $(DEPFILES))
 
-CFLAGS += -std=c99 -Wall -O2 -g -pedantic
+CFLAGS += -std=c99 -Wall -O2 -g -Wpedantic
 ARFLAGS = -crU
+
+# We need to tell CC to look in the build directory (i.e., current directory)
+# for libraries.
+LDFLAGS += -L.
 
 # .elf and hex file generation rules
 %.elf :
