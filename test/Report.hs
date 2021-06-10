@@ -40,7 +40,7 @@ dir </> f = dir ++ "/" ++ f
 
 -- | Directory where reports are dumped
 reportDir :: Slug -> FilePath
-reportDir sl = "qc-report" </> "test-" ++ sl
+reportDir sl = "trace-report" </> "test-" ++ sl
 
 -- | Character limit for reports
 reportLimit :: Int
