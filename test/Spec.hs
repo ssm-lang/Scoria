@@ -42,10 +42,6 @@ propValgrind sl program = QC.monadicIO $ do
 
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
---
--- TODO: these nested case statements is exactly why Haskell has monads; figure
--- out how to rewrite this with monads. In particular, maybe try using
--- QuickCheck's PropertyM here?
 propCorrect :: Slug -> Program -> QC.Property
 propCorrect sl program = QC.monadicIO $ do
   reportSlug sl
