@@ -509,7 +509,7 @@ genCase (Fork cs) = do
     genDebug (r, _) = r
   return
     $ [cstm| DEBUG_PRINT($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |]
-    : zipWith genCall [1 :: Int ..] cs
+    : zipWith genCall [0 :: Int ..] cs
     ++ [ [cstm| gen_act->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]
