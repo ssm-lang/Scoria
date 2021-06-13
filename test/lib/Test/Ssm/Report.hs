@@ -1,4 +1,4 @@
-module Report
+module Test.Ssm.Report
   ( (</>)
   , reportOnFail
   , reportFileOnFail
@@ -9,15 +9,16 @@ module Report
   , reportSlug
   ) where
 
-import           LowCore                        ( Program )
-import           LowPretty                      ( prettyProgram )
-
 import qualified Data.ByteString               as B
 import           Data.Time.Clock.POSIX          ( getPOSIXTime )
 import           System.Directory               ( createDirectoryIfMissing
                                                 , getPermissions
                                                 , setPermissions
                                                 )
+
+import           LowCore                        ( Program )
+import           LowPretty                      ( prettyProgram )
+
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
 

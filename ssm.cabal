@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 52683477184dafa811c174de9210ca36f5261de370a1bbf031de6d2958ee6230
+-- hash: 8ec47dd95fa8d0fdb1eff8dff5d58c874a36994bcd29548c417ae24edd54d833
 
 name:           ssm
 version:        0.1.0.0
@@ -127,16 +127,18 @@ executable ssm-exe
     , time
   default-language: Haskell2010
 
-test-suite ssm-test
+test-suite quickcheck
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Build
-      Output
-      Report
+      Test.Ssm.Build
+      Test.Ssm.Output
+      Test.Ssm.Prop
+      Test.Ssm.Report
       Paths_ssm
   hs-source-dirs:
-      test
+      test/lib
+      test/quickcheck
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
@@ -147,6 +149,7 @@ test-suite ssm-test
     , deepseq
     , directory
     , extra
+    , hspec
     , language-c-quote
     , mainland-pretty
     , megaparsec

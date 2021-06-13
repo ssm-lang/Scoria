@@ -1,19 +1,20 @@
-module Build
+module Test.Ssm.Build
   ( doCompile
   , doMake
   , doExec
   , doVg
   ) where
 
-import           LowCodeGen                     ( compile_ )
-import           LowCore                        ( Program )
 import           System.Exit                    ( ExitCode(..) )
 import           System.Process                 ( readProcessWithExitCode )
+
+import           LowCodeGen                     ( compile_ )
+import           LowCore                        ( Program )
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
 
-import           Report                         ( (</>)
+import           Test.Ssm.Report                ( (</>)
                                                 , Slug(..)
                                                 , printUnixError
                                                 , reportFileOnFail

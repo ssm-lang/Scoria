@@ -67,10 +67,11 @@ executables:
     - ssm
 
 tests:
-  ssm-test:
+  quickcheck:
     main:                Spec.hs
     source-dirs:
-    - test
+    - test/lib
+    - test/quickcheck
     # - example
     ghc-options:
     - -threaded
@@ -82,3 +83,4 @@ tests:
     - process
     - text
     - QuickCheck
+    - hspec
