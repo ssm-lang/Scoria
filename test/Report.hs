@@ -48,8 +48,8 @@ reportLimit = 120 * 200
 
 -- | Report the test directory after a test fails
 reportSlug :: Monad m => Slug -> QC.PropertyM m ()
-reportSlug sl =
-  QC.monitor $ QC.counterexample $ "Report directory: " ++ reportDir sl ++ "\n"
+reportSlug sl = QC.monitor $ QC.counterexample $ unlines
+  ["", "Report directory: " ++ reportDir sl, ""]
 
 -- | Print a Unix error in a Quickcheck Property monad transformer
 printUnixError :: Monad m => Int -> String -> String -> QC.PropertyM m ()
@@ -96,4 +96,4 @@ reportProgramOnFail
   :: Monad m => Slug -> FilePath -> Program -> QC.PropertyM m ()
 reportProgramOnFail sl fp program = do
   reportOnFail sl (fp ++ ".ssm") $ prettyProgram program
-  reportOnFail sl (fp ++ ".hs") $ show program
+  reportOnFail sl (fp ++ ".hs") $ "p = " ++ show program
