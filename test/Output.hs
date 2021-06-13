@@ -27,31 +27,39 @@ import           Data.IORef                     ( IORef
 import           Data.List                      ( isPrefixOf )
 import           System.Timeout                 ( timeout )
 
--- | Time limit on how long the interpreter should attempt to evaluate a program
+-- | Time limit on how long the interpreter should attempt to evaluate, in us.
 testTimeout :: Int
 testTimeout = 15000000
 
+-- | Number of lines of context shown for diffs.
 linesOfContext :: Int
 linesOfContext = 8
 
+-- | Width of diff columns.
+diffColumnWidth :: Int
+diffColumnWidth = 60
+
+-- | Width of number columns.
+diffNumWidth :: Int
+diffNumWidth = 8
 
 -- | Parse the output line by line. If parsing fails, report the line at which
 -- failure takes place.
 doParseOutput :: Monad m => Slug -> String -> QC.PropertyM m T.Output
 doParseOutput sl outs = do
-  cTrace <- go $ lines outs
-  reportOnFail sl "executed.out" $ show cTrace
+  cTrace <- go $ zip [1 ..] $ lines outs
+  reportOnFail sl "executed.out" $ unlines $ map show cTrace
   return cTrace
  where
-  go :: Monad m => [String] -> QC.PropertyM m T.Output
-  go []       = return []
-  go (x : xs) = case T.parseLine x of
+  go :: Monad m => [(Int, String)] -> QC.PropertyM m T.Output
+  go []            = return []
+  go ((l, x) : xs) = case T.parseLine x of
     Just line -> do
       rest <- go xs
       return $ line : rest
     Nothing -> do
       QC.monitor $ QC.counterexample x
-      fail "Parse error"
+      fail $ "Parse error: line " ++ show l
 
 -- | Interpret a program and produce a (potentially trucated) output trace
 --
@@ -60,7 +68,7 @@ doParseOutput sl outs = do
 doInterpret :: Slug -> Program -> Int -> QC.PropertyM IO T.Output
 doInterpret sl program limit = do
   iTrace <- QC.run timeoutEval
-  reportOnFail sl "interpreted.out" $ show iTrace
+  reportOnFail sl "interpreted.out" $ unlines $ map show iTrace
   return iTrace
  where
   timeoutEval :: IO T.Output
@@ -90,7 +98,9 @@ doInterpret sl program limit = do
     modifyIORef ref (y :)
     eval xs (lim - 1) ref
 
--- | Compare two traces, and fail if they differ
+-- | Compare two traces, and fail if they differ.
+--
+-- Note that the "Expected" argument should come first.
 doCompareTraces :: Monad m => Slug -> T.Output -> T.Output -> QC.PropertyM m ()
 doCompareTraces sl = go 1 []
  where
@@ -102,60 +112,64 @@ doCompareTraces sl = go 1 []
     -> T.Output
     -> QC.PropertyM m ()
   go _ _ [] [] = return ()
-  go i ctx (t : ts) (t' : ts')
-    | t == t' = go (i + 1) (t : ctx) ts ts'
+  go n ctx (t : ts) (t' : ts')
+    | t == t' = go (n + 1) (t : ctx) ts ts'
     | otherwise = do
       QC.monitor $ QC.counterexample report
       reportOnFail sl "output.diff" report
-      fail $ "Traces differ at line " ++ show i
+      fail $ "Traces differ at line " ++ show n
    where
-    report    = unlines $ preamble ++ beforeCtx ++ [diff] ++ afterCtx
+    report =
+      unlines $ preamble ++ before n ctx ++ diff n t t' ++ after n ts ts'
+    preamble = ["Output differs:", "", header]
 
-    preamble  = ["Output differs:", ""]
-    beforeCtx = reverse $ take linesOfContext $ zipWith addLine rnum before
-    afterCtx  = take linesOfContext $ zipWith addLine lnum after
-
-    diff      = addLine i $ infixJoin " /= " (rpad $ show t) (rpad $ show t')
-    before    = map show ctx
-    after =
-      zipWith (infixJoin " || ") (map (rpad . show) ts) (map (rpad . show) ts')
-
-    rnum = reverse [1 .. i - 1]
-    lnum = [i + 1 ..]
-
-  go i ctx ts ts' = do
+  go n ctx ts ts' = do
     QC.monitor $ QC.counterexample report
     fail "Trace lengths differ"
    where
-    report    = unlines $ preamble ++ beforeCtx ++ afterCtx
+    report   = unlines $ preamble ++ before n ctx ++ after n ts ts'
+    preamble = ["Lengths differ: " ++ tll ++ " =/= " ++ tll', "", header]
+    tll      = show $ n + length ts
+    tll'     = show $ n + length ts'
 
-    preamble  = ["Lengths differ: " ++ tll ++ " /= " ++ tll', "", "tail:"]
-    tll       = show $ i + length ts
-    tll'      = show $ i + length ts'
+  {--- Diff outputting helpers ---}
 
-    beforeCtx = reverse $ take linesOfContext $ zipWith addLine rnum before
-    afterCtx  = []
+  -- | Format column header for diff.
+  header :: String
+  header = lpadding ++ infixJoin "     " (rpad "Expected") (rpad "Got")
+    where lpadding = replicate (diffNumWidth - 1) '-' ++ " "
 
-    before    = map show ctx
-    after =
-      zipWith (infixJoin " || ") (map (rpad . show) ts) (map (rpad . show) ts')
+  -- | Format before context for diff.
+  before :: Int -> T.Output -> [String]
+  before n bs = reverse $ take linesOfContext $ zipWith addLine ns ls
+   where
+    ns = reverse [1 .. n - 1]
+    ls = map (++ "  =  ...") $ rpadOutput bs
 
-    rnum = reverse [1 .. i - 1]
-    lnum = [i ..]
+  -- | Format differing line for diff.
+  diff :: Int -> T.OutputEntry -> T.OutputEntry -> [String]
+  diff n t t' =
+    [addLine n $ infixJoin " =/= " (rpad $ show t) (rpad $ show t')]
 
-{-- Diff output formatting helpers --}
--- | Width
-diffColumnWidth :: Int
-diffColumnWidth = 40
+  -- | Format after context for diff.
+  after :: Int -> T.Output -> T.Output -> [String]
+  after n ts ts' = take linesOfContext $ zipWith addLine [n + 1 ..] ls
+    where ls = zipWith (infixJoin "  /  ") (rpadOutput ts) (rpadOutput ts')
 
--- | Right pad a string with `diffColumnWidth` spaces
-rpad :: String -> String
-rpad s = take diffColumnWidth $ s ++ repeat ' '
+  -- | Print and pad each line of an output.
+  rpadOutput :: T.Output -> [String]
+  rpadOutput ts = map (rpad . show) ts
 
--- | Join two strings with infix
-infixJoin :: [a] -> [a] -> [a] -> [a]
-infixJoin i l r = l ++ i ++ r
+  -- | Right pad a string with `diffColumnWidth` spaces.
+  rpad :: String -> String
+  rpad s = take diffColumnWidth $ s ++ repeat ' '
 
--- | Decorate string with tab-padded line number
-addLine :: Show a => a -> [Char] -> [Char]
-addLine num l = show num ++ ":\t" ++ l
+  -- | Join two strings with infix separator.
+  infixJoin :: [a] -> [a] -> [a] -> [a]
+  infixJoin i l r = l ++ i ++ r
+
+  -- | Decorate line with padded line number.
+  addLine :: Show a => a -> [Char] -> [Char]
+  addLine num l
+    | length (show num) + 2 >= diffNumWidth = show num ++ ": " ++ l
+    | otherwise = take diffNumWidth (show num ++ ": " ++ repeat ' ') ++ l

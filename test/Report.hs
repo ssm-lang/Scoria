@@ -49,7 +49,7 @@ reportLimit = 120 * 200
 -- | Report the test directory after a test fails
 reportSlug :: Monad m => Slug -> QC.PropertyM m ()
 reportSlug sl =
-  QC.monitor $ QC.counterexample $ "Report directory: " ++ reportDir sl
+  QC.monitor $ QC.counterexample $ "Report directory: " ++ reportDir sl ++ "\n"
 
 -- | Print a Unix error in a Quickcheck Property monad transformer
 printUnixError :: Monad m => Int -> String -> String -> QC.PropertyM m ()
@@ -90,6 +90,10 @@ reportFileOnFail sl src dst = do
     B.writeFile (reportDir sl </> dst) exec
     setPermissions (reportDir sl </> dst) perm
 
+-- | Leave both pretty-printed and Haskell-dumped output of program in report
+-- directory if the test fails.
 reportProgramOnFail
   :: Monad m => Slug -> FilePath -> Program -> QC.PropertyM m ()
-reportProgramOnFail sl fp program = reportOnFail sl fp $ prettyProgram program
+reportProgramOnFail sl fp program = do
+  reportOnFail sl (fp ++ ".ssm") $ prettyProgram program
+  reportOnFail sl (fp ++ ".hs") $ show program

@@ -18,14 +18,11 @@ import qualified Test.QuickCheck.Monadic       as QC
 genName :: String
 genName = "quickcheckgen"
 
-genNameSsm :: String
-genNameSsm = genName ++ ".ssm"
-
 -- | Tests that generated SSM programs compile successfully
 propCompiles :: Slug -> Program -> QC.Property
 propCompiles sl program = QC.monadicIO $ do
   reportSlug sl
-  reportProgramOnFail sl genNameSsm program
+  reportProgramOnFail sl genName program
   cSrc <- C.doCompile sl genName program
   C.doMake sl genName cSrc
   return ()
@@ -34,7 +31,7 @@ propCompiles sl program = QC.monadicIO $ do
 propValgrind :: Slug -> Program -> QC.Property
 propValgrind sl program = QC.monadicIO $ do
   reportSlug sl
-  reportProgramOnFail sl genNameSsm program
+  reportProgramOnFail sl genName program
   cSrc <- C.doCompile sl genName program
   fp   <- C.doMake sl genName cSrc
   _    <- C.doVg sl fp
@@ -45,14 +42,14 @@ propValgrind sl program = QC.monadicIO $ do
 propCorrect :: Slug -> Program -> QC.Property
 propCorrect sl program = QC.monadicIO $ do
   reportSlug sl
-  reportProgramOnFail sl genNameSsm program
+  reportProgramOnFail sl genName program
   cSrc        <- C.doCompile sl genName program
   fp          <- C.doMake sl genName cSrc
   _           <- C.doVg sl fp
   (_, out, _) <- C.doExec sl fp
   cTrace      <- O.doParseOutput sl out
   iTrace      <- O.doInterpret sl program (length $ lines out)
-  O.doCompareTraces sl cTrace iTrace
+  O.doCompareTraces sl iTrace cTrace
 
 -- | Entry point for test harness
 main :: IO ()
