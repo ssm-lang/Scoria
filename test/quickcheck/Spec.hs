@@ -9,6 +9,7 @@ import           Test.Hspec.QuickCheck          ( modifyMaxSuccess
                                                 , prop
                                                 )
 
+-- TODO: increase maxSuccess, but also make them configurable from command line
 main :: IO ()
 main = hspec $ do
   describe "Random program" $ do
