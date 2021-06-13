@@ -86,15 +86,21 @@ data St s = St
 
 type Interp s a = StateT (St s) (WriterT (Hughes T.OutputEntry) (ST s)) a
 
+eventqueueSize :: Int
+eventqueueSize = 256
+
+contqueueSize :: Int
+contqueueSize = 128
+
 interpret :: Program -> T.Output
 interpret p = runST interpret'
   where
 
       interpret' :: ST s T.Output
       interpret' = do
-          fun <- case Map.lookup (main p) (funs p) of
+          fun <- case Map.lookup (entry p) (funs p) of
               Just p'  -> return p'
-              Nothing  -> error $ concat ["interpreter error - can not find function ", main p]
+              Nothing  -> error $ concat ["interpreter error - can not find function ", entry p]
           process <- Proc 0 32 0 Nothing <$> params p <#> Map.empty <#> Nothing <#> body fun
           let refs = Map.elems $ variables process
           let actualrefs = getReferences p $ variables process
@@ -108,9 +114,9 @@ interpret p = runST interpret'
       -- allocated in an STRef.
       params :: Program -> ST s (Map.Map String (Var s))
       params p = do
-          process <- case Map.lookup (main p) (funs p) of
+          process <- case Map.lookup (entry p) (funs p) of
               Just p' -> return p'
-              Nothing -> error $ concat ["interpreter error - can not find function ", main p]
+              Nothing -> error $ concat ["interpreter error - can not find function ", entry p]
           m <- flip mapM (zip (LowCore.arguments process) (args p)) $ \((n,t), a) ->
               case a of
                   Left e  -> do
@@ -124,7 +130,7 @@ interpret p = runST interpret'
       -- | Names and types of arguments to the program entrypoint.
       arginfo :: Program -> Interp s [(String, Type)]
       arginfo p = do
-          proc' <- lookupProcedure (main p)
+          proc' <- lookupProcedure (entry p)
           return $ LowCore.arguments proc'
 
       -- | Default values for SSM types.
@@ -136,7 +142,7 @@ interpret p = runST interpret'
       defaultValue TBool  = Lit TBool $ LBool False
 
       getReferences :: Program -> Map.Map String (Var s) -> [(String, Var s)]
-      getReferences p m = case Map.lookup (main p) (funs p) of
+      getReferences p m = case Map.lookup (entry p) (funs p) of
           Just pr -> let refparams  = filter (\(_,t) -> isReference t) $ arguments pr
                          paramnames = fst $ unzip refparams
                          vars       = map (\n -> (n, Map.lookup n m)) paramnames
@@ -294,7 +300,7 @@ schedule_event e thn val = do
         then do let newevs = insert_event thn e (delete_event (fromJust mt) e (events st))
                 modify $ \st -> st { events = newevs }
     -- otherwise we check if the queue is full before we schedule the new event
-        else if numevents st == 8192
+        else if numevents st == eventqueueSize
             then error "eventqueue full"
             else do let es' = insert_event thn e (events st)
                     modify $ \st -> st { events    = es'
@@ -535,7 +541,7 @@ dequeue = do
 enqueue :: Proc s -> Interp s ()
 enqueue p = do
     nc <- gets numconts
-    if nc >= 8192
+    if nc >= contqueueSize
         then error "contqueue full"
         else modify $ \st -> st { readyQueue = IntMap.insert (priority p) p (readyQueue st)
                                 , numconts   = numconts st + 1

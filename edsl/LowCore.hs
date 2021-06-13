@@ -54,7 +54,7 @@ data Procedure = Procedure
 
 data Program = Program
   { -- | Name of the procedure that is the program entrypoint.
-    main :: String
+    entry :: String
     -- | Arguments the entrypoint was applied to.
   , args :: [Either C.SSMExp C.Reference]
     -- | Map that associates procedure names with their definitions.

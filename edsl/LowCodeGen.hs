@@ -243,7 +243,7 @@ genMain program =
     |]
   ]
  where
-  enter = enter_ $ main program
+  enter = enter_ $ entry program
   enterArgs =
     [ [cexp|($ty:act_t *) &top|]
       , [cexp|PRIORITY_AT_ROOT|]
