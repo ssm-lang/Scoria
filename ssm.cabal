@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8ec47dd95fa8d0fdb1eff8dff5d58c874a36994bcd29548c417ae24edd54d833
+-- hash: 05b6727033d4a7b5a6e5b2bf3bb6e3c8b8e668e2f555b60e33706a7ca33655c5
 
 name:           ssm
 version:        0.1.0.0
@@ -127,7 +127,7 @@ executable ssm-exe
     , time
   default-language: Haskell2010
 
-test-suite quickcheck
+test-suite arbitrary
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -138,7 +138,43 @@ test-suite quickcheck
       Paths_ssm
   hs-source-dirs:
       test/lib
-      test/quickcheck
+      test/arbitrary
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      BinderAnn
+    , QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , deepseq
+    , directory
+    , extra
+    , hspec
+    , language-c-quote
+    , mainland-pretty
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , process
+    , ssm
+    , text
+    , time
+  default-language: Haskell2010
+
+test-suite regression-low
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Test.Ssm.Build
+      Test.Ssm.Output
+      Test.Ssm.Prop
+      Test.Ssm.Report
+      Regression.Test1623630765726Spec
+      Paths_ssm
+  hs-source-dirs:
+      test/lib
+      test/regression-low
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn

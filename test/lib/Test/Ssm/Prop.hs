@@ -3,6 +3,7 @@ module Test.Ssm.Prop
   , propValgrind
   , propCorrect
   , TestName(..)
+  , doProgramSpec
   ) where
 
 import           LowCore                        ( Program )
@@ -10,6 +11,11 @@ import           LowGenerator                   ( ) -- instance Arbitrary Progra
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
+
+import           Test.Hspec                     ( Spec(..) )
+import           Test.Hspec.QuickCheck          ( modifyMaxSuccess
+                                                , prop
+                                                )
 
 import           Test.Ssm.Build                 ( doCompile
                                                 , doExec
@@ -21,62 +27,53 @@ import           Test.Ssm.Output                ( doCompareTraces
                                                 , doParseOutput
                                                 )
 import           Test.Ssm.Report                ( Slug(..)
-                                                , getTimestamp
+                                                , TestName(..)
+                                                , getSlug
                                                 , reportProgramOnFail
                                                 , reportSlug
                                                 )
 
-
-data TestName = RandomTest | NamedTest String deriving (Show, Eq)
-
--- | Name of test target
-genName :: String
-genName = "quickcheckgen"
-
 -- | Tests that generated SSM programs compile successfully.
 propCompiles :: TestName -> Program -> QC.Property
-propCompiles sl program = QC.monadicIO $ do
-  (slug, name) <- case sl of
-    RandomTest -> do
-      s <- QC.run getTimestamp
-      return (s, genName)
-    NamedTest n -> return (n, n)
+propCompiles tn program = QC.monadicIO $ do
+  slug <- QC.run $ getSlug tn
   reportSlug slug
-  reportProgramOnFail slug name program
-  cSrc <- doCompile slug name program
-  doMake slug name cSrc
+  reportProgramOnFail slug program
+  cSrc <- doCompile slug program
+  doMake slug cSrc
   return ()
 
 -- | Tests an SSM program by evaluating it under valgrind.
 propValgrind :: TestName -> Program -> QC.Property
-propValgrind sl program = QC.monadicIO $ do
-  (slug, name) <- case sl of
-    RandomTest -> do
-      s <- QC.run getTimestamp
-      return (s, genName)
-    NamedTest n -> return (n, n)
+propValgrind tn program = QC.monadicIO $ do
+  slug <- QC.run $ getSlug tn
   reportSlug slug
-  reportProgramOnFail slug name program
-  cSrc <- doCompile slug name program
-  fp   <- doMake slug name cSrc
+  reportProgramOnFail slug program
+  cSrc <- doCompile slug program
+  fp   <- doMake slug cSrc
   _    <- doVg slug fp
   return ()
 
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
 propCorrect :: TestName -> Program -> QC.Property
-propCorrect sl program = QC.monadicIO $ do
-  (slug, name) <- case sl of
-    RandomTest -> do
-      s <- QC.run getTimestamp
-      return (s, genName)
-    NamedTest n -> return (n, n)
+propCorrect tn program = QC.monadicIO $ do
+  slug <- QC.run $ getSlug tn
   reportSlug slug
-  reportProgramOnFail slug name program
-  cSrc        <- doCompile slug name program
-  fp          <- doMake slug name cSrc
+  reportProgramOnFail slug program
+  cSrc        <- doCompile slug program
+  fp          <- doMake slug cSrc
   _           <- doVg slug fp
   (_, out, _) <- doExec slug fp
   cTrace      <- doParseOutput slug out
   iTrace      <- doInterpret slug program (length $ lines out)
   doCompareTraces slug iTrace cTrace
+
+doProgramSpec :: String -> Program -> Spec
+doProgramSpec name p = do
+  once $ prop "compiles" $ propCompiles tn p
+  once $ prop "runs without memory errors" $ propValgrind tn p
+  once $ prop "runs according to interpreter" $ propCorrect tn p
+ where
+  once = modifyMaxSuccess (const 1)
+  tn   = NamedTest name

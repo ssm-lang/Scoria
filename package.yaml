@@ -67,12 +67,27 @@ executables:
     - ssm
 
 tests:
-  quickcheck:
+  arbitrary:
     main:                Spec.hs
     source-dirs:
     - test/lib
-    - test/quickcheck
-    # - example
+    - test/arbitrary
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - ssm
+    - directory
+    - process
+    - text
+    - QuickCheck
+    - hspec
+  regression-low:
+    main:                Spec.hs
+    source-dirs:
+    - test/lib
+    - test/regression-low
     ghc-options:
     - -threaded
     - -rtsopts

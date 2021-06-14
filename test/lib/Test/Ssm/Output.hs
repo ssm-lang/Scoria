@@ -29,7 +29,8 @@ import           Test.Ssm.Report                ( Slug(..)
                                                 , reportOnFail
                                                 )
 
--- | Time limit on how long the interpreter should attempt to evaluate, in us.
+-- | Time limit on how long the interpreter should evaluate a program, in
+-- microseconds.
 testTimeout :: Int
 testTimeout = 15000000
 
@@ -48,9 +49,9 @@ diffNumWidth = 8
 -- | Parse the output line by line. If parsing fails, report the line at which
 -- failure takes place.
 doParseOutput :: Monad m => Slug -> String -> QC.PropertyM m Tr.Output
-doParseOutput sl outs = do
+doParseOutput slug outs = do
   cTrace <- go $ zip [1 ..] $ lines outs
-  reportOnFail sl "executed.out" $ unlines $ map show cTrace
+  reportOnFail slug "executed.out" $ unlines $ map show cTrace
   return cTrace
  where
   go :: Monad m => [(Int, String)] -> QC.PropertyM m Tr.Output
@@ -63,14 +64,14 @@ doParseOutput sl outs = do
       QC.monitor $ QC.counterexample x
       fail $ "Parse error: line " ++ show l
 
--- | Interpret a program and produce a (potentially trucated) output trace
+-- | Interpret a program and produce a (potentially trucated) output trace.
 --
 -- The evaluation is functionally limited to the number of steps specified by
 -- limit, but also time-limited using the timeout function.
 doInterpret :: Slug -> Program -> Int -> QC.PropertyM IO Tr.Output
-doInterpret sl program limit = do
+doInterpret slug program limit = do
   iTrace <- QC.run timeoutEval
-  reportOnFail sl "interpreted.out" $ unlines $ map show iTrace
+  reportOnFail slug "interpreted.out" $ unlines $ map show iTrace
   return iTrace
  where
   timeoutEval :: IO Tr.Output
@@ -107,7 +108,7 @@ doInterpret sl program limit = do
 -- Note that the "Expected" argument should come first.
 doCompareTraces
   :: Monad m => Slug -> Tr.Output -> Tr.Output -> QC.PropertyM m ()
-doCompareTraces sl = go 1 []
+doCompareTraces slug = go 1 []
  where
   go
     :: Monad m
@@ -121,7 +122,7 @@ doCompareTraces sl = go 1 []
     | t == t' = go (n + 1) (t : ctx) ts ts'
     | otherwise = do
       QC.monitor $ QC.counterexample report
-      reportOnFail sl "output.diff" report
+      reportOnFail slug "output.diff" report
       fail $ "Traces differ at line " ++ show n
    where
     report =
