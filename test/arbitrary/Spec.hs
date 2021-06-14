@@ -22,6 +22,6 @@ main = hspec $ do
       $ prop "compiles and runs without memory errors"
       $ T.propValgrind T.RandomTest
 
-    modifyMaxSuccess (const 1000)
+    modifyMaxSuccess (const 10)
       $ prop "compiles and runs according to interpreter"
       $ T.propCorrect T.RandomTest
