@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 05b6727033d4a7b5a6e5b2bf3bb6e3c8b8e668e2f555b60e33706a7ca33655c5
+-- hash: 21516940777e34d0c38dc1e0a73615fde241007f0254303086d3579e6407dbb8
 
 name:           ssm
 version:        0.1.0.0
@@ -127,7 +127,7 @@ executable ssm-exe
     , time
   default-language: Haskell2010
 
-test-suite arbitrary
+test-suite 0-arbitrary
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -162,7 +162,7 @@ test-suite arbitrary
     , time
   default-language: Haskell2010
 
-test-suite regression-low
+test-suite 1-regression-low
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:

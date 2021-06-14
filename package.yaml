@@ -67,11 +67,11 @@ executables:
     - ssm
 
 tests:
-  arbitrary:
+  1-regression-low:
     main:                Spec.hs
     source-dirs:
     - test/lib
-    - test/arbitrary
+    - test/regression-low
     ghc-options:
     - -threaded
     - -rtsopts
@@ -83,11 +83,11 @@ tests:
     - text
     - QuickCheck
     - hspec
-  regression-low:
+  2-arbitrary:
     main:                Spec.hs
     source-dirs:
     - test/lib
-    - test/regression-low
+    - test/arbitrary
     ghc-options:
     - -threaded
     - -rtsopts
