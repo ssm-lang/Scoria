@@ -126,8 +126,8 @@ doCompareTraces slug = go 1 ([], [])
   -- applied. Furthermore, we need to account for possible crashes, and
   -- differences in crash timing due to event application order.
   go n (bs, bs') tts@(Tr.Event _ _ : _) tts'@(Tr.Event _ _ : _)
-    | crashed = -- TODO: do we need to check null ts && null ts'?
-                return ()
+    | incomplete = return ()
+    | crashed = return ()
     | eventSetsEq = go (n + length es)
                        (reverse es ++ bs, reverse es' ++ bs')
                        ts
@@ -139,6 +139,12 @@ doCompareTraces slug = go 1 ([], [])
    where
     (es , ts )  = span (\e -> isEvent e || isCrash e) tts
     (es', ts')  = span (\e -> isEvent e || isCrash e) tts'
+
+    -- | Whether the trace stops abrupty after the event set.
+    --
+    -- This will happen if the trace terminates prematurely, due to running out
+    -- of microticks or timing out.
+    incomplete = null ts && null ts'
 
     -- | Whether either trace ends with a crash.
     crashed     = isCrash (last es) || isCrash (last es')
