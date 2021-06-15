@@ -15,7 +15,9 @@ import           Data.IORef                     ( IORef
                                                 , newIORef
                                                 , readIORef
                                                 )
-import           Data.List                      ( isPrefixOf )
+import           Data.List                      ( isPrefixOf
+                                                , union
+                                                )
 import           System.Timeout                 ( timeout )
 
 import           LowCore                        ( Program )
@@ -36,7 +38,7 @@ testTimeout = 15000000
 
 -- | Number of lines of context shown for diffs.
 linesOfContext :: Int
-linesOfContext = 8
+linesOfContext = 5
 
 -- | Width of diff columns.
 diffColumnWidth :: Int
@@ -108,32 +110,68 @@ doInterpret slug program limit = do
 -- Note that the "Expected" argument should come first.
 doCompareTraces
   :: Monad m => Slug -> Tr.Output -> Tr.Output -> QC.PropertyM m ()
-doCompareTraces slug = go 1 []
+doCompareTraces slug = go 1 ([], [])
  where
   go
     :: Monad m
     => Int
-    -> [Tr.OutputEntry]
+    -> ([Tr.OutputEntry], [Tr.OutputEntry])
     -> Tr.Output
     -> Tr.Output
     -> QC.PropertyM m ()
   go _ _ [] [] = return ()
-  go n ctx (t : ts) (t' : ts')
-    | t == t' = go (n + 1) (t : ctx) ts ts'
+
+  go n (bs, bs') tts@(Tr.Event _ _ : _) tts'@(Tr.Event _ _ : _)
+    | crashed = -- TODO: do we need to check null ts && null ts'?
+                return ()
+    | eventSetsEq = go (n + length es)
+                       (reverse es ++ bs, reverse es' ++ bs')
+                       ts
+                       ts'
+    | otherwise = do
+      QC.monitor $ QC.counterexample report
+      reportOnFail slug "output.diff" report
+      fail $ "Trace differ in event set starting at line " ++ show n
+   where
+    (es , ts )  = span (\e -> isEvent e || isCrash e) tts
+    (es', ts')  = span (\e -> isEvent e || isCrash e) tts'
+
+    crashed     = isCrash (last es) || isCrash (last es')
+
+    eventSetsEq = length ese == length es && length ese == length es'
+      where ese = es `union` es'
+
+    isEvent (Tr.Event _ _) = True
+    isEvent _              = False
+
+    isCrash Tr.Crash          = True
+    isCrash Tr.EventQueueFull = True
+    isCrash Tr.ContQueueFull  = True
+    isCrash Tr.NegativeDepth  = True
+    isCrash Tr.BadAfter       = True
+    isCrash _                 = False
+
+    report = unlines $ preamble ++ before n bs bs' ++ diff len n tts tts'
+     where
+      preamble = ["Event sets differ:", "", header]
+      len      = length es `max` length es'
+
+  go n (bs, bs') (t : ts) (t' : ts')
+    | t == t' = go (n + 1) (t : bs, t' : bs') ts ts'
     | otherwise = do
       QC.monitor $ QC.counterexample report
       reportOnFail slug "output.diff" report
       fail $ "Traces differ at line " ++ show n
    where
     report =
-      unlines $ preamble ++ before n ctx ++ diff n t t' ++ after n ts ts'
-    preamble = ["Output differs:", "", header]
+      unlines $ preamble ++ before n bs bs' ++ diff 1 n (t : ts) (t' : ts')
+    preamble = ["Trace differs:", "", header]
 
-  go n ctx ts ts' = do
+  go n (bs, bs') ts ts' = do
     QC.monitor $ QC.counterexample report
     fail "Trace lengths differ"
    where
-    report   = unlines $ preamble ++ before n ctx ++ after n ts ts'
+    report   = unlines $ preamble ++ before n bs bs' ++ diff 0 n ts ts'
     preamble = ["Lengths differ: " ++ tll ++ " =/= " ++ tll', "", header]
     tll      = show $ n + length ts
     tll'     = show $ n + length ts'
@@ -145,22 +183,24 @@ doCompareTraces slug = go 1 []
   header = lpadding ++ infixJoin "     " (rpad "Expected") (rpad "Got")
     where lpadding = replicate (diffNumWidth - 1) '-' ++ " "
 
-  -- | Format before context for diff.
-  before :: Int -> Tr.Output -> [String]
-  before n bs = reverse $ take linesOfContext $ zipWith addLine ns ls
-   where
-    ns = reverse [1 .. n - 1]
-    ls = map (++ "  =  ...") $ rpadOutput bs
+  -- | Format before context for diff, in reverse.
+  before :: Int -> [Tr.OutputEntry] -> [Tr.OutputEntry] -> [String]
+  before n ts ts' = reverse $ take linesOfContext $ joinColumns
+    "  ~  "
+    (reverse [1 .. n - 1])
+    ts
+    ts'
 
-  -- | Format differing line for diff.
-  diff :: Int -> Tr.OutputEntry -> Tr.OutputEntry -> [String]
-  diff n t t' =
-    [addLine n $ infixJoin " =/= " (rpad $ show t) (rpad $ show t')]
+  -- | Format differing line for diff, and some lines of context after.
+  diff :: Int -> Int -> [Tr.OutputEntry] -> [Tr.OutputEntry] -> [String]
+  diff len n ts ts' =
+    take (len + linesOfContext) $ joinColumns " =/= " [n ..] ts ts'
 
-  -- | Format after context for diff.
-  after :: Int -> Tr.Output -> Tr.Output -> [String]
-  after n ts ts' = take linesOfContext $ zipWith addLine [n + 1 ..] ls
-    where ls = zipWith (infixJoin "  /  ") (rpadOutput ts) (rpadOutput ts')
+  -- | Format columns for diff, separated by sep and with leading line numbers
+  joinColumns
+    :: String -> [Int] -> [Tr.OutputEntry] -> [Tr.OutputEntry] -> [String]
+  joinColumns sep ns ts ts' = zipWith addLine ns ls
+    where ls = zipWith (infixJoin sep) (rpadOutput ts) (rpadOutput ts')
 
   -- | Print and pad each line of an output.
   rpadOutput :: Tr.Output -> [String]
