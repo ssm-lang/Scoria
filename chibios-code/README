@@ -1,0 +1,6 @@
+# SSM under ChibiOS
+
+
+## requirements
+  1. Chibios 20.3.2 located at `../../`. [Download chibios](https://osdn.net/projects/chibios/releases/72607)
+
