@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 21516940777e34d0c38dc1e0a73615fde241007f0254303086d3579e6407dbb8
+-- hash: 579d628539baa0a2fcdcafbc370afccbbdcd5b13903c85c4f088e696c6a4ed23
 
 name:           ssm
 version:        0.1.0.0
@@ -127,7 +127,7 @@ executable ssm-exe
     , time
   default-language: Haskell2010
 
-test-suite 0-arbitrary
+test-suite 1-regression-low
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -135,10 +135,13 @@ test-suite 0-arbitrary
       Test.Ssm.Output
       Test.Ssm.Prop
       Test.Ssm.Report
+      Regression.ManyContsSpec
+      Regression.Test1623630765726Spec
+      Regression.Test1623691869727Spec
       Paths_ssm
   hs-source-dirs:
       test/lib
-      test/arbitrary
+      test/regression-low
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
@@ -162,7 +165,7 @@ test-suite 0-arbitrary
     , time
   default-language: Haskell2010
 
-test-suite 1-regression-low
+test-suite 2-arbitrary
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -170,11 +173,10 @@ test-suite 1-regression-low
       Test.Ssm.Output
       Test.Ssm.Prop
       Test.Ssm.Report
-      Regression.Test1623630765726Spec
       Paths_ssm
   hs-source-dirs:
       test/lib
-      test/regression-low
+      test/arbitrary
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
