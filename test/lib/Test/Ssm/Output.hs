@@ -121,6 +121,10 @@ doCompareTraces slug = go 1 ([], [])
     -> QC.PropertyM m ()
   go _ _ [] [] = return ()
 
+  -- | Events in the same instant may be applied out of order, so we need to
+  -- relax the trace comparison and only ensure the same set of events are being
+  -- applied. Furthermore, we need to account for possible crashes, and
+  -- differences in crash timing due to event application order.
   go n (bs, bs') tts@(Tr.Event _ _ : _) tts'@(Tr.Event _ _ : _)
     | crashed = -- TODO: do we need to check null ts && null ts'?
                 return ()
@@ -131,13 +135,15 @@ doCompareTraces slug = go 1 ([], [])
     | otherwise = do
       QC.monitor $ QC.counterexample report
       reportOnFail slug "output.diff" report
-      fail $ "Trace differ in event set starting at line " ++ show n
+      fail $ "Traces differ in event set starting at line " ++ show n
    where
     (es , ts )  = span (\e -> isEvent e || isCrash e) tts
     (es', ts')  = span (\e -> isEvent e || isCrash e) tts'
 
+    -- | Whether either trace ends with a crash.
     crashed     = isCrash (last es) || isCrash (last es')
 
+    -- | Whether two event sets are set-wise equivalent.
     eventSetsEq = length ese == length es && length ese == length es'
       where ese = es `union` es'
 
@@ -165,7 +171,7 @@ doCompareTraces slug = go 1 ([], [])
    where
     report =
       unlines $ preamble ++ before n bs bs' ++ diff 1 n (t : ts) (t' : ts')
-    preamble = ["Trace differs:", "", header]
+    preamble = ["Traces differ:", "", header]
 
   go n (bs, bs') ts ts' = do
     QC.monitor $ QC.counterexample report
