@@ -125,15 +125,16 @@ SENSE_VM = ../../sense-vm/backend/src
 SENSE_VM_H = ../../sense-vm/backend/include
 SENSE_VM_CH_H = ../../sense-vm/backend/include/hal/chibios
 
-SENSE_VM_LL_OS_H = ../../sense-vm/backend/include/ll/os/chibios
+SENSE_VM_LL_OS_H = #../../sense-vm/backend/include/ll/os/chibios
 
 
-SENSE_SRC = $(SENSE_VM)/ll/ll_driver.c \
-            $(SENSE_VM)/ll/ll_led.c\
-            $(SENSE_VM)/ll/ll_button.c\
-            $(SENSE_VM)/ll/os/chibios/button.c\
-            $(SENSE_VM)/ll/os/chibios/led.c\
-            $(SENSE_VM)/ll/os/chibios/gpio.c
+SENSE_SRC =  # Figure this stuff out later. 
+      #      $(SENSE_VM)/ll/ll_driver.c \
+      #      $(SENSE_VM)/ll/ll_led.c\
+      #      $(SENSE_VM)/ll/ll_button.c\
+      #      $(SENSE_VM)/ll/os/chibios/button.c\
+      #      $(SENSE_VM)/ll/os/chibios/led.c\
+      #      $(SENSE_VM)/ll/os/chibios/gpio.c
 
 PENG = ../zephyr-code/ssm-zephyr/peng
 PENG_H = ../zephyr-code/ssm-zephyr/peng/runtime/include
@@ -143,13 +144,14 @@ PENG_SRC = $(PENG)/runtime/src/peng-scheduler.c \
 
 # C sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
-CSRC = $(ALLCSRC) \
+CSRC = $(CHIBIOS)/os/various/syscalls.c\
+       $(ALLCSRC) \
        $(TESTSRC) \
        $(SENSE_SRC) \
        $(PENG_SRC) \
        main.c \
-       usbcfg.c \
-       $(CHIBIOS)/os/various/syscalls.c 
+       blinky.c \
+       usbcfg.c 
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
