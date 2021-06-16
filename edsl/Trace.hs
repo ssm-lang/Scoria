@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 module Trace where
 
@@ -40,80 +39,7 @@ data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
 
 type Output = [OutputEntry]
 
-{-
-Events occur between instants, and all that can happen when events are applied
-between instants is that processes are enqueued in the ready queue. Since this is
-a priority queue it does not matter which order the events are applied in, as long as
-the same events are applied in the same instant.
--}
-instance {-# OVERLAPPING #-} Eq Output where
-    xs == ys = equalSemantics xs ys
-
-equalSemantics :: Output -> Output -> Bool
-equalSemantics xs ys = case (xs,ys) of
-    ([],[]) -> True
-
-    (xs@(Event _ _:_), ys@(Event _ _:_)) ->
-        let (xevents, xs') = takeEvents xs
-            (yevents, ys') = takeEvents ys
-
-        in equalEvents xevents yevents && equalSemantics xs' ys'
-
-    ((x:xs), (y:ys)) -> x == y && equalSemantics xs ys
-
-    (_,_)            -> False
-
-  where
-      takeEvents :: Output -> (Output, Output)
-      takeEvents xs = takeEvents_ ([], xs)
-
-      takeEvents_ :: (Output, Output) -> (Output, Output)
-      takeEvents_ (xs, [])     = ([], [])
-      takeEvents_ (xs, (y:ys)) =
-          if isEvent y
-              then takeEvents_ (y : xs, ys)
-              else if isCrash y
-                       then ([y], ys)
-                       else (xs, y:ys)
-
-      -- | When we've gathered all events that were applied we have three scenarios.
-      -- 1: There was not enough time for the interpreter and c-code generator to
-      --    generate enough trace to finish applying the events. In this case we might
-      --    have a case where the invariant is broken, so we'll return True since we're
-      --    between instants (where the invariant is allowed to eb broken).
-      -- 2: One of them crashed while the other did not have time to finish applying all
-      --    of its events. In this case we return True after verifying that a crash
-      --    occured.
-      -- 3: Fetching the events went alright, and there were enough time for them to
-      --    finish applying all their events. In that case we'll just make sure that the
-      --    events are the same, but not that they are necessarily applied in the same order.
-      equalEvents :: Output -> Output -> Bool
-      equalEvents [] []  = True
-      equalEvents [x] [] = isCrash x
-      equalEvents [] [x] = isCrash x
-      equalEvents xs ys  =
-          let eventunion     = union xs ys
-              lengthxevents  = length xs
-              lengthyevents  = length ys
-              lengthunion    = length eventunion
-          in lengthunion   == lengthxevents &&
-             lengthxevents == lengthyevents
-
-      -- | Returns True if the entry is an event
-      isEvent :: OutputEntry -> Bool
-      isEvent (Event _ _) = True
-      isEvent _           = False
-
-      -- | Returns True if a crash happened
-      isCrash :: OutputEntry -> Bool
-      isCrash Crash          = True
-      isCrash EventQueueFull = True
-      isCrash ContQueueFull  = True
-      isCrash NegativeDepth  = True
-      isCrash BadAfter       = True
-      isCrash _              = False
-
-testoutput = Prelude.unlines [ "event 0 value int32 0"
+testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "event 1 value bool 1"
                              , "negative depth"
                              , "contqueue full"

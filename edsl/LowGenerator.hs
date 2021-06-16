@@ -267,8 +267,8 @@ usedInStm (x:xs) = case x of
 
 toremove' :: Program -> [String]
 toremove' p = let s1 = Set.fromList $ Map.keys (funs p)
-                  s2 = usedInStm $ body (fromJust (Map.lookup (main p) (funs p)))
-                  s3 = Set.union s2 (Set.singleton (main p))
+                  s2 = usedInStm $ body (fromJust (Map.lookup (entry p) (funs p)))
+                  s3 = Set.union s2 (Set.singleton (entry p))
               in Set.toList $ s1 `Set.difference` s3
 
 {-****** Removing declared references *****-}
@@ -404,7 +404,7 @@ shrinkSingleProcedures p = map fromJust $ filter isJust $ for toremove $ \fun ->
     in removeProcedure p' [fun]
   where
     toremove :: [String]
-    toremove = delete (main p) (Map.keys (funs p))
+    toremove = delete (entry p) (Map.keys (funs p))
 
 -- | Return all mutations where half of functions were removed from the program. Never
 -- tries to remove the main function.
@@ -418,7 +418,7 @@ shrinkHalfProcedures p = concat $ for [ removeProcedure p h1
     else []
   where
     toremove :: [String]
-    toremove = delete (main p) (Map.keys (funs p))
+    toremove = delete (entry p) (Map.keys (funs p))
 
     (h1,h2,h3) = let l       = length toremove `div` 3
                      (h1,r)  = mysplit l toremove
@@ -590,7 +590,7 @@ shrinkArity p =
         funs'    = Map.insert n newproc $ Map.fromList newfuns
 
         -- construct the new program.
-    in p { args = if (main p) == n then removeNth i (args p) else (args p)
+    in p { args = if (entry p) == n then removeNth i (args p) else (args p)
          , funs = funs'
          }
 

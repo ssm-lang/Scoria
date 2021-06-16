@@ -25,20 +25,26 @@ extern inline bool event_on(sv_t *);
 void sift_down(event_queue_index_t i, sv_t* to_sift);
 void sift_up(event_queue_index_t i, sv_t* to_sift);
 
-#define CONT_QUEUE_SIZE 8192
+/* #define CONT_QUEUE_SIZE 8192 */
+#define CONT_QUEUE_SIZE 128
 cont_queue_index_t cont_queue_len = 0;
 act_t *cont_queue[CONT_QUEUE_SIZE+1];
 
-#define EVENT_QUEUE_SIZE 8192
+/* #define EVENT_QUEUE_SIZE 8192 */
+#define EVENT_QUEUE_SIZE 256
 event_queue_index_t event_queue_len = 0;
 sv_t *event_queue[EVENT_QUEUE_SIZE+1];
 
 /** Only used for debugging */
 int can_schedule(sv_t *var) {
-  if(var->event_time == NO_EVENT_SCHEDULED) {
+  if (var->event_time != NO_EVENT_SCHEDULED)
+    /* If an event is already scheduled, we can always reschedule it */
+    return true;
+  else
+    /* Otherwise, we need to see if the event queue has room for it */
     return event_queue_len + 1 <= EVENT_QUEUE_SIZE;
-  }
 }
+
 void sensitize(sv_t *var, trigger_t *trigger)
 {
   assert(var);
@@ -139,7 +145,9 @@ void dequeue_event(sv_t *var) {
 
   sv_t* to_insert = event_queue[event_queue_len--];
   event_queue_index_t parent = i >> 1;
-  if(to_insert->event_time > event_queue[parent]->event_time) {
+  if (parent == 0) {
+    event_queue[1] = to_insert;
+  } else if(to_insert->event_time > event_queue[parent]->event_time) {
     sift_down(i, to_insert);
   } else {
     sift_up(i, to_insert);
@@ -204,12 +212,15 @@ void enqueue(act_t *cont)
 {
   assert(cont);
   DEBUG_ASSERT(((int8_t) cont->depth) >= 0, "negative depth\n");
+
   if (cont->scheduled) return; // Don't add a continuation twice
+
+  DEBUG_ASSERT(cont_queue_len + 1 <= CONT_QUEUE_SIZE, "contqueue full\n");
 
   priority_t priority = cont->priority;
 
   cont_queue_index_t i = ++cont_queue_len;
-  assert( i <= CONT_QUEUE_SIZE ); // FIXME: should handle this better
+  /* assert( i <= CONT_QUEUE_SIZE ); // FIXME: should handle this better */
 
   // Copy parent to child until we find where we can put the new one
   for ( ; i > 1 && priority < cont_queue[i >> 1]->priority ; i >>= 1 )
@@ -223,7 +234,6 @@ void schedule_sensitive(sv_t *var, priority_t priority)
   assert(var);
   for (trigger_t *trigger = var->triggers ; trigger ; trigger = trigger->next)
     if (trigger->act->priority > priority) {
-      DEBUG_ASSERT(cont_queue_len + 1 <= CONT_QUEUE_SIZE, "contqueue full\n");
       enqueue( trigger->act );
     }
 }
@@ -302,7 +312,6 @@ void tick()
     var->last_updated = now; // Remember that it was updated
     // Schedule all sensitive continuations
     for (trigger_t *trigger = var->triggers ; trigger ; trigger = trigger->next) {
-      DEBUG_ASSERT(cont_queue_len + 1 <= CONT_QUEUE_SIZE, "contqueue full\n");
       enqueue(trigger->act);
     }
 
