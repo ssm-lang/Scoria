@@ -44,15 +44,15 @@ testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "negative depth"
                              , "contqueue full"
                              , "result a uint64 2343546543245"
-                             , "event 2 value int (-1)"
+                             , "event 2 value int32 (-1)"
                              , "now 3 eventqueuesize 3"
                              , "bad after"
                              , "contqueue full"
                              , "numconts 283"
                              , "now 5 eventqueuesize 5"
                              , "fork mywait mywait mysum"
-                             , "event 6 value int 7"
-                             , "result x int 1"
+                             , "event 6 value int32 7"
+                             , "result x int64 1"
                              , "fork mywait"
                              , "numconts 325"
                              , "contqueue full"
@@ -88,7 +88,7 @@ parseLine inp = toMaybe $ parse pTraceItem "" (T.pack inp)
       toMaybe (Right b) = Just b
 
 pTrace :: Parser Output
-pTrace = many pTraceItem
+pTrace = many (pSpace *> pTraceItem)
 
 pTraceItem :: Parser OutputEntry
 pTraceItem = choice [ try pEvent
@@ -105,69 +105,50 @@ pTraceItem = choice [ try pEvent
 
 pFork :: Parser OutputEntry
 pFork = do
-    pSpace
     pSymbol "fork"
-    pSpace
     procs <- some (try pIdent)
-    pSpace
     return $ Fork procs
 
 pNumConts :: Parser OutputEntry
 pNumConts = do
-    pSpace
     pSymbol "numconts"
-    pSpace
     num <- Lexer.lexeme pSpace Lexer.decimal
     return $ NumConts num
 
 pCrash :: Parser OutputEntry
 pCrash = do
-    pSpace
     pSymbol "crash"
-    pSpace
     return Crash
 
 pBadAfter :: Parser OutputEntry
 pBadAfter = do
-    pSpace
     pSymbol "bad"
-    pSpace
     pSymbol "after"
     return BadAfter
 
 pNegativeDepth :: Parser OutputEntry
 pNegativeDepth = do
-    pSpace
     pSymbol "negative"
-    pSpace
     pSymbol "depth"
     return NegativeDepth
 
 pEventQueueFull :: Parser OutputEntry
 pEventQueueFull = do
-    pSpace
     pSymbol "eventqueue"
-    pSpace
     pSymbol "full"
     return EventQueueFull
 
 pContQueueFull :: Parser OutputEntry
 pContQueueFull = do
-    pSpace
     pSymbol "contqueue"
-    pSpace
     pSymbol "full"
     return ContQueueFull
 
 pEvent :: Parser OutputEntry
 pEvent = do
-    pSpace
     pSymbol "event"
-    pSpace
     num <- Lexer.lexeme pSpace Lexer.decimal
-    pSpace
     pSymbol "value"
-    pSpace
     res <- pRes
     return $ Event num res
 
@@ -180,9 +161,7 @@ pInstant = do
 pResult :: Parser OutputEntry
 pResult = do
     pSymbol "result"
-    pSpace
     refname <- pIdent
-    pSpace
     val <- pRes
     return $ Result refname val
 
@@ -222,36 +201,25 @@ pRes = do
   where
       pInt :: Parser SSMExp
       pInt = do
-          pSpace
           pSymbol "int32"
-          pSpace
           num <- choice [try (parens signed), signed]
-          pSpace
           return $ Lit TInt32 . LInt32 $ num
 
       pInt64 :: Parser SSMExp
       pInt64 = do
-          pSpace
           pSymbol "int64"
-          pSpace
           num <- choice [ try (parens signed), signed]
-          pSpace
           return $ Lit TInt64 $ LInt64 $ num
 
       pUInt64 :: Parser SSMExp
       pUInt64 = do
-          pSpace
           pSymbol "uint64"
-          pSpace
           num <- choice [ try (parens signed), Lexer.decimal]
-          pSpace
           return $ Lit TUInt64 $ LUInt64 num
 
       pBool :: Parser SSMExp
       pBool = do
-          pSpace
           pSymbol "bool"
-          pSpace
           b <- Lexer.lexeme pSpace Lexer.decimal
           case b of
               0 -> return $ Lit TBool $ LBool False
@@ -269,19 +237,14 @@ pRes = do
 
 pEventqueuesize :: Parser Int
 pEventqueuesize = do
-    pSpace
     pSymbol "eventqueuesize"
-    pSpace
     num <- Lexer.lexeme pSpace Lexer.decimal
-    pSpace
     return num
 
 pNow :: Parser Word64
 pNow = do
     pSymbol "now"
-    pSpace
     num <- Lexer.lexeme pSpace Lexer.decimal 
-    pSpace
     return num
 
 -- | Try to parse the given text as a symbol
