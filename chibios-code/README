@@ -2,5 +2,7 @@
 
 
 ## requirements
-  1. Chibios 20.3.2 located at `../../`. [Download chibios](https://osdn.net/projects/chibios/releases/72607)
+  1. Chibios 20.3.3 located at `../../`. [Download chibios](https://osdn.net/projects/chibios/releases/72607)
+  2. sense-vm located at `../../`. `git clone git@github.com:svenssonjoel/sense-vm`
+  3. peng located at ../zephyr-code/ssm-zephyr 
 

@@ -24,8 +24,66 @@
 #include "usbcfg.h"
 #include "chprintf.h"
 
+#include "stm32_tim.h" /* platform specific */
+#include "stm32_rcc.h"
+
 #include "blinky.h"
 #include <peng.h>
+
+
+/*********************************/
+/* Low level timer setup attempt */
+
+stm32_tim_t *tim5 = NULL;
+
+void setup_timer(void) {
+
+  
+  rccEnableTIM5(true);
+  rccResetTIM5();
+  
+  nvicEnableVector(STM32_TIM5_NUMBER, STM32_GPT_TIM5_IRQ_PRIORITY); /* use GPT level prio */
+
+  
+  tim5 = STM32_TIM5;  /* gives direct access to the tim5 registers */
+
+  /*
+    typedef struct {
+    volatile uint32_t     CR1;      - Control register 1
+    volatile uint32_t     CR2;      - Control register 2
+    volatile uint32_t     SMCR;     - Slave mode control register
+    volatile uint32_t     DIER;     - DMA/Interrupt enable register
+    volatile uint32_t     SR;       - Status register
+    volatile uint32_t     EGR;      - Event generation register
+    volatile uint32_t     CCMR1;    - Capture/Compare mode register 1
+    volatile uint32_t     CCMR2;    - Capture/Compare mode register 2
+    volatile uint32_t     CCER;     - Capture/Compare enable register
+    volatile uint32_t     CNT;      - Count register.
+    volatile uint32_t     PSC;      - Prescaler (1 - 65535).
+    volatile uint32_t     ARR;      - Auto reload register.
+    volatile uint32_t     RCR;      
+    volatile uint32_t     CCR[4];   - Compare/Capture registers.
+    volatile uint32_t     BDTR;
+    volatile uint32_t     DCR;      - DMA control register
+    volatile uint32_t     DMAR;     - DMA Address for full transfer
+    volatile uint32_t     OR;       - Option register.
+    volatile uint32_t     CCMR3;    - Capture/compare mode register 3 
+    volatile uint32_t     CCXR[2];
+    } stm32_tim_t;
+  */
+
+  tim5->PSC = 0xFFFF;     // counter rate is input_clock / (0xFFFF+1)
+  tim5->ARR = 0xFFFFFFFF; // Value when counter should flip to zero.
+  
+  tim5->CNT = 0;
+
+  tim5->EGR = 0x1; // Update event (Makes all the configurations stick)
+  tim5->CR1 = 0x1; // enable
+
+}
+
+
+
 
 /* Quick-hack led stuff */ 
 void led_init(void) {
@@ -41,10 +99,6 @@ void led_set(int led, int value) {
 
   palWritePad(GPIOD, 13, value);
 }
-
-/**********************************************************/
-/* General Purpose Timer (GPT, the TIM timers on the STM) */
-
 
 
 /****************/
@@ -145,8 +199,6 @@ static THD_FUNCTION(tick_thread, arg) {
    block_mail(&t);
 
    
-   
-
  }
 
  
@@ -176,12 +228,13 @@ int main(void) {
      or to connect a terminal */ 
   chThdSleepMilliseconds(2000);
 
+  setup_timer();
+  
 
   /* Initialize the memory pool for tick messages */
   chPoolLoadArray(&tick_pool, box_contents, MAX_MESSAGES);
   
   
-
   /* start the ssm tick thread */
   thread = chThdCreateStatic(&thread_wa, sizeof(thread_wa), /* working area */
 			     (tprio_t)(NORMALPRIO-20),     /* priority */
@@ -190,8 +243,9 @@ int main(void) {
 
   while(true) {
 
-    chprintf((BaseSequentialStream *)&SDU1, "Hello world\r\n"); 
+    chprintf((BaseSequentialStream *)&SDU1, "Hello world: %u \r\n", tim5->CNT); 
     chThdSleepMilliseconds(2000);
+    
     
   }
 
