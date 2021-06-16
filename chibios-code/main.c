@@ -96,11 +96,10 @@ OSAL_IRQ_HANDLER(STM32_TIM5_HANDLER) {
   OSAL_IRQ_PROLOGUE();
 
   tim5->SR = 0;
-  tim5->CCR[0] = tim5->CCR[0] + 5000;
+  tim5->CCR[0] = tim5->CCR[0] + 5000; /* reschedule led update 5000 in the future */ 
  
   palWritePad(GPIOD, 13, led_state);
   led_state = 1 - led_state;
-
 
   OSAL_IRQ_EPILOGUE();
 }
@@ -258,9 +257,9 @@ int main(void) {
      or to connect a terminal */ 
   chThdSleepMilliseconds(2000);
 
-  setup_timer();
-
-  set_ccr_tim5(0, 10000);
+  setup_timer();  /* setup timer for continuous runining compare mode */
+ 
+  set_ccr_tim5(0, 10000);  /* Schedule and interrupt from tick 10000
   
 
   /* Initialize the memory pool for tick messages */
