@@ -9,19 +9,23 @@ import           Test.Hspec.QuickCheck          ( modifyMaxSuccess
                                                 , prop
                                                 )
 
--- TODO: increase maxSuccess, but also make them configurable from command line
+-- | Hspec entry point for arbitrary quickcheck test.
+--
+-- To specify the number of random programs to test from the command line,
+-- adjust the maxSuccess parameters with the -a or --qc-max-success arguments.
+-- For instance, invoking from stack:
+--
+-- > stack test --test-arguments='-a 420'
+--
 main :: IO ()
 main = hspec $ do
   describe "Random program" $ do
 
-    modifyMaxSuccess (const 10)
-      $ prop "compiles to a binary (via C)"
+    prop "compiles to a binary (via C)"
       $ T.propCompiles T.RandomTest
 
-    modifyMaxSuccess (const 10)
-      $ prop "compiles and runs without memory errors"
+    prop "compiles and runs without memory errors"
       $ T.propValgrind T.RandomTest
 
-    modifyMaxSuccess (const 1000)
-      $ prop "compiles and runs according to interpreter"
+    prop "compiles and runs according to interpreter"
       $ T.propCorrect T.RandomTest
