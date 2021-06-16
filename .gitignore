@@ -1,17 +1,16 @@
-.stack-work/
 stack.yaml.lock
 *~
 
-/*.c
-/*.ssm
-/*.out
-
-/testdir
-/runtest
 /zephyr-code/ssm-zephyr/peng/
 /zephyr-code/ssm-zephyr/build/
 
+build
+
+blinky/build/
+
+## CCLS/IDE files ##
 .ccls-cache
+compile_commands.json
 
 # Created by https://www.toptal.com/developers/gitignore/api/haskell
 # Edit at https://www.toptal.com/developers/gitignore?templates=haskell
@@ -101,5 +100,3 @@ Mkfile.old
 dkms.conf
 
 # End of https://www.toptal.com/developers/gitignore/api/c
-
-blinky/build/

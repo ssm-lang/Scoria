@@ -39,7 +39,7 @@ prettyProgram ssm = let wr = runReaderT (prettyProgram' ssm) 0
 prettyProgram' :: Program -> PP ()
 prettyProgram' p = do
     emit "entrypoint:"
-    indent $ emit $ prettyApp (main p, args p)
+    indent $ emit $ prettyApp (entry p, args p)
 --    emit "main() {"
 --    indent $ emit $ prettyApp (main p, args p)
 --    emit "}"
