@@ -74,12 +74,42 @@ void setup_timer(void) {
 
   tim5->PSC = 0xFFFF;     // counter rate is input_clock / (0xFFFF+1)
   tim5->ARR = 0xFFFFFFFF; // Value when counter should flip to zero.
+
+  tim5->CCR[0] = 0xFFFFFFFF; /* init compare values */ 
+  tim5->CCR[1] = 0xFFFFFFFF;
+  tim5->CCR[2] = 0xFFFFFFFF;
+  tim5->CCR[3] = 0xFFFFFFFF;
+
+  tim5->CCER |= 0x1; /* activate compare on ccr channel 1 */
+  tim5->DIER |= 0x2; 
   
   tim5->CNT = 0;
-
   tim5->EGR = 0x1; // Update event (Makes all the configurations stick)
   tim5->CR1 = 0x1; // enable
 
+}
+
+int led_state = 1;
+
+OSAL_IRQ_HANDLER(STM32_TIM5_HANDLER) {
+
+  OSAL_IRQ_PROLOGUE();
+
+  tim5->SR = 0;
+  tim5->CCR[0] = tim5->CCR[0] + 5000;
+ 
+  palWritePad(GPIOD, 13, led_state);
+  led_state = 1 - led_state;
+
+
+  OSAL_IRQ_EPILOGUE();
+}
+
+
+void set_ccr_tim5(int ix, uint32_t c_value) {
+  if (ix >= 0 && ix <= 3) {
+    tim5->CCR[ix] = c_value;
+  }
 }
 
 
@@ -229,6 +259,8 @@ int main(void) {
   chThdSleepMilliseconds(2000);
 
   setup_timer();
+
+  set_ccr_tim5(0, 10000);
   
 
   /* Initialize the memory pool for tick messages */
