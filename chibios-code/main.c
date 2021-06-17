@@ -30,6 +30,27 @@
 #include "blinky.h"
 #include <peng.h>
 
+/* chibios messages are large enough to hold a pointer. 
+   so if you want store more data in the message you need 
+   to put that data elsewhere and then point to it. */
+
+typedef struct {  /* message type */ 
+  uint32_t tick;
+}timer_tick_t;
+
+
+/***********/
+/* MAILBOX */
+
+#define MAX_MESSAGES 64
+
+//static mailbox_t mb; /* mailbox struct */
+msg_t box_contents[MAX_MESSAGES]; /* mailbox storage */
+MAILBOX_DECL(mb, box_contents, MAX_MESSAGES);
+
+
+
+static int send_mail(timer_tick_t t);
 
 /*********************************/
 /* Low level timer setup attempt */
@@ -89,18 +110,24 @@ void setup_timer(void) {
 
 }
 
-int led_state = 1;
-
-OSAL_IRQ_HANDLER(STM32_TIM5_HANDLER) {
-
-  OSAL_IRQ_PROLOGUE();
-
-  tim5->SR = 0;
-  tim5->CCR[0] = tim5->CCR[0] + 5000; /* reschedule led update 5000 in the future */ 
+//int led_state = 1;
+//CH_IRQ_HANDLER(STM32_TIM5_HANDLER) {
+//  CH_IRQ_PROLOGUE();
  
-  palWritePad(GPIOD, 13, led_state);
-  led_state = 1 - led_state;
+OSAL_IRQ_HANDLER(STM32_TIM5_HANDLER) {
+  OSAL_IRQ_PROLOGUE();
+  
+  uint32_t sr = tim5->SR;
+  sr &= tim5->DIER & STM32_TIM_DIER_IRQ_MASK;
+  tim5->SR = ~sr;  
 
+  timer_tick_t t; 
+  t.tick = tim5->CNT;
+
+  osalSysLockFromISR();
+  msg_t msg_val = chMBPostI(&mb, (uint32_t)t.tick);
+  osalSysUnlockFromISR();
+  
   OSAL_IRQ_EPILOGUE();
 }
 
@@ -110,8 +137,6 @@ void set_ccr_tim5(int ix, uint32_t c_value) {
     tim5->CCR[ix] = c_value;
   }
 }
-
-
 
 
 /* Quick-hack led stuff */ 
@@ -129,7 +154,7 @@ void led_set(int led, int value) {
   palWritePad(GPIOD, 13, value);
 }
 
-
+ 
 /****************/
 /* PENG RELATED */
 
@@ -140,40 +165,27 @@ void top_return(act_t *act)
 
 act_t top = { .step = top_return };
 
-/***********/
-/* MAILBOX */
-
-#define MAX_MESSAGES 100
-
-static mailbox_t mb; /* mailbox struct */
-static msg_t box_contents[MAX_MESSAGES]; /* mailbox storage */
-
-/* chibios messages are large enough to hold a pointer. 
-   so if you want store more data in the message you need 
-   to put that data elsewhere and then point to it. */
-
-typedef struct {  /* message type */ 
-  uint32_t tick;
-}timer_tick_t;
-
-/* Mostly as illustration */
-
-static MEMORYPOOL_DECL(tick_pool, sizeof(timer_tick_t), PORT_NATURAL_ALIGN, NULL);
+//static timer_tick_t tick_storage[MAX_MESSAGES] __attribute__((aligned((4))));
+//static MEMORYPOOL_DECL(tick_pool, sizeof(timer_tick_t), PORT_NATURAL_ALIGN, NULL);
 
 static int send_mail(timer_tick_t t) {
+
+ 
+ 
   /* will be called from inside of the timer interrupt */
   int r = 1; /*success*/
-  timer_tick_t *m = (timer_tick_t*)chPoolAllocI(&tick_pool);
+  //timer_tick_t *m = (timer_tick_t*)chPoolAllocI(&tick_pool);
+  
+  //if (m) { 
+  //  *m = t;
 
-  if (m) { 
-    *m = t;
-
-    msg_t msg_val = chMBPostI(&mb, (msg_t)m); /* send the pointer as a mail */
-    if (msg_val != MSG_OK) {  /* failed to send */
-      chPoolFree(&tick_pool, m);
-      r = 0;
-    }
-  }
+  msg_t msg_val = chMBPostI(&mb, (uint32_t)t.tick);
+    //if (msg_val != MSG_OK) {  /* failed to send */
+    //  chPoolFree(&tick_pool, m);
+    //  r = 0;
+    //}
+  //}
+ 
   return r;
 }
 
@@ -185,9 +197,9 @@ void block_mail(timer_tick_t *t) {
   int r = chMBFetchTimeout(&mb, &msg_val, TIME_INFINITE);
 
   if (r == MSG_OK) {
-    *t = *(timer_tick_t*)msg_val;
+    t->tick = msg_val;
 
-    chPoolFree(&tick_pool, msg_val); /* free the pool allocated pointer */
+    //chPoolFree(&tick_pool, msg_val); /* free the pool allocated pointer */
   } else {
     /* This is an error. what to do ??!! */
   }
@@ -201,7 +213,8 @@ void block_mail(timer_tick_t *t) {
 static THD_WORKING_AREA(thread_wa, 1024); /* name, size */
 static thread_t *thread;
 
-
+sv_int_t r;
+sv_int_t led;
 
 static THD_FUNCTION(tick_thread, arg) {
  chRegSetThreadName("tick");
@@ -212,8 +225,6 @@ static THD_FUNCTION(tick_thread, arg) {
  
  
  
- sv_int_t r;
- sv_int_t led;
  initialize_int(&r);
  r.value = 0;
  initialize_int(&led);
@@ -223,15 +234,29 @@ static THD_FUNCTION(tick_thread, arg) {
  fork_routine( (act_t *) enter_main(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT, &led) );
 
  while (1) {
-
+   chprintf((BaseSequentialStream *)&SDU1, "Waiting for mail\r\n"); 
    timer_tick_t t;
    block_mail(&t);
+   chprintf((BaseSequentialStream *)&SDU1, "Got mail!\r\n"); 
 
+   now = next_event_time();
+   chprintf((BaseSequentialStream *)&SDU1, "Now: %u\r\n", (uint32_t)now);  
+   
+   //tick(); 
+
+   uint64_t next = next_event_time(); 
+   
+   if (next == ULLONG_MAX) {
+      chprintf((BaseSequentialStream *)&SDU1, "Nothing in the queue\r\n");
+      /* what to do?*/
+   }
+   
+   uint64_t wake_time = tim5->CNT + 5000; //next_event_time(); 
+      
+   set_ccr_tim5(0, (uint32_t)wake_time);
    
  }
 
- 
- 
 }
 
 
@@ -253,29 +278,37 @@ int main(void) {
   usbConnectBus(serusbcfg.usbp);
   chThdSleepMilliseconds(500);
 
+  /* Initialize the memory pool for tick messages */
+  //chPoolLoadArray(&tick_pool, tick_storage, MAX_MESSAGES);
+  
+  /* initialize mailbox */
+  //chMBObjectInit(&mb, box_contents, MAX_MESSAGES);
+
+
   /* Give the user some time to hook up a usb cable 
      or to connect a terminal */ 
   chThdSleepMilliseconds(2000);
 
-  setup_timer();  /* setup timer for continuous runining compare mode */
- 
-  set_ccr_tim5(0, 10000);  /* Schedule and interrupt from tick 10000
-  
-
-  /* Initialize the memory pool for tick messages */
-  chPoolLoadArray(&tick_pool, box_contents, MAX_MESSAGES);
-  
   
   /* start the ssm tick thread */
   thread = chThdCreateStatic(&thread_wa, sizeof(thread_wa), /* working area */
-			     (tprio_t)(NORMALPRIO-20),     /* priority */
-			     tick_thread,                  /* thread function */
-			     NULL);                        /* argument */
+  			     (tprio_t)(NORMALPRIO-20),     /* priority */
+  			     tick_thread,                  /* thread function */
+  			     NULL);                        /* argument */
 
+
+
+  
+  setup_timer();  /* setup timer for continuous runining compare mode */
+ 
+  set_ccr_tim5(0, 2000);  /* Schedule an interrupt from tick 2000 */
+  
+
+ 
   while(true) {
 
     chprintf((BaseSequentialStream *)&SDU1, "Hello world: %u \r\n", tim5->CNT); 
-    chThdSleepMilliseconds(2000);
+    chThdSleepMilliseconds(500);
     
     
   }

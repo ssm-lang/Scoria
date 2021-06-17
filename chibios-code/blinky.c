@@ -16,7 +16,7 @@ void init_blinky(void){
   
 }
 
-int led = 0;
+int led_num = 0;
 
 void step_main(act_t *bare_act)
 {
@@ -27,16 +27,16 @@ void step_main(act_t *bare_act)
   case 0: ;
 
   L0: ;
-    led_set(led, act->led->value);
-    later_int(act->led, now + 5000000L, 1);
+    led_set(led_num, act->led->value);
+    later_int(act->led, now + 2000L, 1);
     sensitize((sv_t *) act->led, &act->trigger1);
     act->pc = 1;
     return;
 
   case 1: ;
     desensitize(&act->trigger1);
-    led_set(led, act->led->value);
-    later_int(act->led, now + 5000000L, 0);
+    led_set(led_num, act->led->value);
+    later_int(act->led, now + 2000L, 0);
     sensitize((sv_t *) act->led, &act->trigger1);
     act->pc = 2;
     return;

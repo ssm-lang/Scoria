@@ -136,7 +136,7 @@
  * @note    This is not related to the compiler optimization options.
  * @note    The default is @p TRUE.
  */
-#if !defined(CH_CFG_OPTIMIZE_SPEED)
+#if !defined(CH_CFG_OPTIMIZE_SPEED) 
 #define CH_CFG_OPTIMIZE_SPEED               TRUE
 #endif
 
