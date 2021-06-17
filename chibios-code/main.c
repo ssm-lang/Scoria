@@ -233,16 +233,22 @@ static THD_FUNCTION(tick_thread, arg) {
  
  fork_routine( (act_t *) enter_main(&top, PRIORITY_AT_ROOT, DEPTH_AT_ROOT, &led) );
 
+ chprintf((BaseSequentialStream *)&SDU1, "Running tick once\r\n"); 
+ tick();
+ chprintf((BaseSequentialStream *)&SDU1, "OK!\r\n"); 
+ now = next_event_time(); 
+ chprintf((BaseSequentialStream *)&SDU1, "Rescheduling wake up for: %u\r\n", (uint32_t)now);  
+ setup_timer();  /* setup timer for continuous runining compare mode */
+ set_ccr_tim5(0, (uint32_t)now);
+
+ 
  while (1) {
    chprintf((BaseSequentialStream *)&SDU1, "Waiting for mail\r\n"); 
    timer_tick_t t;
    block_mail(&t);
    chprintf((BaseSequentialStream *)&SDU1, "Got mail!\r\n"); 
 
-   now = next_event_time();
-   chprintf((BaseSequentialStream *)&SDU1, "Now: %u\r\n", (uint32_t)now);  
-   
-   //tick(); 
+   tick(); 
 
    uint64_t next = next_event_time(); 
    
@@ -250,9 +256,10 @@ static THD_FUNCTION(tick_thread, arg) {
       chprintf((BaseSequentialStream *)&SDU1, "Nothing in the queue\r\n");
       /* what to do?*/
    }
-   
-   uint64_t wake_time = tim5->CNT + 5000; //next_event_time(); 
-      
+
+   now = next_event_time();
+   chprintf((BaseSequentialStream *)&SDU1, "Rescheduling wake up for: %u\r\n", (uint32_t)now);  
+   uint64_t wake_time = now; //next_event_time();      
    set_ccr_tim5(0, (uint32_t)wake_time);
    
  }
@@ -299,12 +306,6 @@ int main(void) {
 
 
   
-  setup_timer();  /* setup timer for continuous runining compare mode */
- 
-  set_ccr_tim5(0, 2000);  /* Schedule an interrupt from tick 2000 */
-  
-
- 
   while(true) {
 
     chprintf((BaseSequentialStream *)&SDU1, "Hello world: %u \r\n", tim5->CNT); 
