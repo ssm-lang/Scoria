@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7bed5b76fbfb2f2f098ba7bdfb170a69c9bb60ee86de3103323887745124942f
+-- hash: 579d628539baa0a2fcdcafbc370afccbbdcd5b13903c85c4f088e696c6a4ed23
 
 name:           ssm
 version:        0.1.0.0
@@ -47,6 +47,7 @@ library
       BinderAnn
     , QuickCheck
     , base >=4.7 && <5
+    , bytestring
     , containers
     , deepseq
     , extra
@@ -57,6 +58,7 @@ library
     , parser-combinators
     , prettyprinter
     , text
+    , time
   default-language: Haskell2010
 
 executable print-ssm-from-file
@@ -83,6 +85,7 @@ executable print-ssm-from-file
       BinderAnn
     , QuickCheck
     , base >=4.7 && <5
+    , bytestring
     , containers
     , deepseq
     , extra
@@ -94,32 +97,21 @@ executable print-ssm-from-file
     , prettyprinter
     , ssm
     , text
+    , time
   default-language: Haskell2010
 
 executable ssm-exe
   main-is: Main.hs
   other-modules:
-      Buggy
-      ButtonBlinky
-      Examp
-      Examp2
-      Example
-      Example64bit
-      Exampleuint8
-      Fib
-      Foo
-      Manyrefs
-      NonTerminate
-      Nullary
       Paths_ssm
   hs-source-dirs:
       app
-      example
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
     , QuickCheck
     , base >=4.7 && <5
+    , bytestring
     , containers
     , criterion
     , deepseq
@@ -135,36 +127,32 @@ executable ssm-exe
     , time
   default-language: Haskell2010
 
-test-suite ssm-test
+test-suite 1-regression-low
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Evaluation
-      Buggy
-      ButtonBlinky
-      Examp
-      Examp2
-      Example
-      Example64bit
-      Exampleuint8
-      Fib
-      Foo
-      Manyrefs
-      NonTerminate
-      Nullary
+      Test.Ssm.Build
+      Test.Ssm.Output
+      Test.Ssm.Prop
+      Test.Ssm.Report
+      Regression.ManyContsSpec
+      Regression.Test1623630765726Spec
+      Regression.Test1623691869727Spec
       Paths_ssm
   hs-source-dirs:
-      test
-      example
+      test/lib
+      test/regression-low
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
     , QuickCheck
     , base >=4.7 && <5
+    , bytestring
     , containers
     , deepseq
     , directory
     , extra
+    , hspec
     , language-c-quote
     , mainland-pretty
     , megaparsec
@@ -174,4 +162,40 @@ test-suite ssm-test
     , process
     , ssm
     , text
+    , time
+  default-language: Haskell2010
+
+test-suite 2-arbitrary
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Test.Ssm.Build
+      Test.Ssm.Output
+      Test.Ssm.Prop
+      Test.Ssm.Report
+      Paths_ssm
+  hs-source-dirs:
+      test/lib
+      test/arbitrary
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      BinderAnn
+    , QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , deepseq
+    , directory
+    , extra
+    , hspec
+    , language-c-quote
+    , mainland-pretty
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , process
+    , ssm
+    , text
+    , time
   default-language: Haskell2010

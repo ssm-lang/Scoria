@@ -4,8 +4,6 @@ module Main where
 import Data.List
 
 import Frontend
-import Fib
-import NonTerminate
 import Core ()
 import LowCore hiding (main)
 import qualified Data.Map as Map

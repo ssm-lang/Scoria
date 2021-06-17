@@ -218,7 +218,7 @@ genMain :: Program -> [C.Definition]
 genMain program =
   [ [cedecl| void $id:top_return($ty:act_t *act) { return; } |]
   , [cedecl|
-      void main(void) {
+      int main(void) {
         $ty:act_t top = { .step = $id:top_return };
 
         /* Initialize variables to be passed to the main SSM procedure */
@@ -243,7 +243,7 @@ genMain program =
     |]
   ]
  where
-  enter = enter_ $ main program
+  enter = enter_ $ entry program
   enterArgs =
     [ [cexp|($ty:act_t *) &top|]
       , [cexp|PRIORITY_AT_ROOT|]
@@ -509,7 +509,7 @@ genCase (Fork cs) = do
     genDebug (r, _) = r
   return
     $ [cstm| DEBUG_PRINT($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |]
-    : zipWith genCall [1 :: Int ..] cs
+    : zipWith genCall [0 :: Int ..] cs
     ++ [ [cstm| gen_act->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]

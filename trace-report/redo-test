@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+
+set -euf
+
+# Infer test name from test path
+function get_testname () {
+    local testpath="${1%/}"
+    local testdir="${testpath##*/}"
+    local testslug="${testdir##test-}"
+    case "$testslug" in
+    # If the testslug is entirely numerical, then it was a timestamp, so we
+    # prepend it with 'Test'
+    #
+    # Surely there are better ways to do this, but this doesn't rely anything
+    # beyond Bash
+    1* | 2* | 3* | 4* | 5* | 6* | 7* | 8* | 9* | 0*)
+        echo "Test${testslug}"
+        ;;
+    *)
+        echo "$testslug"
+        ;;
+    esac
+}
+
+function usage () {
+    echo "Helper script to repeat a test case reported here (trace-report)."
+    echo
+    echo "Usage:  $0 [load|save] <test-dir>"
+    echo
+    echo "        load    Copies the generated C code to the genc directory, so"
+    echo "                that it can be recompiled manually. For convenience,"
+    echo "                it will also be copied to genc/load.c, to enable"
+    echo "                compilation via \`make loaded\`."
+    echo "        save    Adds the generated Spec.hs file to the regression-low"
+    echo "                test suite."
+    echo
+}
+
+GITROOT="$(git rev-parse --show-toplevel)"
+GENCDIR="${GITROOT}/genc"
+REGRESSIONDIR="${GITROOT}/test/regression-low/Regression"
+
+if ! [ $# -eq 2 ] ; then
+    echo "Error: incorrect number of arguments"
+    echo
+    usage
+    exit 2
+fi
+
+cmd="$1"
+testpath="$2"
+
+testname="$(get_testname "$testpath")"
+
+case "$cmd" in
+    load)
+        echo cp "${testpath}/${testname}.c" "${GENCDIR}/${testname}.c"
+        cp "${testpath}/${testname}.c" "${GENCDIR}/${testname}.c"
+        echo cp "${testpath}/${testname}.c" "${GENCDIR}/loaded.c"
+        cp "${testpath}/${testname}.c" "${GENCDIR}/loaded.c"
+        ;;
+    save)
+        echo cp "${testpath}/${testname}Spec.hs" "${REGRESSIONDIR}/${testname}Spec.hs"
+        cp "${testpath}/${testname}Spec.hs" "${REGRESSIONDIR}/${testname}Spec.hs"
+        ;;
+    *)
+        echo "Error: command not recognized."
+        echo
+        usage
+        exit 2
+        ;;
+esac

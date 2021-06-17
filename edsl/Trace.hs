@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 module Trace where
 
@@ -40,93 +39,20 @@ data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
 
 type Output = [OutputEntry]
 
-{-
-Events occur between instants, and all that can happen when events are applied
-between instants is that processes are enqueued in the ready queue. Since this is
-a priority queue it does not matter which order the events are applied in, as long as
-the same events are applied in the same instant.
--}
-instance {-# OVERLAPPING #-} Eq Output where
-    xs == ys = equalSemantics xs ys
-
-equalSemantics :: Output -> Output -> Bool
-equalSemantics xs ys = case (xs,ys) of
-    ([],[]) -> True
-
-    (xs@(Event _ _:_), ys@(Event _ _:_)) ->
-        let (xevents, xs') = takeEvents xs
-            (yevents, ys') = takeEvents ys
-
-        in equalEvents xevents yevents && equalSemantics xs' ys'
-
-    ((x:xs), (y:ys)) -> x == y && equalSemantics xs ys
-
-    (_,_)            -> False
-
-  where
-      takeEvents :: Output -> (Output, Output)
-      takeEvents xs = takeEvents_ ([], xs)
-
-      takeEvents_ :: (Output, Output) -> (Output, Output)
-      takeEvents_ (xs, [])     = ([], [])
-      takeEvents_ (xs, (y:ys)) =
-          if isEvent y
-              then takeEvents_ (y : xs, ys)
-              else if isCrash y
-                       then ([y], ys)
-                       else (xs, y:ys)
-
-      -- | When we've gathered all events that were applied we have three scenarios.
-      -- 1: There was not enough time for the interpreter and c-code generator to
-      --    generate enough trace to finish applying the events. In this case we might
-      --    have a case where the invariant is broken, so we'll return True since we're
-      --    between instants (where the invariant is allowed to eb broken).
-      -- 2: One of them crashed while the other did not have time to finish applying all
-      --    of its events. In this case we return True after verifying that a crash
-      --    occured.
-      -- 3: Fetching the events went alright, and there were enough time for them to
-      --    finish applying all their events. In that case we'll just make sure that the
-      --    events are the same, but not that they are necessarily applied in the same order.
-      equalEvents :: Output -> Output -> Bool
-      equalEvents [] []  = True
-      equalEvents [x] [] = isCrash x
-      equalEvents [] [x] = isCrash x
-      equalEvents xs ys  =
-          let eventunion     = union xs ys
-              lengthxevents  = length xs
-              lengthyevents  = length ys
-              lengthunion    = length eventunion
-          in lengthunion   == lengthxevents &&
-             lengthxevents == lengthyevents
-
-      -- | Returns True if the entry is an event
-      isEvent :: OutputEntry -> Bool
-      isEvent (Event _ _) = True
-      isEvent _           = False
-
-      -- | Returns True if a crash happened
-      isCrash :: OutputEntry -> Bool
-      isCrash Crash          = True
-      isCrash EventQueueFull = True
-      isCrash ContQueueFull  = True
-      isCrash NegativeDepth  = True
-      isCrash BadAfter       = True
-      isCrash _              = False
-
 testoutput = Prelude.unlines [ "event 0 value int 0"
                              , "event 1 value bool 1"
                              , "negative depth"
                              , "contqueue full"
                              , "result a uint64 2343546543245"
-                             , "event 2 value int (-1)"
+                             , "event 2 value int32 (-1)"
                              , "now 3 eventqueuesize 3"
                              , "bad after"
                              , "contqueue full"
                              , "numconts 283"
                              , "now 5 eventqueuesize 5"
                              , "fork mywait mywait mysum"
-                             , "event 6 value int 7"
-                             , "result x int 1"
+                             , "event 6 value int32 7"
+                             , "result x int64 1"
                              , "fork mywait"
                              , "numconts 325"
                              , "contqueue full"
@@ -162,7 +88,7 @@ parseLine inp = toMaybe $ parse pTraceItem "" (T.pack inp)
       toMaybe (Right b) = Just b
 
 pTrace :: Parser Output
-pTrace = many pTraceItem
+pTrace = many (pSpace *> pTraceItem)
 
 pTraceItem :: Parser OutputEntry
 pTraceItem = choice [ try pEvent
@@ -179,69 +105,50 @@ pTraceItem = choice [ try pEvent
 
 pFork :: Parser OutputEntry
 pFork = do
-    pSpace
     pSymbol "fork"
-    pSpace
     procs <- some (try pIdent)
-    pSpace
     return $ Fork procs
 
 pNumConts :: Parser OutputEntry
 pNumConts = do
-    pSpace
     pSymbol "numconts"
-    pSpace
     num <- Lexer.lexeme pSpace Lexer.decimal
     return $ NumConts num
 
 pCrash :: Parser OutputEntry
 pCrash = do
-    pSpace
     pSymbol "crash"
-    pSpace
     return Crash
 
 pBadAfter :: Parser OutputEntry
 pBadAfter = do
-    pSpace
     pSymbol "bad"
-    pSpace
     pSymbol "after"
     return BadAfter
 
 pNegativeDepth :: Parser OutputEntry
 pNegativeDepth = do
-    pSpace
     pSymbol "negative"
-    pSpace
     pSymbol "depth"
     return NegativeDepth
 
 pEventQueueFull :: Parser OutputEntry
 pEventQueueFull = do
-    pSpace
     pSymbol "eventqueue"
-    pSpace
     pSymbol "full"
     return EventQueueFull
 
 pContQueueFull :: Parser OutputEntry
 pContQueueFull = do
-    pSpace
     pSymbol "contqueue"
-    pSpace
     pSymbol "full"
     return ContQueueFull
 
 pEvent :: Parser OutputEntry
 pEvent = do
-    pSpace
     pSymbol "event"
-    pSpace
     num <- Lexer.lexeme pSpace Lexer.decimal
-    pSpace
     pSymbol "value"
-    pSpace
     res <- pRes
     return $ Event num res
 
@@ -254,9 +161,7 @@ pInstant = do
 pResult :: Parser OutputEntry
 pResult = do
     pSymbol "result"
-    pSpace
     refname <- pIdent
-    pSpace
     val <- pRes
     return $ Result refname val
 
@@ -296,36 +201,25 @@ pRes = do
   where
       pInt :: Parser SSMExp
       pInt = do
-          pSpace
           pSymbol "int32"
-          pSpace
           num <- choice [try (parens signed), signed]
-          pSpace
           return $ Lit TInt32 . LInt32 $ num
 
       pInt64 :: Parser SSMExp
       pInt64 = do
-          pSpace
           pSymbol "int64"
-          pSpace
           num <- choice [ try (parens signed), signed]
-          pSpace
           return $ Lit TInt64 $ LInt64 $ num
 
       pUInt64 :: Parser SSMExp
       pUInt64 = do
-          pSpace
           pSymbol "uint64"
-          pSpace
           num <- choice [ try (parens signed), Lexer.decimal]
-          pSpace
           return $ Lit TUInt64 $ LUInt64 num
 
       pBool :: Parser SSMExp
       pBool = do
-          pSpace
           pSymbol "bool"
-          pSpace
           b <- Lexer.lexeme pSpace Lexer.decimal
           case b of
               0 -> return $ Lit TBool $ LBool False
@@ -343,19 +237,14 @@ pRes = do
 
 pEventqueuesize :: Parser Int
 pEventqueuesize = do
-    pSpace
     pSymbol "eventqueuesize"
-    pSpace
     num <- Lexer.lexeme pSpace Lexer.decimal
-    pSpace
     return num
 
 pNow :: Parser Word64
 pNow = do
     pSymbol "now"
-    pSpace
     num <- Lexer.lexeme pSpace Lexer.decimal 
-    pSpace
     return num
 
 -- | Try to parse the given text as a symbol
