@@ -27,11 +27,19 @@ for :: [a] -> (a -> b) -> [b]
 for = flip map
 
 instance Arbitrary Type where
-  arbitrary = elements [TInt32, TInt64, TBool, TUInt64, Ref TInt32, Ref TInt64, Ref TUInt64, Ref TBool]
+  arbitrary = elements [ TInt32
+                       , TInt64
+                       , TBool
+                       , TUInt64
+                       , Ref TInt32
+                       , Ref TInt64
+                       , Ref TUInt64
+                       , Ref TBool
+                       ]
 
 type Procedures = [(String, [(String, Type)], [Stm])]
-type Variable = (Name, Type)
-type Ref     = (String, Type)
+type Variable   = (Name, Type)
+type Ref        = (String, Type)
 
 genListOfLength :: Gen a -> Int -> Gen [a]
 genListOfLength ga 0 = return []
@@ -43,7 +51,7 @@ instance Arbitrary Program where
                        , shrinkSingleProcedures p'  -- Shrink number of functions
                        , shrinkArity p'             -- Shrink procedure arity (writing this right now)
                        , shrinkAllStmts p'          -- Shrink by removing statements that effectively
-                                                -- have type () (fork, wait etc).
+                                                    -- have type () (fork, wait etc).
                        , shrinkForks p'             -- Shrink fork statements (fork less things)
                        , shrinkIf p'                -- Flatten if's (every if becomes two new programs)
                        , shrinkRefs p'              -- Shrink number of declared refs

@@ -10,7 +10,7 @@ import HughesList
 import qualified Core as C
 import LowCore
 
-type PP a = ReaderT Int               -- current level of indentation
+type PP a = ReaderT Int                    -- current level of indentation
               (Writer (Hughes String)) a   -- output
 
 emit :: String -> PP ()
@@ -40,9 +40,6 @@ prettyProgram' :: Program -> PP ()
 prettyProgram' p = do
     emit "entrypoint:"
     indent $ emit $ prettyApp (entry p, args p)
---    emit "main() {"
---    indent $ emit $ prettyApp (main p, args p)
---    emit "}"
     emit ""
     intercalateM (emit "") $ map prettyProcedure (Map.elems (funs p))
     return ()
@@ -98,11 +95,6 @@ prettyStm stm = case stm of
                                     , " = "
                                     , prettySSMExp v
                                     ]
- --   Changed n t r  -> emit $ concat [ prettyType t
- --                                   , " "
- --                                   , getVarName n
- --                                   , " = @"
- --                                   , fst r]
     Wait refs      -> emit $ concat [ "wait ["
                                     , intercalate ", " (map fst refs)
                                     , "]"
