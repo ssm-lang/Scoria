@@ -22,12 +22,9 @@ module LowCore
 
 import qualified Core as C
 
-import Data.List
-
 import qualified Data.Map as Map
 import Control.Monad.State.Lazy
 
--- TODO change this to hold a String and Type instead of the SSMExp, to represent the variables
 data Stm = NewRef C.Name C.Type C.SSMExp
          | GetRef C.Name C.Type C.Reference
          | SetRef C.Reference C.SSMExp
@@ -109,7 +106,6 @@ transpileProcedure xs = fmap concat $ flip mapM xs $ \x -> case x of
     C.While c bdy  -> transpileProcedure (C.runSSM bdy) >>= \bdy' -> return $ [While c bdy']
     
     C.After d r v -> return $ [After d r v]
- --   C.Changed n r -> return $ [Changed n C.TBool r]
     C.Wait refs   -> return $ [Wait refs]
     C.Fork procs  -> do
       procs' <- mapM getCall procs
@@ -122,7 +118,7 @@ transpileProcedure xs = fmap concat $ flip mapM xs $ \x -> case x of
       return []
     C.Argument n x a -> do 
       let arginfo = (x, either C.expType C.refType a)
-      let a' = case a of Left e -> Left e; Right (r,t) -> Right (x,t)
+      let a'      = either (Left) (Right . (,) x . snd) a
       modify $ \st -> st { mainargs    = mainargs st ++ [arginfo]
                          , mainargvals = mainargvals st ++ [a']
                          }

@@ -39,7 +39,7 @@ data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
 
 type Output = [OutputEntry]
 
-testoutput = Prelude.unlines [ "event 0 value int 0"
+testoutput = Prelude.unlines [ "event 0 value int32 0"
                              , "event 1 value bool 1"
                              , "negative depth"
                              , "contqueue full"
