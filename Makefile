@@ -45,12 +45,6 @@ $(BUILDDIR):
 	@+[ -d $(BUILDDIR) ] || mkdir -p $(BUILDDIR)
 	@+$(MAKE) -C $(BUILDDIR) -f $(CURDIR)/Makefile $(MAKECMDGOALS)
 
-# Create build directory, and echo the path.
-.PHONY: make_builddir
-make_builddir:
-	@+[ -d $(BUILDDIR) ] || mkdir -p $(BUILDDIR)
-	@+echo $(BUILDDIR)
-
 # Do nothing for these targets, overriding the match-all rule defined below to
 # prevent recursive evaluation.
 Makefile : ;
@@ -59,13 +53,19 @@ Makefile : ;
 # Match-all rule that jumps to BUILDDIR rule above, and does nothing else.
 % :: $(BUILDDIR) ; @:
 
+# Create build directory, and echo the path.
+.PHONY: make_builddir
+make_builddir:
+	@+[ -d $(BUILDDIR) ] || mkdir -p $(BUILDDIR)
+	@+echo $(BUILDDIR)
+
 # Clean up by removing platform build directory. Note that this leaves other
 # platforms' build directories alone.
 .PHONY: clean
 clean:
 	$(RM) -r $(BUILDDIR)
 
-# Clean build artifacts for all platforms.
+# Clean build directories for all platforms.
 .PHONY: distclean
 distclean:
 	$(RM) -r build
