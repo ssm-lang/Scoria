@@ -17,6 +17,22 @@
 # http://make.mad-scientist.net/papers/advanced-auto-dependency-generation/
 ##
 
+# Generated C files are placed in the build directory.
+GEN_SRCS := $(notdir $(wildcard *.c))
+SRCS += $(GEN_SRCS)
+
+# The generated code uses the pattern x << y - z without unnecessary
+# parentheses, which GCC goes out of its way to warn about without this flag.
+CFLAGS += -Wno-parentheses
+
+# Declare an executable target for each generated C file.
+#
+# Note that due to the way Make's implicit rules are defined, this will cause
+# the linker command to contain both libLIB.a (from the pre-requisite) and -lLIB
+# (from the LDLIBS) flag.
+$(GEN_SRCS:%.c=%): %: %.o $(LIBS)
+$(GEN_SRCS:%.c=%.o): $(LIBS)
+
 # Leave behind build artifacts
 .PRECIOUS: %.c %.o %.a
 

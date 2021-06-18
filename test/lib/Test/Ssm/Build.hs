@@ -7,6 +7,7 @@ module Test.Ssm.Build
 
 import           System.Exit                    ( ExitCode(..) )
 import           System.Process                 ( readProcessWithExitCode )
+import           System.Directory               ( createDirectoryIfMissing )
 
 import           LowCodeGen                     ( compile_ )
 import           LowCore                        ( Program )
@@ -26,10 +27,6 @@ import           Test.Ssm.Report                ( (</>)
 tickLimit :: Maybe Int
 tickLimit = Just 7500
 
--- | Directory where generated C files are written to.
-cSrcDir :: FilePath
-cSrcDir = "genc"
-
 -- | Name of the build platform.
 buildPlatform :: String
 buildPlatform = "trace"
@@ -41,7 +38,7 @@ buildDir = "build" </> buildPlatform
 -- | Obtain the target name from a test Slug.
 --
 -- Use the magic target name "arbitrary" for randomly generated tests to avoid
--- unnecessarily polluting the genc and build directories.
+-- unnecessarily polluting the build directory.
 slugTarget :: Slug -> String
 slugTarget (SlugTimestamp _) = "arbitrary"
 slugTarget (SlugNamed "arbitrary") = undefined -- TODO: resolve name clash
@@ -63,6 +60,7 @@ doCompile slug program = do
 -- TODO: pass in DEBUG flag here
 doMake :: Slug -> String -> QC.PropertyM IO FilePath
 doMake slug cSrc = do
+  QC.run $ createDirectoryIfMissing True buildDir
   QC.run $ writeFile srcPath cSrc
 
   (code, out, err) <- QC.run $ readProcessWithExitCode "make" makeArgs ""
@@ -74,7 +72,7 @@ doMake slug cSrc = do
 
  where
   target = slugTarget slug
-  srcPath  = cSrcDir </> target ++ ".c"
+  srcPath  = buildDir </> target ++ ".c"
   execPath = buildDir </> target
   makeArgs = ["PLATFORM=" ++ buildPlatform, target]
 

@@ -14,7 +14,6 @@
 #   PLATFORM := name of the platform being targeted
 #   PLATFORMDIR := platform-specific directory
 #   RUNTIMEDIR := directory where platform-generic runtime is located
-#   GENCDIR := directory where generated C code can be found
 #
 # The build directory is located at build/$(PLATFORM). This Makefile also sets
 # up a clean target to remove the build directory.
@@ -54,30 +53,25 @@ Makefile : ;
 # Match-all rule that jumps to BUILDDIR rule above, and does nothing else.
 % :: $(BUILDDIR) ; @:
 
-# Clean by simply removing build directory. Note that this only removes the
-# build directory for the specified PLATFORM. It also leaves generated C code
-# under genc intact.
+# Clean up by removing platform build directory. Note that this leaves other
+# platforms' build directories alone.
 .PHONY: clean
 clean:
 	$(RM) -r $(BUILDDIR)
 
-# Clean all build artifacts, including generated C code.
+# Clean build artifacts for all platforms.
 .PHONY: distclean
 distclean:
 	$(RM) -r build
-	$(RM) -r genc/*.c genc/*.h
 
 else # make was invoked from inside a build directory
 
 RUNTIMEDIR := $(ROOTDIR)/runtime
 PLATFORMDIR := $(ROOTDIR)/platform/$(PLATFORM)
-GENCDIR := $(ROOTDIR)/genc
 
 include $(RUNTIMEDIR)/Build.mk
 
 include $(PLATFORMDIR)/Build.mk
-
-include $(GENCDIR)/Build.mk
 
 include $(ROOTDIR)/Build.mk
 

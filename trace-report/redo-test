@@ -27,17 +27,17 @@ function usage () {
     echo
     echo "Usage:  $0 [load|save] <test-dir>"
     echo
-    echo "        load    Copies the generated C code to the genc directory, so"
-    echo "                that it can be recompiled manually. For convenience,"
-    echo "                it will also be copied to genc/load.c, to enable"
-    echo "                compilation via \`make loaded\`."
-    echo "        save    Adds the generated Spec.hs file to the regression-low"
-    echo "                test suite."
+    echo "        load  Copies the generated C code to the build directory, so"
+    echo "              that it can be recompiled manually. For convenience,"
+    echo "              it will also be copied to loaded.c, to allow it to be"
+    echo "              compiled using \`make loaded\`."
+    echo "        save  Adds the generated Spec.hs file to the regression-low"
+    echo "              test suite."
     echo
 }
 
 GITROOT="$(git rev-parse --show-toplevel)"
-GENCDIR="${GITROOT}/genc"
+BUILDDIR="${GITROOT}/build/trace"
 REGRESSIONDIR="${GITROOT}/test/regression-low/Regression"
 
 if ! [ $# -eq 2 ] ; then
@@ -54,10 +54,10 @@ testname="$(get_testname "$testpath")"
 
 case "$cmd" in
     load)
-        echo cp "${testpath}/${testname}.c" "${GENCDIR}/${testname}.c"
-        cp "${testpath}/${testname}.c" "${GENCDIR}/${testname}.c"
-        echo cp "${testpath}/${testname}.c" "${GENCDIR}/loaded.c"
-        cp "${testpath}/${testname}.c" "${GENCDIR}/loaded.c"
+        echo cp "${testpath}/${testname}.c" "${BUILDDIR}/${testname}.c"
+        cp "${testpath}/${testname}.c" "${BUILDDIR}/${testname}.c"
+        echo cp "${testpath}/${testname}.c" "${BUILDDIR}/loaded.c"
+        cp "${testpath}/${testname}.c" "${BUILDDIR}/loaded.c"
         ;;
     save)
         echo cp "${testpath}/${testname}Spec.hs" "${REGRESSIONDIR}/${testname}Spec.hs"
