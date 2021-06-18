@@ -42,8 +42,14 @@ BUILDDIR := build/$(PLATFORM)
 # same goals.
 .PHONY: $(BUILDDIR)
 $(BUILDDIR):
-	@+[ -d $@ ] || mkdir -p $@         # Create build directory
-	@+$(MAKE) -C $@ -f $(CURDIR)/Makefile $(MAKECMDGOALS)
+	@+[ -d $(BUILDDIR) ] || mkdir -p $(BUILDDIR)
+	@+$(MAKE) -C $(BUILDDIR) -f $(CURDIR)/Makefile $(MAKECMDGOALS)
+
+# Create build directory, and echo the path.
+.PHONY: make_builddir
+make_builddir:
+	@+[ -d $(BUILDDIR) ] || mkdir -p $(BUILDDIR)
+	@+echo $(BUILDDIR)
 
 # Do nothing for these targets, overriding the match-all rule defined below to
 # prevent recursive evaluation.
