@@ -79,7 +79,7 @@ i.e., without invoking the Haskell or C compilers. The report directory also
 contains a spec file that can be copied back into the regression test suite.
 
 In the `trace-report/` directory, there is also a `redo-test` script to help
-rerun tests. It can be used to copy the emitted C source back into the `genc`
+rerun tests. It can be used to copy the emitted C source back into the build
 directory so that it can be recompiled with `make`, or load the generated spec
 file back into the regression test suite (which is helpful for adding a randomly
 generated example into the persistent regression suite). The specific usage
