@@ -157,13 +157,13 @@ sv_t = [cty|typename sv_t|]
 --
 -- Note that this unwraps reference types and returns the base type.
 typeId :: Type -> CIdent
-typeId TInt32  = "int32"
-typeId TInt64  = "int64"
-typeId TUInt64 = "uint64"
-typeId TUInt8  = "uint8"
-typeId TBool   = "bool"
-typeId LED     = "led"
-typeId (Ref t) = typeId t
+typeId TInt32        = "int32"
+typeId TInt64        = "int64"
+typeId TUInt64       = "uint64"
+typeId TUInt8        = "uint8"
+typeId TBool         = "bool"
+typeId (Special str) = str
+typeId (Ref t)       = typeId t
 
 -- | Obtain the name of the scheduled variable type for an SSM `Type`.
 svt_ :: Type -> C.Type

@@ -107,7 +107,7 @@ getLED i = do
         case Map.lookup i (ledrefs ledp) of
           Just ref -> return ref
           Nothing  -> do
-            let ledref = Ptr ("led" ++ show i, Ref LED)
+            let ledref = Ptr ("led" ++ show i, Ref (Special "led"))
             let ledrefs' = Map.insert i ledref $ ledrefs ledp
             modify $ \st -> st { ledperipheral = Just $ ledp { ledrefs = ledrefs' } }
             return ledref
@@ -180,7 +180,7 @@ ledGlobals ledp = concat $ map (\n -> [cunit| $ty:sv_led_t $id:n; |]) $ lednames
     lednames = map (\(Ptr (r,_)) -> r) $ Map.elems (ledrefs ledp)
 
 ledInit :: LEDPeripheral -> [C.BlockItem]
-ledInit ledp = concatMap stmts leds --map stmts leds
+ledInit ledp = concatMap stmts leds
   where
     leds = map (\(i, Ptr (r,_)) -> (r,i)) $ Map.toList (ledrefs ledp)
 

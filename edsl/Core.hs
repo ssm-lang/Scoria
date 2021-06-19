@@ -80,7 +80,7 @@ data Type = TInt32
           | TInt64
           | TUInt64
           | TBool
-          | LED
+          | Special String
           | Ref Type
   deriving (Eq, Show, Generic, NFData, Read)
 
