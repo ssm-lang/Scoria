@@ -24,13 +24,14 @@ typedef struct {
   peng_time_t event_time;
   void (*to_string)(sv_t *, char *, size_t);
 
+  bool value;
+  bool event_value;
+
   /* LED specific fields */
   ll_driver_t driver; // driver used to toggle leds
   /* For this example we use a bool to model LED state, but we want our
    * own ADT type here later.
    */
-  bool value;
-  bool event_value;
 } sv_led_t;
 
 void to_string_led(sv_t *v, char *buffer, size_t size);

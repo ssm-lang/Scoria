@@ -127,6 +127,7 @@ prettyType t = case t of
     TInt64  -> "int64"
     TUInt64 -> "uint64"
     TBool   -> "bool"
+    LED     -> "LED"
     Ref t   -> "*" ++ prettyType t
 
 prettyLit :: SSMLit -> String
