@@ -214,11 +214,11 @@ runProcess = do
                 newRef (getVarName n) e
                 runProcess
             GetRef n t r    -> do
-                v <- readRef (fst r)
+                v <- readRef (refName r)
                 newVar (getVarName n) v
                 runProcess
             SetRef r e      -> do
-                writeRef (fst r) e
+                writeRef (refName r) e
                 runProcess
             SetLocal n t e2 -> do
                 writeRef (getVarName n) e2
@@ -235,7 +235,7 @@ runProcess = do
                 runProcess
             Skip            -> runProcess
             After d r v     -> do
-                ref  <- lookupRef $ fst r
+                ref  <- lookupRef $ refName r
                 d'   <- getUInt64 <$> eval d
                 v'   <- eval v
                 now' <- gets now
@@ -247,7 +247,7 @@ runProcess = do
             -- received a new value, and fork blocks until all child processes have terminated.
             Wait refs       -> do
                 wait refs
-                mapM_ (sensitize . fst) refs
+                mapM_ (sensitize . refName) refs
             Fork procs      -> do
                 tell $ toHughes [T.Fork $ map fst procs]
                 modify $ \st -> st { process = (process st) { runningChildren = length procs } }
@@ -331,7 +331,7 @@ lift' = lift . lift
 
 wait :: [Reference] -> Interp s ()
 wait refs = do
-    refs' <- mapM (lookupRef . fst) refs
+    refs' <- mapM (lookupRef . refName) refs
     modify $ \st -> st { process = (process st) { waitingOn = Just refs' } }
 
 -- | Enqueue a new, forked process.
@@ -356,7 +356,7 @@ fork (n,args) prio dep par = do
                   Left e  -> do v <- eval e
                                 v' <- lift' (newVar' v currenttime)
                                 return (n, v')
-                  Right r -> do ref <- lookupRef (fst r)
+                  Right r -> do ref <- lookupRef (refName r)
                                 return (n, ref)
           return $ Map.fromList m
 
@@ -582,7 +582,7 @@ eval e = do
             Nothing -> error $ "interpreter error - variable " ++ n ++ " not found in current process"
         Lit _ l -> return e
         UOpR _ r op -> case op of
-            Changed -> wasWritten $ fst r
+            Changed -> wasWritten $ refName r
         UOpE _ e Neg -> do
             e' <- eval e
             return $ neg e'

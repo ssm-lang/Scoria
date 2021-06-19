@@ -63,7 +63,7 @@ instance Arbitrary Program where
     let funs = [ ("fun" ++ show i, as) | (as,i) <- zip types [1..]]
     tab <- mfix $ \tab -> sequence
         [ do let (refs, vars) = partition (isReference . fst) $ zip as [1..]
-             let inprefs      = [ ("ref" ++ show i        , t) | (t,i) <- refs]
+             let inprefs      = [ Dynamic ("ref" ++ show i, t) | (t,i) <- refs]
              let inpvars      = [ (Fresh $ "var" ++ show i, t) | (t,i) <- vars]
 
              (body,_)        <- arbProc tab inpvars inprefs 0 =<< choose (0, 15)
@@ -85,12 +85,13 @@ instance Arbitrary Program where
     let funs = Map.fromList $ [ (fun, Procedure fun params bdy)
                               | (fun, params, bdy) <- tab]
     
-    return $ Program entrypoint args funs
+    -- FIXME: This should not be const Dynamic when we add generation of IO stuff to the generator
+    return $ Program entrypoint (map (either (Left) (Right . Dynamic)) args) funs
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program
         -> [Variable]     -- ^ Variables in scope
-        -> [Ref]          -- ^ References in scope
+        -> [Reference]          -- ^ References in scope
         -> Int            -- ^ Fresh name generator
         -> Int            -- ^ Size parameter
         -> Gen ([Stm], Int)
@@ -101,7 +102,7 @@ arbProc funs vars refs c n = frequency $
                (name,c1) <- fresh c
                let rt     = mkReference t
                let stm    = NewRef name rt e
-               let ref    = (getVarName name, rt)
+               let ref    = Dynamic (getVarName name, rt)
                (rest, c2) <- arbProc funs vars (ref:refs) c1 (n-1)
                return (stm:rest, c2)
         )
@@ -135,23 +136,23 @@ arbProc funs vars refs c n = frequency $
         )]) ++
 
       (if null refs then [] else
-      [ (1, do r@(_,t)   <- elements refs
+      [ (1, do r         <- elements refs
                (name,c1) <- fresh c
-               let t'    = dereference t
+               let t'    = dereference (refType r)
                (rest,c2) <- arbProc funs ((name, t'):vars) refs c1 (n-1)
                let stm   = GetRef name t' r
                return (stm:rest, c2)
         )
       
-      , (1, do r@(_,t) <- elements refs
-               e       <- choose (0,3) >>= arbExp (dereference t) vars refs
+      , (1, do r       <- elements refs
+               e       <- choose (0,3) >>= arbExp (dereference (refType r)) vars refs
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm = SetRef r e
                return (stm:rest, c')
         )
       
-      , (1, do r@(_,t)  <- elements refs
-               v        <- choose (0,3) >>= arbExp (dereference t) vars refs
+      , (1, do r        <- elements refs
+               v        <- choose (0,3) >>= arbExp (dereference (refType r)) vars refs
                delay    <- Lit TUInt64 . LUInt64 <$> choose (1, 5000)
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm   = After delay r v
@@ -171,13 +172,13 @@ arbProc funs vars refs c n = frequency $
       -- | Take a procedure that should be forked and return the application of
       -- that procedure to randomly generated arguments.
       applyFork :: [Variable]
-                -> [Ref]
+                -> [Reference]
                 -> (String, [(String, Type)], [Stm])
                 -> Gen (String, [Either SSMExp Reference])
       applyFork vars refs (n, types, _) = do
           args <- forM types $ \(_,t) ->
             if isReference t
-              then do let okrefs = filter ((==) t . snd) refs
+              then do let okrefs = filter ((==) t . refType) refs
                       Right <$> elements okrefs
               else Left <$> (choose (0,3) >>= arbExp t vars refs)
           return (n, args)
@@ -185,9 +186,9 @@ arbProc funs vars refs c n = frequency $
       -- | Predicate that returns True if the given procedure can be forked.
       -- What determines this is what references we have in scope. If the procedure
       -- requires a reference parameter that we do not have, we can not fork it.
-      canBeCalled :: [Ref] -> (String, [(String, Type)], [Stm]) -> Bool
+      canBeCalled :: [Reference] -> (String, [(String, Type)], [Stm]) -> Bool
       canBeCalled inscope (_, types, _) =
-          let distinct = nub $ filter isReference $ map snd inscope
+          let distinct = nub $ filter isReference $ map refType inscope
           in all (`elem` distinct) $ filter isReference $ map snd types
 
 -- | Generate a SSMExp.
@@ -293,22 +294,22 @@ shrinkRefs p = let procedures = Map.toList $ funs p
 removeAllDeclaredRefs :: Procedure -> [Procedure]
 removeAllDeclaredRefs p = let refs = allRefs p in removeRefs p refs
 
-removeRefs :: Procedure -> [Ref] -> [Procedure]
+removeRefs :: Procedure -> [Reference] -> [Procedure]
 removeRefs p refs =  map fromJust $ filter isJust $ for refs $ \ref -> do
-    let initialrefs = filter (isReference . snd) $ arguments p
+    let initialrefs = map Dynamic $ filter (isReference . snd) $ arguments p
     body' <- removeRef' ref [] initialrefs (body p)
     return $ p { body = body' }
   where
     -- | Tries to remove a reference from a procedure. If successful it returns the new
     -- procedure, and if not it will return Nothing.
-    removeRef' :: Ref          -- ^ Reference to remove
+    removeRef' :: Reference    -- ^ Reference to remove
                -> [Variable]   -- ^ Variables that are no longer valid
-               -> [Ref]        -- ^ References that are valid
+               -> [Reference]  -- ^ References that are valid
                -> [Stm]        -- ^ Procedure body to transform
                -> Maybe [Stm]
     removeRef' _   _    _    []     = Just []
     removeRef' ref vars refs (x:xs) = case x of
-      NewRef n t e -> let r = (getVarName n, t) in if r == ref
+      NewRef n t e -> let r = Dynamic (getVarName n, t) in if r == ref
         then removeRef' ref vars refs xs
         else let stm = NewRef n t (rewriteExp vars ref e)
              in (:) stm <$> removeRef' ref vars (r:refs) xs
@@ -379,7 +380,7 @@ removeRefs p refs =  map fromJust $ filter isJust $ for refs $ \ref -> do
           args' <- sequence $ for args $ \a -> case a of
                 Left e  -> Just $ Left $ rewriteExp vars ref e
                 Right r -> if r == ref
-                             then replaceRef $ snd r
+                             then replaceRef $ refType r
                              else Just $ Right r
           return (n, args')
         
@@ -387,17 +388,17 @@ removeRefs p refs =  map fromJust $ filter isJust $ for refs $ \ref -> do
         -- exists. NOTE: The choice to take the head here is arbitrary. Discuss
         -- with Koen.
         replaceRef :: Type -> Maybe (Either SSMExp Reference)
-        replaceRef t = case filter ((==) t . snd) refs of
+        replaceRef t = case filter ((==) t . refType) refs of
             []    -> Nothing
             (x:_) -> Just $ Right x
 
 -- | All declared references in a program (expect procedure arguments)
-allRefs :: Procedure -> [(String, Type)]
+allRefs :: Procedure -> [Reference]
 allRefs p = refs $ body p
   where
-    refs :: [Stm] -> [(String, Type)]
+    refs :: [Stm] -> [Reference]
     refs xs = concat $ for xs $ \x -> case x of
-      NewRef n t e -> [(getVarName n,t)]
+      NewRef n t e -> [Dynamic (getVarName n,t)]
       If _ thn els -> refs thn ++ refs els
       While _ bdy  -> refs bdy
       _            -> []
@@ -657,8 +658,8 @@ class Named a where
 instance Named Name where
   getName n = getVarName n
 
-instance Named Ref where
-  getName (r,t) = r
+instance Named Reference where
+  getName r = refName r
 
 -- | This function rewrites a procedure body to account for a removed procedure argument.
 shrinkProcedureBody :: String  -- ^ Name of the function we are rewriting.
@@ -740,7 +741,7 @@ shrinkProcedureBody f n i xs = runReader (shrinkArityStm xs) (St f n i [])
        UOpR t r op    -> do
          tor <- asks toremove
          case op of
-           Changed -> if fst r == tor
+           Changed -> if refName r == tor
              then return $ defaultVal t
              else return $ UOpR t r op
        UOpE t e op    -> do
@@ -778,7 +779,7 @@ shrinkProcedureBody f n i xs = runReader (shrinkArityStm xs) (St f n i [])
      alterArg (Left e)  = (Just . Left) <$> alterExp e
      alterArg (Right r) = do
        tor <- asks toremove
-       if fst r == tor
+       if refName r == tor
          then return Nothing
          else return $ Just $ Right r
 

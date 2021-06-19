@@ -65,7 +65,7 @@ instance AnnotatedM SSM (Ref a) where
         let stmt = last stmts
         let stmt' = renameStmt stmt info
         modify $ \st -> st { statements = init stmts ++ [stmt']}
-        return $ renameRef v info
+        return $ Frontend.renameRef v info
 
 renameStmt :: SSMStm -> SrcInfo -> SSMStm
 renameStmt s (Info Nothing _)               = s
@@ -87,7 +87,7 @@ renameExp e (Info (Just n) _) = case e of
 renameRef :: Ref a -> SrcInfo -> Ref a
 renameRef e (Info Nothing _) = e
 renameRef e (Info _ Nothing) = e
-renameRef (Ptr (_,t)) (Info (Just n) _) = Ptr $ (n, t)
+renameRef (Ptr r) (Info (Just n) _) = Ptr $ Core.renameRef r n
 
 newtype Ref a = Ptr Reference -- references that are shared, (variable name, ref to value)
   deriving Show
@@ -125,9 +125,9 @@ instance Arg (Exp a) where
         return $ (Exp (Var (expType b) x), xs)
 
 instance Arg (Ref a) where
-    arg name (x:xs) (Ptr (e,t)) = do
-        emit $ Argument name x (Right (e,t))
-        return (Ptr (x, t), xs)
+    arg name (x:xs) (Ptr r) = do
+        emit $ Argument name x (Right r)
+        return (Ptr $ Core.renameRef r x, xs)
 
 -- | Possible results of SSM procedures (they can't return anything)
 instance Res () where
@@ -135,8 +135,10 @@ instance Res () where
 
 -- | When interpreting or compiling a SSM program that requires input references,
 -- supply this value instead.
+-- FIXME: Always having Dynamic here is probably fine, but when we add more
+-- IO peripherals we might need to reconsider.
 inputref :: forall a. SSMType a => Ref a
-inputref = Ptr ("dummy", Ref (typeOf (Proxy @a)))
+inputref = Ptr $ Dynamic ("dummy", Ref (typeOf (Proxy @a)))
 
 class Assignable a b where
     (<~) :: a -> b -> SSM ()
@@ -188,13 +190,13 @@ deref :: Ref a -> SSM (Exp a)
 deref (Ptr r) = do
     n <- fresh
     emit $ GetRef (Fresh n) r
-    return $ Exp $ Var (dereference (snd r)) n
+    return $ Exp $ Var (dereference $ refType r) n
 
 var :: Exp a -> SSM (Ref a)
 var (Exp e) = do
     n <- fresh
     emit $ NewRef (Fresh n) e
-    return $ Ptr $ (n, mkReference (expType e))
+    return $ Ptr $ Dynamic (n, mkReference (expType e))
 
 wait :: [Ref a] -> SSM ()
 wait r = emit $ Wait (map (\(Ptr r') -> r') r)

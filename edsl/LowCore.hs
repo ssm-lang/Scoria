@@ -18,6 +18,7 @@ module LowCore
      , C.dereference
      , C.isReference
      , C.getVarName
+     , C.refName
      ) where
 
 import qualified Core as C
@@ -118,7 +119,7 @@ transpileProcedure xs = fmap concat $ flip mapM xs $ \x -> case x of
       return []
     C.Argument n x a -> do 
       let arginfo = (x, either C.expType C.refType a)
-      let a'      = either (Left) (Right . (,) x . snd) a
+      let a'      = either (Left) (Right . flip C.renameRef x) a
       modify $ \st -> st { mainargs    = mainargs st ++ [arginfo]
                          , mainargvals = mainargvals st ++ [a']
                          }

@@ -16,7 +16,17 @@ import qualified Data.Typeable as T
 import Control.Monad.State.Lazy
 import BinderAnn.Monadic
 
-type Reference = (String, Type)
+data Reference = Dynamic (String, Type)
+               | Static  (String, Type)
+  deriving (Eq, Generic, NFData, Show, Read)
+
+renameRef :: Reference -> String -> Reference
+renameRef (Dynamic (_,t)) n = Dynamic (n,t)
+renameRef (Static (_,t)) n  = Static  (n,t)
+
+refName :: Reference -> String
+refName (Dynamic (n,_)) = n
+refName (Static (n,_))  = n
 
 data Name = Fresh String
           | Captured (String,Int,Int) String
@@ -110,7 +120,8 @@ expType (UOpR t _ _)  = t
 expType (BOp t _ _ _) = t
 
 refType :: Reference -> Type
-refType (_,t) = t
+refType (Dynamic (_,t)) = t
+refType (Static (_,t))  = t
 
 dereference :: Type -> Type
 dereference (Ref t) = t

@@ -50,7 +50,7 @@ data TRState = TRState
   { procedure :: Procedure        -- ^ Procedure we are compiling
   , ncase     :: Int              -- ^ Which number has the next case?
   , numwaits  :: Int              -- ^ The size of the widest wait
-  , locals    :: [(String, Type)] -- ^ Local references declared with var
+  , locals    :: [Reference] -- ^ Local references declared with var
   }
 
 -- | Translation monad.
@@ -68,8 +68,8 @@ nextCase = do
   return n
 
 -- | Register a local variable for which an sv should be allocated.
-addLocal :: String -> Type -> TR ()
-addLocal n t = modify $ \st -> st { locals = (n, t) : locals st }
+addLocal :: Reference -> TR ()
+addLocal r = modify $ \st -> st { locals = r : locals st }
 
 -- | Maintain the maximum number of variables a 'Procedure' waits on.
 maxWaits :: Int -> TR ()
@@ -254,18 +254,21 @@ genMain program =
   enterArg (Left  ssmExp  ) = genExp [] ssmExp
   -- ^ TODO: this is buggy if ssmExp contains a var?? Maybe double check what's
   -- going on with that.
-  enterArg (Right (ref, _)) = [cexp|&$id:ref|]
+  enterArg (Right r) = [cexp|&$id:(refName r)|]
 
   argInits = concatMap argInit $ rights $ args program
-  argInit (ref, typ) =
+  argInit r =
     [ [citem|$ty:(svt_ typ) $id:ref;|]
     , [citem|$id:(initialize_ typ)(&$id:ref);|]
     , [citem|$id:ref.value = 0;|]
       -- Args to the main SSM procedure are always given default values of 0.
     ]
+    where
+      typ = refType r
+      ref = refName r
 
   refPrints = map refPrint $ rights $ args program
-  refPrint (ref, typ) =
+  refPrint r =
     [citem|printf($string:fmtString, $id:fmtType, ($ty:fmtCast) $id:ref.value);|]
    where
     -- | We need to explicitly check if typ is an unsigned type to give it the
@@ -273,6 +276,8 @@ genMain program =
     --
     -- TODO: once we move the formatters and type gen stuff into Haskell itself,
     -- we can just look it up from there.
+    typ = refType r
+    ref = refName r
     fmtString | typ `elem` [Ref TUInt64, Ref TUInt8] = "result " ++ ref ++ " %s %lu\n"
               | otherwise                    = "result " ++ ref ++ " %s %ld\n"
     fmtType = "str_" ++ typeId typ
@@ -322,7 +327,7 @@ genStruct = do
   param (n, Ref t) = [csdecl|$ty:(svt_ t) *$id:n;|]
   param (n, t    ) = [csdecl|$ty:(svt_ t) $id:n;|]
 
-  local (n, t) = [csdecl|$ty:(svt_ t) $id:n;|]
+  local r = [csdecl|$ty:(svt_ (refType r)) $id:(refName r);|]
 
   trig i = [csdecl|$ty:trigger_t $id:t;|] where t = "trig" ++ show i
 
@@ -371,7 +376,7 @@ genEnter = do
     , [cstm|act->$id:n.value = $id:n;|]
     ]
 
-  initLocal (n, t) = [cstm| $id:(initialize_ t)(&act->$id:n);|]
+  initLocal r = [cstm| $id:(initialize_ (refType r))(&act->$id:(refName r));|]
 
   initTrig i = [cstm| act->$id:trig.act = gen_act;|]
     where trig = "trig" ++ show i
@@ -409,7 +414,7 @@ genStep = do
         }
       |]
     )
-  where dequeue (s, _) = [cstm|$id:dequeue_event(($ty:sv_t *) &act->$id:s);|]
+  where dequeue r = [cstm|$id:dequeue_event(($ty:sv_t *) &act->$id:(refName r));|]
 
 -- | Generate the list of statements from each 'Stm' in an SSM 'Procedure'.
 --
@@ -420,48 +425,53 @@ genStep = do
 -- TODOs: remove hard-coded act variable name.
 genCase :: Stm -> TR [C.Stm]
 genCase (NewRef n t v) = do
-  locs <- map fst <$> gets locals
+  locs <- map refName <$> gets locals
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
       rhs  = genExp locs v
-  addLocal lvar t
+  addLocal (Dynamic (lvar, t))
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
-genCase (GetRef n t (rvar, _)) = do
-  locs <- map fst <$> gets locals
-  let lvar = getVarName n
+genCase (GetRef n t r) = do
+  locs <- map refName <$> gets locals
+  let rvar = refName r
+      lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
       rhs  = if rvar `elem` locs
         then [cexp|act->$id:rvar.value|]
         else [cexp|act->$id:rvar->value|]
-  addLocal lvar t -- FIXME: I guess GetRef also declares a variable??
+  addLocal (Dynamic (lvar, t))
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
-genCase (SetRef (lvar, t) e) = do
-  locs <- map fst <$> gets locals
-  let lhs = if lvar `elem` locs
+genCase (SetRef r e) = do
+  locs <- map refName <$> gets locals
+  let lvar = refName r
+      t    = refType r
+      lhs = if lvar `elem` locs
         then [cexp|&act->$id:lvar|]
         else [cexp|act->$id:lvar|]
       rhs = genExp locs e
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 genCase (SetLocal n t e) = do
-  locs <- map fst <$> gets locals
+  locs <- map refName <$> gets locals
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
       rhs  = genExp locs e
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 genCase (If c t e) = do
-  locs <- map fst <$> gets locals
+  locs <- map refName <$> gets locals
   let cnd = genExp locs c
   thn <- concat <$> mapM genCase t
   els <- concat <$> mapM genCase e
   return [[cstm| if ($exp:cnd) { $stms:thn } else { $stms:els }|]]
 genCase (While c b) = do
-  locs <- map fst <$> gets locals
+  locs <- map refName <$> gets locals
   let cnd = genExp locs c
   bod <- concat <$> mapM genCase b
   return [[cstm| while ($exp:cnd) { $stms:bod } |]]
-genCase (After d (lvar, t) v) = do
-  locs <- map fst <$> gets locals
-  let del = genExp locs d
+genCase (After d r v) = do
+  locs <- map refName <$> gets locals
+  let lvar = refName r
+      t    = refType r
+      del = genExp locs d
       lhs = if lvar `elem` locs
         then [cexp|&act->$id:lvar|]
         else [cexp|act->$id:lvar|]
@@ -471,7 +481,7 @@ genCase (After d (lvar, t) v) = do
 genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts
-  locs <- map fst <$> gets locals
+  locs <- map refName <$> gets locals
   let trigs = zip [1 ..] $ map (genTrig locs) ts
   return
     $  fmap sensitizeTrig trigs
@@ -484,13 +494,15 @@ genCase (Wait ts) = do
   sensitizeTrig (i, trig) =
     [cstm|$id:sensitize(($ty:sv_t *) $exp:trig, &act->$id:(trig_ i));|]
   desensitizeTrig (i, _) = [cstm|$id:desensitize(&act->$id:(trig_ i));|]
-  genTrig refs (trig, _) =
+  genTrig refs r =
     if trig `elem` refs then [cexp|&act->$id:trig|] else [cexp|act->$id:trig|]
+    where
+      trig = refName r
 genCase (Fork cs) = do
-  locs    <- map fst <$> gets locals
+  locs    <- map refName <$> gets locals
   caseNum <- nextCase
   let
-    genCall i (r, as) =
+    genCall i (r,as) =
       [cstm|$id:fork(($ty:act_t *) $id:(enter_ r)($args:enterArgs));|]
      where
       enterArgs =
@@ -500,8 +512,8 @@ genCase (Fork cs) = do
           ]
           ++ map genArg as
       genArg (Left e) = genExp locs e
-      genArg (Right (r, _)) =
-        if r `elem` locs then [cexp|&act->$id:r|] else [cexp|act->$id:r|]
+      genArg (Right r) =
+        if (refName r) `elem` locs then [cexp|&act->$id:(refName r)|] else [cexp|act->$id:(refName r)|]
 
       newDepth = [cexp|act->depth - $int:depthSub|]
       depthSub =
@@ -527,9 +539,9 @@ genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename uint64) $int:i|]
 genExp _  (Lit _ (LBool   True )) = [cexp|true|]
 genExp _  (Lit _ (LBool   False)) = [cexp|false|]
 genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
-genExp ls (UOpR _ (n, _) Changed)
-  | n `elem` ls = [cexp|event_on(($ty:sv_t *) &act->$id:n)|]
-  | otherwise   = [cexp|event_on(($ty:sv_t *) act->$id:n)|]
+genExp ls (UOpR _ r Changed)
+  | refName r `elem` ls = [cexp|event_on(($ty:sv_t *) &act->$id:(refName r))|]
+  | otherwise           = [cexp|event_on(($ty:sv_t *) act->$id:(refName r))|]
 -- | Circumvent optimizations that take advantage of C's undefined signed
 -- integer wraparound behavior. FIXME: remove this hack, which is probably not
 -- robust anyway if C is aggressive about inlining.

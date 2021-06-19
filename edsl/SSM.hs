@@ -107,7 +107,7 @@ getLED i = do
         case Map.lookup i (ledrefs ledp) of
           Just ref -> return ref
           Nothing  -> do
-            let ledref = Ptr ("led" ++ show i, Ref (Special "led"))
+            let ledref = Ptr $ Static $ ("led" ++ show i, Ref (Special "led"))
             let ledrefs' = Map.insert i ledref $ ledrefs ledp
             modify $ \st -> st { ledperipheral = Just $ ledp { ledrefs = ledrefs' } }
             return ledref
@@ -177,12 +177,12 @@ ll_driver_t = [cty| typename ll_driver_t |]
 ledGlobals :: LEDPeripheral -> [C.Definition]
 ledGlobals ledp = concat $ map (\n -> [cunit| $ty:sv_led_t $id:n; |]) $ lednames
   where
-    lednames = map (\(Ptr (r,_)) -> r) $ Map.elems (ledrefs ledp)
+    lednames = map (\(Ptr r) -> refName r) $ Map.elems (ledrefs ledp)
 
 ledInit :: LEDPeripheral -> [C.BlockItem]
 ledInit ledp = concatMap stmts leds
   where
-    leds = map (\(i, Ptr (r,_)) -> (r,i)) $ Map.toList (ledrefs ledp)
+    leds = map (\(i, Ptr r) -> (refName r,i)) $ Map.toList (ledrefs ledp)
 
     stmts (n,i) = [ [citem| initialize_led(&$id:n, $int:i); |]
                   , [citem| $id:n.value = false; |]

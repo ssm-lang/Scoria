@@ -9,10 +9,10 @@ import qualified Test.Ssm.Prop                 as T
 p :: Program
 p = Program
   { entry = "fun1"
-  , args  = [ Right ("ref2", Ref TUInt64)
-            , Right ("ref3", Ref TInt32)
-            , Right ("ref4", Ref TUInt64)
-            , Right ("ref8", Ref TInt64)
+  , args  = [ Right $ Dynamic ("ref2", Ref TUInt64)
+            , Right $ Dynamic ("ref3", Ref TInt32)
+            , Right $ Dynamic ("ref4", Ref TUInt64)
+            , Right $ Dynamic ("ref8", Ref TInt64)
             ]
   , funs  = fromList
     [ ( "fun1"
@@ -26,7 +26,7 @@ p = Program
         , body      =
           [ After
             (Lit TUInt64 (LUInt64 600))
-            ("ref4", Ref TUInt64)
+            (Dynamic ("ref4", Ref TUInt64))
             (BOp
               TUInt64
               (BOp TUInt64
@@ -41,11 +41,11 @@ p = Program
               )
               OPlus
             )
-          , GetRef (Fresh "v0") TInt32 ("ref3", Ref TInt32)
-          , GetRef (Fresh "v1") TInt32 ("ref3", Ref TInt32)
+          , GetRef (Fresh "v0") TInt32 (Dynamic ("ref3", Ref TInt32))
+          , GetRef (Fresh "v1") TInt32 (Dynamic ("ref3", Ref TInt32))
           , After
             (Lit TUInt64 (LUInt64 1065))
-            ("ref3", Ref TInt32)
+            (Dynamic ("ref3", Ref TInt32))
             (BOp
               TInt32
               (BOp TInt32 (Var TInt32 "v1") (Var TInt32 "v0") OTimes)
@@ -56,27 +56,27 @@ p = Program
               )
               OPlus
             )
-          , Wait [("ref4", Ref TUInt64)]
+          , Wait [Dynamic ("ref4", Ref TUInt64)]
           , Fork
             [ ( "fun1"
-              , [ Right ("ref4", Ref TUInt64)
-                , Right ("ref3", Ref TInt32)
-                , Right ("ref4", Ref TUInt64)
-                , Right ("ref8", Ref TInt64)
+              , [ Right $ Dynamic ("ref4", Ref TUInt64)
+                , Right $ Dynamic ("ref3", Ref TInt32)
+                , Right $ Dynamic ("ref4", Ref TUInt64)
+                , Right $ Dynamic ("ref8", Ref TInt64)
                 ]
               )
             , ( "fun1"
-              , [ Right ("ref2", Ref TUInt64)
-                , Right ("ref3", Ref TInt32)
-                , Right ("ref2", Ref TUInt64)
-                , Right ("ref8", Ref TInt64)
+              , [ Right $ Dynamic ("ref2", Ref TUInt64)
+                , Right $ Dynamic ("ref3", Ref TInt32)
+                , Right $ Dynamic ("ref2", Ref TUInt64)
+                , Right $ Dynamic ("ref8", Ref TInt64)
                 ]
               )
             , ( "fun1"
-              , [ Right ("ref4", Ref TUInt64)
-                , Right ("ref3", Ref TInt32)
-                , Right ("ref4", Ref TUInt64)
-                , Right ("ref8", Ref TInt64)
+              , [ Right $ Dynamic ("ref4", Ref TUInt64)
+                , Right $ Dynamic ("ref3", Ref TInt32)
+                , Right $ Dynamic ("ref4", Ref TUInt64)
+                , Right $ Dynamic ("ref8", Ref TInt64)
                 ]
               )
             ]
