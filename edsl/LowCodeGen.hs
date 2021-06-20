@@ -210,7 +210,9 @@ static int _add(int a, int b) {
   return a + b;
 }
 |]
-  where limit = maybe [cexp|ULONG_MAX|] (\i -> [cexp|$int:i|]) tickLimit
+  where
+    limit :: C.Exp
+    limit = maybe [cexp|ULONG_MAX|] (\i -> [cexp|$int:i|]) tickLimit
 
 -- | Generate C definition for the main program and the top_return function,
 -- both to be placed at the bottom of the generated C (or at least after the
@@ -244,19 +246,25 @@ genMain program =
     |]
   ]
  where
+  enter :: String
   enter = enter_ $ entry program
+  
+  enterArgs :: [C.Exp]
   enterArgs =
     [ [cexp|($ty:act_t *) &top|]
       , [cexp|PRIORITY_AT_ROOT|]
       , [cexp|DEPTH_AT_ROOT|]
       ]
       ++ map enterArg (args program)
-  enterArg (Left  ssmExp  ) = genExp [] ssmExp
-  -- ^ TODO: this is buggy if ssmExp contains a var?? Maybe double check what's
-  -- going on with that.
-  enterArg (Right r) = [cexp|&$id:(refName r)|]
+  
+  enterArg :: Either SSMExp Reference -> C.Exp
+  enterArg (Left  ssmExp) = genExp [] ssmExp
+  enterArg (Right r)      = [cexp|&$id:(refName r)|]
 
+  argInits :: [C.BlockItem]
   argInits = concatMap argInit $ rights $ args program
+
+  argInit :: Reference -> [C.BlockItem]
   argInit r =
     [ [citem|$ty:(svt_ typ) $id:ref;|]
     , [citem|$id:(initialize_ typ)(&$id:ref);|]
@@ -264,10 +272,16 @@ genMain program =
       -- Args to the main SSM procedure are always given default values of 0.
     ]
     where
+      typ :: Type
       typ = refType r
+
+      ref :: String
       ref = refName r
 
+  refPrints :: [C.BlockItem]
   refPrints = map refPrint $ rights $ args program
+  
+  refPrint :: Reference -> C.BlockItem
   refPrint r =
     [citem|printf($string:fmtString, $id:fmtType, ($ty:fmtCast) $id:ref.value);|]
    where
@@ -276,13 +290,22 @@ genMain program =
     --
     -- TODO: once we move the formatters and type gen stuff into Haskell itself,
     -- we can just look it up from there.
+    typ :: Type
     typ = refType r
+    
+    ref :: String
     ref = refName r
+
+    fmtString :: String
     fmtString | typ `elem` [Ref TUInt64, Ref TUInt8] = "result " ++ ref ++ " %s %lu\n"
-              | otherwise                    = "result " ++ ref ++ " %s %ld\n"
+              | otherwise                            = "result " ++ ref ++ " %s %ld\n"
+    
+    fmtType :: String
     fmtType = "str_" ++ typeId typ
+    
+    fmtCast :: C.Type
     fmtCast | typ `elem` [Ref TUInt64, Ref TUInt8] = [cty|unsigned long|]
-            | otherwise                    = [cty|long|]
+            | otherwise                            = [cty|long|]
 
 -- | Generate definitions for an SSM 'Procedure'.
 --
@@ -314,6 +337,7 @@ genStruct = do
     } $id:(act_ $ name p);
   |]
  where
+  aCTIVATION_RECORD_FIELDS :: [C.FieldGroup]
   aCTIVATION_RECORD_FIELDS =
     [ [csdecl|$ty:stepf_t *step;|]
     , [csdecl|struct act *caller;|]
@@ -324,11 +348,14 @@ genStruct = do
     , [csdecl|$ty:bool_t scheduled;|]
     ]
 
+  param :: (String, Type) -> C.FieldGroup
   param (n, Ref t) = [csdecl|$ty:(svt_ t) *$id:n;|]
   param (n, t    ) = [csdecl|$ty:(svt_ t) $id:n;|]
 
+  local :: Reference -> C.FieldGroup
   local r = [csdecl|$ty:(svt_ (refType r)) $id:(refName r);|]
 
+  trig :: Int -> C.FieldGroup
   trig i = [csdecl|$ty:trigger_t $id:t;|] where t = "trig" ++ show i
 
 -- | Generate the enter function for an SSM 'Procedure', where its struct is
@@ -339,9 +366,9 @@ genEnter = do
   p  <- gets procedure
   ts <- gets numwaits
   ls <- gets locals
-  let act   = [cty|typename $id:(act_ $ name p)|]
-      enter = enter_ $ name p
-      step  = step_ $ name p
+  let act    = [cty|typename $id:(act_ $ name p)|]
+      enter  = enter_ $ name p
+      step   = step_ $ name p
       params =
         [cparams|$ty:act_t *caller, $ty:priority_t priority, $ty:depth_t depth|]
           ++ map param (arguments p)
@@ -367,17 +394,21 @@ genEnter = do
     )
  where
   -- | TODO: This only works because we don't have nested Refs (yet)
+  param :: (String, Type) -> C.Param
   param (n, Ref t) = [cparam|$ty:(svt_ t) *$id:n|]
   param (n, t    ) = [cparam|typename $id:(typeId t) $id:n|]
 
+  initParam :: (String, Type) -> [C.Stm]
   initParam (n, Ref t) = [[cstm|act->$id:n = $id:n;|]]
-  initParam (n, t) =
+  initParam (n, t)     =
     [ [cstm|$id:(initialize_ t)(&act->$id:n);|]
     , [cstm|act->$id:n.value = $id:n;|]
     ]
 
+  initLocal :: Reference -> C.Stm
   initLocal r = [cstm| $id:(initialize_ (refType r))(&act->$id:(refName r));|]
 
+  initTrig :: Int -> C.Stm
   initTrig i = [cstm| act->$id:trig.act = gen_act;|]
     where trig = "trig" ++ show i
 
@@ -388,11 +419,11 @@ genEnter = do
 -- 'genCase'.
 genStep :: TR (C.Definition, C.Definition)
 genStep = do
-  p     <- gets procedure
-  _     <- nextCase -- Toss away 0th case
-  cases <- concat <$> mapM genCase (body p)
-  refs  <- gets locals
-  final <- nextCase
+  p        <- gets procedure
+  nextCase -- Toss away 0th case
+  cases    <- concat <$> mapM genCase (body p)
+  refs     <- gets locals
+  final    <- nextCase
   let step = step_ $ name p
       act  = [cty|typename $id:(act_ $ name p)|]
   return
@@ -414,7 +445,27 @@ genStep = do
         }
       |]
     )
-  where dequeue r = [cstm|$id:dequeue_event(($ty:sv_t *) &act->$id:(refName r));|]
+  where
+    dequeue :: Reference -> C.Stm
+    dequeue r = [cstm|$id:dequeue_event(($ty:sv_t *) &act->$id:(refName r));|]
+
+-- | Given a Reference, this function will return a C expression that holds
+-- the value of that reference.
+refVal :: Reference -> [Reference] -> C.Exp
+refVal r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| act->$id:(refName r).value|]
+    else [cexp| act->$id:(refName r)->value|]
+refVal r@(Static _) _      = [cexp| $id:(refName r).value |]
+
+-- | Given a reference and a list of local references, this function will return
+-- a C expression that holds a pointer to the reference.
+refPtr :: Reference -> [Reference] -> C.Exp
+refPtr r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| &act->$id:(refName r) |]
+    else [cexp| act->$id:(refName r)  |]
+refPtr r@(Static _) _ = [cexp| &$id:(refName r) |]
 
 -- | Generate the list of statements from each 'Stm' in an SSM 'Procedure'.
 --
@@ -425,101 +476,100 @@ genStep = do
 -- TODOs: remove hard-coded act variable name.
 genCase :: Stm -> TR [C.Stm]
 genCase (NewRef n t v) = do
-  locs <- map refName <$> gets locals
+  lrefs <- gets locals
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
-      rhs  = genExp locs v
+      rhs  = genExp lrefs v
   addLocal (Dynamic (lvar, t))
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 genCase (GetRef n t r) = do
-  locs <- map refName <$> gets locals
-  let rvar = refName r
-      lvar = getVarName n
-      lhs  = [cexp|&act->$id:lvar|]
-      rhs  = if rvar `elem` locs
-        then [cexp|act->$id:rvar.value|]
-        else [cexp|act->$id:rvar->value|]
-  addLocal (Dynamic (lvar, t))
-  return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
-genCase (SetRef r e) = do
-  locs <- map refName <$> gets locals
-  let lvar = refName r
-      t    = refType r
-      lhs = if lvar `elem` locs
-        then [cexp|&act->$id:lvar|]
-        else [cexp|act->$id:lvar|]
-      rhs = genExp locs e
-  return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
-genCase (SetLocal n t e) = do
-  locs <- map refName <$> gets locals
+  lrefs <- gets locals
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
-      rhs  = genExp locs e
+  addLocal (Dynamic (lvar, t))
+  return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:(refVal r lrefs));|]]
+genCase (SetRef r e) = do
+  lrefs <- gets locals
+  let lvar = refName r
+      t    = refType r
+      rhs  = genExp lrefs e
+  return [[cstm|$id:(assign_ t)($exp:(refPtr r lrefs), gen_act->priority, $exp:rhs);|]]
+genCase (SetLocal n t e) = do
+  lrefs <- gets locals
+  let lhs  = [cexp|&act->$id:(getVarName n)|]
+      rhs  = genExp lrefs e
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 genCase (If c t e) = do
-  locs <- map refName <$> gets locals
-  let cnd = genExp locs c
+  lrefs <- gets locals
+  let cnd = genExp lrefs c
   thn <- concat <$> mapM genCase t
   els <- concat <$> mapM genCase e
   return [[cstm| if ($exp:cnd) { $stms:thn } else { $stms:els }|]]
 genCase (While c b) = do
-  locs <- map refName <$> gets locals
-  let cnd = genExp locs c
+  lrefs <- gets locals
+  let cnd = genExp lrefs c
   bod <- concat <$> mapM genCase b
   return [[cstm| while ($exp:cnd) { $stms:bod } |]]
 genCase (After d r v) = do
-  locs <- map refName <$> gets locals
-  let lvar = refName r
-      t    = refType r
-      del = genExp locs d
-      lhs = if lvar `elem` locs
-        then [cexp|&act->$id:lvar|]
-        else [cexp|act->$id:lvar|]
-      rhs = genExp locs v
+  lrefs <- gets locals
+  let t    = refType r
+      del  = genExp lrefs d
+      rhs  = genExp lrefs v
       -- | NOTE: we add `now` to the delay here.
-  return [[cstm| $id:(later_ t)($exp:lhs, now + $exp:del, $exp:rhs);|]]
+  return [[cstm| $id:(later_ t)($exp:(refPtr r lrefs), now + $exp:del, $exp:rhs);|]]
 genCase (Wait ts) = do
-  caseNum <- nextCase
-  maxWaits $ length ts
-  locs <- map refName <$> gets locals
-  let trigs = zip [1 ..] $ map (genTrig locs) ts
-  return
-    $  fmap sensitizeTrig trigs
+  caseNum   <- nextCase
+  maxWaits  $ length ts
+  lrefs     <- gets locals
+  let trigs = zip [1 ..] $ map (flip refPtr lrefs) ts
+  return $
+    fmap sensitizeTrig trigs
     ++ [ [cstm| gen_act->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]
        ]
-    ++ fmap desensitizeTrig trigs
+    ++ fmap (desensitizeTrig . fst) trigs
  where
+  sensitizeTrig :: (Int, C.Exp) -> C.Stm
   sensitizeTrig (i, trig) =
     [cstm|$id:sensitize(($ty:sv_t *) $exp:trig, &act->$id:(trig_ i));|]
-  desensitizeTrig (i, _) = [cstm|$id:desensitize(&act->$id:(trig_ i));|]
-  genTrig refs r =
-    if trig `elem` refs then [cexp|&act->$id:trig|] else [cexp|act->$id:trig|]
-    where
-      trig = refName r
+  
+  desensitizeTrig :: Int -> C.Stm
+  desensitizeTrig i = [cstm|$id:desensitize(&act->$id:(trig_ i));|]
+
 genCase (Fork cs) = do
-  locs    <- map refName <$> gets locals
+  lrefs   <- gets locals
   caseNum <- nextCase
   let
+    genCall :: Int -> (String, [Either SSMExp Reference]) -> C.Stm
     genCall i (r,as) =
       [cstm|$id:fork(($ty:act_t *) $id:(enter_ r)($args:enterArgs));|]
      where
+
+      -- | List of C Expressions that represent the arguments to give to the
+      -- type specific enter function.
+      enterArgs :: [C.Exp]
       enterArgs =
         [ [cexp|gen_act|]
-          , [cexp|act->priority + $int:i * (1 << $exp:newDepth)|]
-          , newDepth
-          ]
-          ++ map genArg as
-      genArg (Left e) = genExp locs e
-      genArg (Right r) =
-        if (refName r) `elem` locs then [cexp|&act->$id:(refName r)|] else [cexp|act->$id:(refName r)|]
+        , [cexp|act->priority + $int:i * (1 << $exp:newDepth)|]
+        , newDepth
+        ]
+        ++ map genArg as
 
+      -- | C Expression representing the argument to a forked process
+      genArg :: Either SSMExp Reference -> C.Exp
+      genArg (Left e)  = genExp lrefs e
+      genArg (Right r) = refPtr r lrefs
+
+      -- | C Expression representing the new depth of the forked processes
+      newDepth :: C.Exp
       newDepth = [cexp|act->depth - $int:depthSub|]
+      
+      -- | What to subtract from the current depth
+      depthSub :: Int
       depthSub =
         (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Int
 
-    genDebug (r, _) = r
   return
     $ [cstm| DEBUG_PRINT($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |]
     : zipWith genCall [0 :: Int ..] cs
@@ -530,7 +580,7 @@ genCase (Fork cs) = do
 genCase Skip = return []
 
 -- | Generate C expression from 'SSMExp' and a list of local variables.
-genExp :: [String] -> SSMExp -> C.Exp
+genExp :: [Reference] -> SSMExp -> C.Exp
 genExp _  (Var _ n              ) = [cexp|act->$id:n.value|]
 genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
 genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
@@ -539,9 +589,7 @@ genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename uint64) $int:i|]
 genExp _  (Lit _ (LBool   True )) = [cexp|true|]
 genExp _  (Lit _ (LBool   False)) = [cexp|false|]
 genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
-genExp ls (UOpR _ r Changed)
-  | refName r `elem` ls = [cexp|event_on(($ty:sv_t *) &act->$id:(refName r))|]
-  | otherwise           = [cexp|event_on(($ty:sv_t *) act->$id:(refName r))|]
+genExp ls (UOpR _ r Changed)      = [cexp| event_on(($ty:sv_t *) $exp:(refPtr r ls))|]
 -- | Circumvent optimizations that take advantage of C's undefined signed
 -- integer wraparound behavior. FIXME: remove this hack, which is probably not
 -- robust anyway if C is aggressive about inlining.
