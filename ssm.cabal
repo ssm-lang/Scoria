@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 579d628539baa0a2fcdcafbc370afccbbdcd5b13903c85c4f088e696c6a4ed23
+-- hash: d12815398fa388010a66d62a36b7c54c439b89bc904e94ac2cc15a79ceff1314
 
 name:           ssm
 version:        0.1.0.0
@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+      Cli
       Core
       Frontend
       HughesList
@@ -64,6 +65,7 @@ library
 executable print-ssm-from-file
   main-is: Main.hs
   other-modules:
+      Cli
       Core
       Frontend
       HughesList
