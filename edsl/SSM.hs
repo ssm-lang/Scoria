@@ -311,7 +311,7 @@ staticZephyrCode ioinit prginit =
       |]
     , [cedecl| $ty:act_t top = { .step = top_return }; |]
 
-    , [cedecl| $esc:("K_MSGQ_DEFINE(tick_msgq, sizeof($ty:ll_driver_msg_t), 100, 1);") |]
+    , [cedecl| $esc:("K_MSGQ_DEFINE(tick_msgq, sizeof(ll_driver_msg_t), 100, 1);") |]
     , [cedecl| struct counter_alarm_cfg alarm_cfg; |]
     , [cedecl| const struct device *counter_dev = NULL; |]
     , [cedecl| void tick_thread_main(void *a, void *b, void *c) {
