@@ -25,6 +25,16 @@ import           Text.PrettyPrint.Mainland.Class
 -- | Use snake_case for c literals
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
+compileCDefs :: Bool -> Maybe Int -> Program -> ([C.Definition], [C.Definition])
+compileCDefs m tl program = (compUnit, includes)
+ where
+  compUnit = preamble ++ decls ++ defns ++ if m then genMain program else []
+
+  (preamble,includes) = genPreamble tl
+  (decls, defns) =
+    concat2 $ unzip $ map genProcedure $ Map.elems (funs program)
+  concat2 (x, y) = (concat x, concat y)
+
 -- | This function takes a `Program` and returns a string, which contains the
 -- pretty-printed content of the generated C file.
 compile_
@@ -32,14 +42,9 @@ compile_
   -> Maybe Int -- ^ An optional tick limit (FIXME: apparently unused?)
   -> Program   -- ^ The program to be compiled
   -> String    -- ^ The pretty-printed content of the generated C file
-compile_ m tl program = pretty 120 $ pprList compUnit
- where
-  compUnit = preamble ++ decls ++ defns ++ if m then genMain program else []
-
-  preamble = genPreamble tl
-  (decls, defns) =
-    concat2 $ unzip $ map genProcedure $ Map.elems (funs program)
-  concat2 (x, y) = (concat x, concat y)
+compile_ m tl program = pretty 120 $ pprList $ includes ++ cunit
+  where
+    (cunit,includes) = compileCDefs m tl program
 
 -- | State maintained while compiling a 'Procedure'.
 --
@@ -188,28 +193,28 @@ update_ ty = "update_" ++ typeId ty
 {-------- Code generation --------}
 
 -- | Generate include statements, to be placed at the top of the generated C.
-genPreamble :: Maybe Int -> [C.Definition]
-genPreamble tickLimit = [cunit|
-$esc:("#include \"peng-platform.h\"")
-$esc:("#include \"peng.h\"")
-$esc:("#include \"formatters.h\"")
-$esc:("#include <stdio.h>")
-$esc:("#include <stdint.h>")
+genPreamble :: Maybe Int -> ([C.Definition], [C.Definition])
+genPreamble tickLimit = ( [cunit|
+  extern $ty:time_t now;
 
-extern $ty:time_t now;
+  /** Used by DEBUG_PRINT as a microtick threshold */
+  $ty:time_t limit = $exp:limit;
 
-/** Used by DEBUG_PRINT as a microtick threshold */
-$ty:time_t limit = $exp:limit;
-
-/**
- * Circumvent optimizations that take advantage of C's undefined signed
- * integer wraparound behavior. FIXME: remove this hack, which is probably not
- * robust anyway if C is aggressive about inlining.
- */
-static int _add(int a, int b) {
-  return a + b;
-}
-|]
+  /**
+  * Circumvent optimizations that take advantage of C's undefined signed
+  * integer wraparound behavior. FIXME: remove this hack, which is probably not
+  * robust anyway if C is aggressive about inlining.
+  */
+  static int _add(int a, int b) {
+    return a + b;
+  }
+  |],
+  [cunit|
+  $esc:("#include \"peng-platform.h\"")
+  $esc:("#include \"peng.h\"")
+  $esc:("#include \"formatters.h\"")
+  $esc:("#include <stdio.h>")
+  $esc:("#include <stdint.h>")|] )
   where
     limit :: C.Exp
     limit = maybe [cexp|ULONG_MAX|] (\i -> [cexp|$int:i|]) tickLimit
