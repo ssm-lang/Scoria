@@ -163,7 +163,7 @@ act_t :: C.Type
 act_t = [cty| typename act_t |]
 
 uint8_t :: C.Type
-uint8_t = [cty| typename size_t |]
+uint8_t = [cty| typename uint8_t |]
 
 uint32_t :: C.Type
 uint32_t = [cty| typename uint32_t |]
@@ -311,15 +311,15 @@ staticZephyrCode ioinit prginit =
       |]
     , [cedecl| $ty:act_t top = { .step = top_return }; |]
 
-    , [cedecl| $esc:("K_MSG_DEFINE(tick_msgq, sizeof($ty:ll_driver_msg_t), 100, 1);") |]
+    , [cedecl| $esc:("K_MSGQ_DEFINE(tick_msgq, sizeof($ty:ll_driver_msg_t), 100, 1);") |]
     , [cedecl| struct counter_alarm_cfg alarm_cfg; |]
     , [cedecl| const struct device *counter_dev = NULL; |]
     , [cedecl| void tick_thread_main(void *a, void *b, void *c) {
-                void(a);
-                void(b);
-                void(c);
+                (void)a;
+                (void)b;
+                (void)c;
 
-                initialize_IO(); // name the ioinit definition creates
+                initializeIO(); // name the ioinit definition creates
                 $items:prginit
 
                 now = 0;
@@ -396,7 +396,7 @@ staticZephyrCode ioinit prginit =
                   printk("HWCounter: Device not found error\r\n");
                 }
 
-                if(cunter_get_frequency(counter_dev) > 1000000) {
+                if(counter_get_frequency(counter_dev) > 1000000) {
                   printk("HWCounter: Running at %dMHz\r\n", counter_get_frequency(counter_dev) / 1000000);
                 } else {
                   printk("HWCounter: Running at %dHz\r\n", counter_get_frequency(counter_dev));
