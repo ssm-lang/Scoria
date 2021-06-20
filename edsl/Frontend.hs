@@ -37,6 +37,8 @@ module Frontend
      , BoxNullary(..)
      , Int64(..)
      , Word64(..)
+     , Word32(..)
+     , Word8(..)
 ) where
 
 import Control.Monad.Writer.Lazy
