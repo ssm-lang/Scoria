@@ -1,9 +1,11 @@
 {-# OPTIONS_GHC -fplugin BinderAnn.Monadic #-}
-module Examp where
 
 import BinderAnn.Monadic
 import SSM
-import Data.Int
+import Ssm.Compiler.Cli(compileCli)
+
+main :: IO ()
+main = compileCli $ examp inputref
 
 examp :: Ref Int32 -> SSM ()
 examp = box "examp" ["a"] $ \a -> do

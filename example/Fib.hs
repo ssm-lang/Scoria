@@ -1,9 +1,7 @@
 {-# OPTIONS_GHC -fplugin BinderAnn.Monadic #-}
-module Fib where
-
 import BinderAnn.Monadic
 import SSM
-import Data.Int
+import Ssm.Compiler.Cli(compileCli)
 
 mywait :: Ref Int32 -> SSM ()
 mywait = box "mywait" ["r"] $ \r -> do
@@ -26,3 +24,6 @@ myfib = box "myfib" ["n", "r"] $ \n r -> do
                         , myfib (n - 2) r2
                         , mysum r1 r2 r
                         ]))
+
+main :: IO ()
+main = compileCli $ myfib 10 inputref

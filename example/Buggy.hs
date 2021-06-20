@@ -3,8 +3,6 @@ module Buggy where
 
 import BinderAnn.Monadic
 import SSM
-import Data.Int
-import Data.Word
 
 fun2 :: Ref Bool -> Ref Bool -> Exp Bool -> SSM ()
 fun2 = box "fun2" ["ref1","ref2","var3"] $ \ref1 ref2 var3 -> do
