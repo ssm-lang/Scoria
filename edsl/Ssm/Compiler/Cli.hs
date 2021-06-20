@@ -1,4 +1,4 @@
-module Cli where
+module Ssm.Compiler.Cli where
 
 import           Data.Maybe                     ( fromMaybe )
 import           System.Environment             ( getArgs
