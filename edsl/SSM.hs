@@ -35,6 +35,10 @@ module SSM
   , SSM.compile
   , SSM.interpret
   , prettyPrint
+  , Int32(..)
+  , Int64(..)
+  , Word64(..)
+  , Word8(..)
 ) where
 
 import Frontend
@@ -43,6 +47,7 @@ import LowCore
 import LowInterpreter
 import Trace
 import LowPretty
+import Data.Int
 
 compile :: Bool -> Maybe Int -> SSM () -> String
 compile b me p = compile_ b me $ transpile p

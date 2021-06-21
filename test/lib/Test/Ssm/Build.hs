@@ -5,6 +5,9 @@ module Test.Ssm.Build
   , doVg
   ) where
 
+import           Data.Char                      ( isSpace )
+import           Data.List                      ( dropWhileEnd )
+import           System.Directory               ( createDirectoryIfMissing )
 import           System.Exit                    ( ExitCode(..) )
 import           System.Process                 ( readProcessWithExitCode )
 
@@ -16,36 +19,28 @@ import qualified Test.QuickCheck.Monadic       as QC
 
 import           Test.Ssm.Report                ( (</>)
                                                 , Slug(..)
-                                                , slugStr
                                                 , printUnixError
                                                 , reportFileOnFail
                                                 , reportOnFail
+                                                , slugStr
                                                 )
 
 -- | Tick limit compiled into the test target.
 tickLimit :: Maybe Int
 tickLimit = Just 7500
 
--- | Directory where generated C files are written to.
-cSrcDir :: FilePath
-cSrcDir = "genc"
-
 -- | Name of the build platform.
 buildPlatform :: String
 buildPlatform = "trace"
 
--- | Name of the build directory.
-buildDir :: FilePath
-buildDir = "build" </> buildPlatform
-
 -- | Obtain the target name from a test Slug.
 --
 -- Use the magic target name "arbitrary" for randomly generated tests to avoid
--- unnecessarily polluting the genc and build directories.
+-- unnecessarily polluting the build directory.
 slugTarget :: Slug -> String
-slugTarget (SlugTimestamp _) = "arbitrary"
-slugTarget (SlugNamed "arbitrary") = undefined -- TODO: resolve name clash
-slugTarget (SlugNamed n) = n
+slugTarget (SlugTimestamp _          ) = "arbitrary"
+slugTarget (SlugNamed     "arbitrary") = undefined -- TODO: resolve name clash
+slugTarget (SlugNamed     n          ) = n
 
 -- | Compile an SSM program to a C program's string representation.
 doCompile :: Monad m => Slug -> Program -> QC.PropertyM m String
@@ -63,20 +58,24 @@ doCompile slug program = do
 -- TODO: pass in DEBUG flag here
 doMake :: Slug -> String -> QC.PropertyM IO FilePath
 doMake slug cSrc = do
-  QC.run $ writeFile srcPath cSrc
+  (code, out, err) <- QC.run $ make "make_builddir"
+  case code of
+    ExitSuccess   -> return ()
+    ExitFailure c -> printUnixError c out err >> fail "Make make_builddir error"
 
-  (code, out, err) <- QC.run $ readProcessWithExitCode "make" makeArgs ""
+  let execPath = dropWhileEnd isSpace out </> target
+
+  QC.run $ writeFile (execPath ++ ".c") cSrc
+
+  (code, out, err) <- QC.run $ make target
   reportFileOnFail slug execPath (slugStr slug ++ ".exe")
-
   case code of
     ExitSuccess   -> return execPath
-    ExitFailure c -> printUnixError c out err >> fail "Make error"
+    ExitFailure c -> printUnixError c out err >> fail "Make target error"
 
  where
   target = slugTarget slug
-  srcPath  = cSrcDir </> target ++ ".c"
-  execPath = buildDir </> target
-  makeArgs = ["PLATFORM=" ++ buildPlatform, target]
+  make t = readProcessWithExitCode "make" ["PLATFORM=" ++ buildPlatform, t] ""
 
 -- | Test compiled program with valgrind.
 --

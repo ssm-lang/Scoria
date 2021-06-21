@@ -1,9 +1,11 @@
 {-# OPTIONS_GHC -fplugin BinderAnn.Monadic #-}
-module NonTerminate where
 
 import BinderAnn.Monadic
 import SSM
-import Data.Int
+import Ssm.Compiler.Cli(compileCli)
+
+main :: IO ()
+main = compileCli $ nonterminate inputref 32
 
 nonterminate :: Ref Int32 -> Exp Int32 -> SSM ()
 nonterminate = box "nonterminate" ["x", "y"] $ \x y -> do

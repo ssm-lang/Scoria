@@ -1,9 +1,11 @@
 {-# OPTIONS_GHC -fplugin BinderAnn.Monadic #-}
-module Example64bit where
 
 import BinderAnn.Monadic
 import SSM
-import Data.Word
+import Ssm.Compiler.Cli(compileCli)
+
+main :: IO ()
+main = compileCli $ fun64 10 inputref
 
 fun64 :: Exp Word64 -> Ref Word64 -> SSM ()
 fun64 = box "fun64" ["e", "r"] $ \e r -> do
