@@ -55,7 +55,7 @@ data TRState = TRState
   { procedure :: Procedure        -- ^ Procedure we are compiling
   , ncase     :: Int              -- ^ Which number has the next case?
   , numwaits  :: Int              -- ^ The size of the widest wait
-  , locals    :: [Reference] -- ^ Local references declared with var
+  , locals    :: [Reference]      -- ^ Local references declared with var
   }
 
 -- | Translation monad.
@@ -485,7 +485,7 @@ genCase (NewRef n t v) = do
   let lvar = getVarName n
       lhs  = [cexp|&act->$id:lvar|]
       rhs  = genExp lrefs v
-  addLocal (Dynamic (lvar, t))
+  addLocal (Dynamic (lvar, mkReference t))
   return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
 genCase (GetRef n t r) = do
   lrefs <- gets locals

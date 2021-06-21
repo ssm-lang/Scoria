@@ -39,7 +39,6 @@ instance Arbitrary Type where
 
 type Procedures = [(String, [(String, Type)], [Stm])]
 type Variable   = (Name, Type)
-type Ref        = (String, Type)
 
 genListOfLength :: Gen a -> Int -> Gen [a]
 genListOfLength ga 0 = return []
@@ -101,7 +100,7 @@ arbProc funs vars refs c n = frequency $
                e         <- choose (0,3) >>= arbExp t vars refs
                (name,c1) <- fresh c
                let rt     = mkReference t
-               let stm    = NewRef name rt e
+               let stm    = NewRef name t e
                let ref    = Dynamic (getVarName name, rt)
                (rest, c2) <- arbProc funs vars (ref:refs) c1 (n-1)
                return (stm:rest, c2)
