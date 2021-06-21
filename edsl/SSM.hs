@@ -44,7 +44,7 @@ import Frontend
 import LowCodeGen hiding (sv_t, priority_t, act_t)
 import LowCore
 import Core
-import LowInterpreter
+import LowInterpreter hiding (wait)
 import Trace
 import LowPretty
 
@@ -187,7 +187,7 @@ ledInit ledp = concatMap stmts leds
   where
     leds = map (\(i, Ptr r) -> (refName r,i)) $ Map.toList (ledrefs ledp)
 
-    stmts (n,i) = [ [citem| initialize_led(&$id:n, $int:i); |]
+    stmts (n,i) = [ [citem| initialize_ledIO(&$id:n, $int:i); |]
                   , [citem| $id:n.value = false; |]
                   ]
 
@@ -216,11 +216,13 @@ ledHeader =
                /* LED specific fields */
                $ty:bool value;
                $ty:bool event_value;
+               $ty:bool can_use_driver;
                $ty:ll_driver_t driver;
              } sv_led_t;
     |]
   , [cedecl| void to_string_led($ty:sv_t *v, char *buffer, $ty:size_t size); |]
-  , [cedecl| void initialize_led($ty:sv_led_t *v, $ty:uint32_t ledid);|]
+  , [cedecl| void initialize_led($ty:sv_led_t *v);|]
+  , [cedecl| void initialize_ledIO($ty:sv_led_t *v, $ty:uint32_t ledid);|]
   , [cedecl| void assign_led($ty:sv_led_t *v, $ty:priority_t priority, $ty:bool value); |]
   , [cedecl| void later_led($ty:sv_led_t *v, $ty:peng_time_t time, $ty:bool value); |]
   , [cedecl| void update_led($ty:sv_t *var); |]
@@ -246,14 +248,27 @@ ledSource =
                return;
              }
     |]
-  , [cedecl| void initialize_led($ty:sv_led_t *v, $ty:uint32_t ledid) {
+  , [cedecl| void initialize_led($ty:sv_led_t *v) {
                assert(v);
                /* Generic initialization */
-               *v = ($ty:sv_led_t) { .to_string    = to_string_led
-                                     , .update       = update_led
-                                     , .triggers     = NULL
-                                     , .last_updated = now
-                                     , .event_time   = NO_EVENT_SCHEDULED
+               *v = ($ty:sv_led_t) { .to_string        = to_string_led
+                                     , .update         = update_led
+                                     , .triggers       = NULL
+                                     , .last_updated   = now
+                                     , .event_time     = NO_EVENT_SCHEDULED
+                                     , .can_use_driver = false
+                                     };
+             }
+    |]
+  , [cedecl| void initialize_ledIO($ty:sv_led_t *v, $ty:uint32_t ledid) {
+               assert(v);
+               /* Generic initialization */
+               *v = ($ty:sv_led_t) { .to_string        = to_string_led
+                                     , .update         = update_led
+                                     , .triggers       = NULL
+                                     , .last_updated   = now
+                                     , .event_time     = NO_EVENT_SCHEDULED
+                                     , .can_use_driver = true
                                      };
                /* LED specific initialization */
                if(ll_led_init(&v->driver, ledid, 0)) {
@@ -269,8 +284,10 @@ ledSource =
                schedule_sensitive(($ty:sv_t *) v, priority);
                
                /* After performing the assignment, reflect the new value in the driver */
-               $ty:uint8_t cmd = v->value ? 1 : 0;
-               ll_write(&v->driver, &cmd, 1);
+               if(v->can_use_driver) {
+                 $ty:uint8_t cmd = v->value ? 1 : 0;
+                 ll_write(&v->driver, &cmd, 1);
+               }
              }
     |]
   , [cedecl| void later_led($ty:sv_led_t *v, $ty:peng_time_t time, $ty:bool value) {
@@ -286,8 +303,10 @@ ledSource =
                v->value = v->event_value;
 
                /* After updating the value, reflect the new value in the driver */
-               $ty:uint8_t cmd = v->value ? 1 : 0;
-               ll_write(&v->driver, &cmd, 1);
+               if(v->can_use_driver) {
+                 $ty:uint8_t cmd = v->value ? 1 : 0;
+                 ll_write(&v->driver, &cmd, 1);
+               }
              }
     |]
   ]
@@ -550,29 +569,48 @@ totalCompile cunit = let (ssm, st) = runState cunit $ ST Nothing
 
 
 
+toggle :: Ref LED -> SSM ()
+toggle r = Frontend.fork [ toggleprocess r ]
+  where
+    toggleprocess :: Ref LED -> SSM ()
+    toggleprocess = box "toggle" ["r"] $ \r -> do
+                      v <- deref r
+                      ifThenElse (v ==. true')
+                        (r <~ false')
+                        (r <~ true')
+
+delay :: Exp Word64 -> SSM ()
+delay time = Frontend.fork [delayprocess time]
+  where
+    delayprocess :: Exp Word64 -> SSM ()
+    delayprocess = box "delay" ["time"] $ \time -> do
+                    r <- var (0 :: Exp Int32)
+                    after time r 1
+                    wait [r]
+
 testprogram :: (?io :: IOPeripherals) => SSM ()
 testprogram = boxNullary "testprogram" $ do
   led0 <- led 0 ?io
+  led1 <- led 1 ?io
+  led2 <- led 2 ?io
+  led3 <- led 3 ?io
+
   while' true' $ do
-    after 50 led0 true'
-    Frontend.wait [led0]
-    after 50 led0 false'
-    Frontend.wait [led0]
+    toggle led0
+    delay 4000000
+    toggle led1
+    delay 4000000
+    toggle led2
+    delay 4000000
+    toggle led3
+    delay 4000000
+
 
 mainSSM :: Compile (SSM ())
 mainSSM = do
   led0 <- getLED 0
   led1 <- getLED 1
+  led2 <- getLED 2
+  led3 <- getLED 3
 
-  let ?io = IOP [led0, led1] in return testprogram
-
-handle :: IO ()
-handle = do
-  let file = totalCompile mainSSM
-  putStrLn file
---  putStrLn $ pretty 120 $ pprList $ snd $ fromJust $ header $ fromJust $ ledperipheral st
---  putStrLn $ pretty 120 $ pprList $ snd $ fromJust $ source $ fromJust $ ledperipheral st
---  putStrLn $ pretty 120 $ pprList $ fromJust $ globals $ fromJust $ (ledperipheral st)
---  let blockitems = initialize $ fromJust $ ledperipheral st
---  putStrLn $ pretty 120 $ ppr $ makeInitializeFunction $ fromJust blockitems
---  putStrLn $ compile False Nothing ssm
+  let ?io = IOP [led0, led1, led2, led3] in return testprogram

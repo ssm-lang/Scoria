@@ -28,6 +28,13 @@ refName :: Reference -> String
 refName (Dynamic (n,_)) = n
 refName (Static (n,_))  = n
 
+isDynamic :: Reference -> Bool
+isDynamic (Dynamic _) = True
+isDynamic _           = False
+
+isStatic :: Reference -> Bool
+isStatic = not . isDynamic
+
 data Name = Fresh String
           | Captured (String,Int,Int) String
   deriving (Show, Eq, Read)

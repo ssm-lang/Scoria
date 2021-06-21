@@ -39,6 +39,7 @@ module Frontend
      , Word64(..)
 ) where
 
+import Control.Monad
 import Control.Monad.Writer.Lazy
 import Control.Monad.State.Lazy
 import BinderAnn.Monadic
@@ -89,6 +90,10 @@ renameRef e (Info Nothing _) = e
 renameRef e (Info _ Nothing) = e
 renameRef (Ptr r) (Info (Just n) _) = Ptr $ Core.renameRef r n
 
+dynamic :: Reference -> Reference
+dynamic r@(Dynamic _) = r
+dynamic (Static r)    = Dynamic r
+
 newtype Ref a = Ptr Reference -- references that are shared, (variable name, ref to value)
   deriving Show
 newtype Exp a = Exp SSMExp                 -- expressions
@@ -120,14 +125,20 @@ instance (Num a, FromLiteral a, SSMType a) => Num (Exp a) where
 
 -- | Arguments we can apply SSM procedures to
 instance Arg (Exp a) where
+    arg _ [] _ = error "error with box - no names to parameters"
     arg name (x:xs) (Exp b) = do
         emit $ Argument name x (Left b)
         return $ (Exp (Var (expType b) x), xs)
 
 instance Arg (Ref a) where
-    arg name (x:xs) (Ptr r) = do
+    arg _ [] _ = error "error with box - no names to parameters"
+    arg name (x:xs) (Ptr r) =  do
         emit $ Argument name x (Right r)
-        return (Ptr $ Core.renameRef r x, xs)
+        if isDynamic r
+            then return (Ptr $ Core.renameRef r x, xs)
+            -- if a statically allocated argument is passed as a parameter,
+            -- it will not become a dynamic one in the generated funciton.
+            else return (Ptr (dynamic (Core.renameRef r x)), xs)
 
 -- | Possible results of SSM procedures (they can't return anything)
 instance Res () where
