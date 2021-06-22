@@ -218,7 +218,6 @@ ledInit ledp = concatMap stmts leds
 
 {-********** End of LED C Code ***********-}
 
-
 {-********** Start of Button C Code **********-}
 zephyr_interop_t :: C.Type
 zephyr_interop_t = [cty| typename zephyr_interop_t |]
@@ -252,14 +251,13 @@ buttonGlobals bp =
 
 buttonHandleDriver :: ButtonPeripheral -> [C.BlockItem]
 buttonHandleDriver bp =
-  [ [citem| if(recv_msg.msg_type == 1 && ($exp:checkDriverID)) {
-              $ty:uint32_t count;
-              counter_get_value(counter_dev, &count);
-              now = count;
+  [ [citem| if(msg->msg_type == 1 && ($exp:checkDriverID)) {
+              $ty:uint64_t hw_now;
+              get_hw_now(&hw_now);
 
               /* Fetch button variable from buttons schedule it in 1 tick */
-              $ty:sv_button_t* button = buttons[recv_msg.driver_id];
-              later_button(button, now + 1, recv_msg.data);
+              $ty:sv_button_t* button = buttons[msg->driver_id];
+              later_button(button, hw_now, msg->data);
             }
   |] ]
   where
@@ -269,161 +267,23 @@ buttonHandleDriver bp =
     checkDriverID :: C.Exp
     checkDriverID =
       foldl
-        (\curr id -> [cexp| $exp:curr || recv_msg.driver_id == $int:id|])
+        (\curr id -> [cexp| $exp:curr || msg->driver_id == $int:id|])
         [cexp|false|]
         driverIDs
 {-********** End of Button C Code **********-}
 
-makeInitializeFunction :: [C.BlockItem] -> C.Definition
-makeInitializeFunction items = [cedecl| void initializeIO() { $items:items } |]
-
-ll_driver_msg_t :: C.Type
-ll_driver_msg_t = [cty| typename ll_driver_msg_t |]
-
-staticZephyrCode :: C.Definition     -- Initialization procedure
-                 -> [C.BlockItem]    -- Cases to handle driver messages
-                 -> [C.BlockItem]    -- Statements to initialize the SSM program
-                 -> ( [C.Definition] -- Actual code
-                    , [C.Definition] -- List of includes
-                    )
-staticZephyrCode ioinit msgcases prginit =
-  ( [ ioinit
-    , [cedecl| void top_return($ty:act_t *act) {
-                return;
-              }
-      |]
-    , [cedecl| $ty:act_t top = { .step = top_return }; |]
-
-    , [cedecl| $esc:("K_MSGQ_DEFINE(tick_msgq, sizeof(ll_driver_msg_t), 100, 1);") |]
-    , [cedecl| struct counter_alarm_cfg alarm_cfg; |]
-    , [cedecl| const struct device *counter_dev = NULL; |]
-    , [cedecl| void tick_thread_main(void *a, void *b, void *c) {
-                (void)a;
-                (void)b;
-                (void)c;
-
-                initializeIO(); // name the ioinit definition creates
-                $items:prginit
-
-                now = 0;
-                $ty:ll_driver_msg_t recv_msg;
-
-                while(1) {
-
-                  k_msgq_get(&tick_msgq, &recv_msg, K_FOREVER);
-
-                  if(recv_msg.msg_type == 0 && recv_msg.driver_id == -1) {
-                    printk("woke up from timer, time to call tick\n");
-                  }
-                  $items:msgcases
-
-                  now = next_event_time();
-                  tick();
-
-                  $ty:peng_time_t next = next_event_time();
-
-                  if(next == ULLONG_MAX) {
-                    printk("NOTHING IN TE QUEUE\r\n");
-                    continue;
-                  }
-
-                  $ty:uint64_t wake_time = next_event_time(); /* Absolute time */
-                  alarm_cfg.flags = COUNTER_ALARM_CFG_ABSOLUTE | COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE;
-                  alarm_cfg.ticks = wake_time;
-                  int r = counter_set_channel_alarm(counter_dev, 0, &alarm_cfg);
-                  if (!r) {
-                  } else {
-                    if (r == - ENOTSUP ) {
-                      printk("hw_tick: Error setting alarm (ENOTSUP)\r\n");
-                    } else if ( r == - EINVAL ) {
-                      printk("hw_tick: Error setting alarm (EINVAL)\r\n");
-                    } else if ( r == - ETIME ) {
-                      printk("hw_tick: Error setting alarm (ETIME)\r\n");
-                    } else {
-                      printk("hw_tick: Error setting alarm\r\n");
-                    }
-                  }
-                }
-                return;
-              }
-      |]
-    , [cedecl| $esc:("K_THREAD_STACK_DEFINE(tick_thread_stack, 512);")|]
-    , [cedecl| struct k_thread tick_thread;|]
-    , [cedecl| void start_tick_thread(void) {
-                k_thread_create( &tick_thread
-                                , tick_thread_stack
-                                , K_THREAD_STACK_SIZEOF(tick_thread_stack)
-                                , tick_thread_main
-                                , NULL, NULL, NULL
-                                , 5, 0, K_NO_WAIT);
-              }
-      |]
-    , [cedecl| void hw_tick(const struct device *dev, $ty:uint8_t chan, $ty:uint32_t ticks, void *user_data) {
-                $ty:ll_driver_msg_t msg = { .driver_id = -1
-                                          , .msg_type  = 0
-                                          , .data      = 0
-                                          , .timestamp = 0
-                                          };
-                k_msgq_put(&tick_msgq, &msg, K_NO_WAIT);
-              }
-      |]
-    , [cedecl| void main(void) {
-                printk("Sleeping 1 seconds\r\n");
-                k_sleep(K_SECONDS(1));
-                printk("Woke up\r\n");
-
-                counter_dev = device_get_binding(DT_LABEL(DT_ALIAS(ssm_timer)));
-                if(!counter_dev) {
-                  printk("HWCounter: Device not found error\r\n");
-                }
-
-                if(counter_get_frequency(counter_dev) > 1000000) {
-                  printk("HWCounter: Running at %dMHz\r\n", counter_get_frequency(counter_dev) / 1000000);
-                } else {
-                  printk("HWCounter: Running at %dHz\r\n", counter_get_frequency(counter_dev));
-                }
-
-                alarm_cfg.flags = COUNTER_ALARM_CFG_ABSOLUTE | COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE;
-                alarm_cfg.ticks = 10;
-                alarm_cfg.callback = hw_tick;
-                alarm_cfg.user_data = &alarm_cfg;
-
-                if (!counter_set_channel_alarm(counter_dev, 0, &alarm_cfg)) {
-                  printk("HWCounter: Alarm set\r\n");
-                } else {
-                  printk("HWCounter: Error setting alarm\r\n");
-                }
-                if (!counter_set_guard_period(counter_dev, UINT_MAX/2, COUNTER_GUARD_PERIOD_LATE_TO_SET)) {
-                  printk("HWCounter: Guard period set\r\n");
-                } else {
-                  printk("HWCounter: Error setting guard period\r\n");
-                }
-
-                counter_start(counter_dev);
-                printk("Starting Tick-Thread\r\n");
-                start_tick_thread();
-              }
-      |]
-    ]
-  , [ [cedecl| $esc:("#include <zephyr.h>")                |]
-    , [cedecl| $esc:("#include <drivers/counter.h>")       |]
-    , [cedecl| $esc:("#include <zephyr/types.h>")          |]
-    , [cedecl| $esc:("#include <stddef.h>")                |]
-    , [cedecl| $esc:("#include <ll/ll_driver.h>")          |]
-    , [cedecl| $esc:("#include <ll/ll_led.h>")             |]
-    , [cedecl| $esc:("#include <hal/zephyr/svm_zephyr.h>") |]
-    , [cedecl| $esc:("#include <stdbool.h>")               |]
-    , [cedecl| $esc:("#include <stdio.h>")                 |]
-    , [cedecl| $esc:("#include <peng.h>")                  |]
-    ]
-  )
+makeInitializeIOFunction :: [C.BlockItem] -> C.Definition
+makeInitializeIOFunction items = [cedecl| void initializeIO() { $items:items } |]
 
 -- | The C-Statements that represent setting up the input arguments
 -- and forking the programs entrypoint. Stolen from Johns code in LowCodeGen.
-prgInit :: Program -> [C.BlockItem]
-prgInit program = 
-  argInits ++
-  [ [citem| $id:(LowCodeGen.fork)(($ty:act_t *) $id:enter($args:enterArgs)); |]
+makeInitializeCont :: Program -> [C.Definition]
+makeInitializeCont program =
+  [ [cedecl| $esc:("extern act_t top;")|]
+  , [cedecl| void initializeCont() {
+               $id:(LowCodeGen.fork)(($ty:act_t *) $id:enter($args:enterArgs));
+             }
+    |]
   ]
   where
     enter :: String
@@ -435,28 +295,21 @@ prgInit program =
         , [cexp|PRIORITY_AT_ROOT|]
         , [cexp|DEPTH_AT_ROOT|]
         ]
-        ++ map enterArg (args program)
-    
-    enterArg :: Either SSMExp Reference -> C.Exp
-    enterArg (Left  ssmExp) = genExp [] ssmExp
-    enterArg (Right r)      = [cexp|&$id:(refName r)|]
 
-    argInits :: [C.BlockItem]
-    argInits = concatMap argInit $ rights $ args program
+ll_driver_msg_t :: C.Type
+ll_driver_msg_t = [cty| typename ll_driver_msg_t |]
 
-    argInit :: Reference -> [C.BlockItem]
-    argInit r =
-      [ [citem|$ty:(svt_ typ) $id:ref;|]
-      , [citem|$id:(initialize_ typ)(&$id:ref);|]
-      , [citem|$id:ref.value = 0;|]
-        -- Args to the main SSM procedure are always given default values of 0.
-      ]
-      where
-        typ :: Type
-        typ = refType r
-
-        ref :: String
-        ref = refName r
+makeHandleMsg :: [C.BlockItem] -> [C.Definition]
+makeHandleMsg msgcases =
+  [ [cedecl| $esc:("extern void get_hw_now(uint64_t *time);") |]
+  , [cedecl| void handle_driver_msg($ty:ll_driver_msg_t *msg) {
+               if(msg->msg_type == 0 && msg->driver_id == -1) {
+                 printk("woke up, now it's time to call tick\n");
+               }
+               $items:msgcases
+             }
+    |]
+  ]
 
 -- | Data type to 'hide' what actual type the peripheral has, so we can
 -- create a HList
@@ -504,7 +357,7 @@ genCFile mi prg ps = pretty 120 $ pprList compunit
     (includes, gbls, inits, msgcases, minits) = genPeripheralCode ps
     
     ioinit :: C.Definition
-    ioinit   = makeInitializeFunction inits
+    ioinit   = makeInitializeIOFunction inits
     
     prg' :: Program
     prg' = transpile prg
@@ -512,14 +365,16 @@ genCFile mi prg ps = pretty 120 $ pprList compunit
     ssmprog, ssmincludes :: [C.Definition]
     (ssmprog, ssmincludes) = compileCDefs False mi prg'
 
-    zephyrcd,zincludes :: [C.Definition]
-    (zephyrcd, zincludes) = staticZephyrCode ioinit msgcases (prgInit prg')
+    continit :: [C.Definition]
+    continit = makeInitializeCont prg'
 
     compunit :: [C.Definition]
-    compunit = concat [ (nub (includes <> zincludes <> ssmincludes))
+    compunit = concat [ (nub (includes <> ssmincludes))
                       , gbls
                       , ssmprog
-                      , zephyrcd
+                      , [ioinit]
+                      , continit
+                      , makeHandleMsg msgcases
                       ]
 
 totalCompile :: Compile (SSM ()) -> String
@@ -535,7 +390,7 @@ toggle :: Ref LED -> SSM ()
 toggle r = Frontend.fork [ toggleprocess r ]
   where
     toggleprocess :: Ref LED -> SSM ()
-    toggleprocess = box "toggle" ["r"] $ \r -> do
+    toggleprocess = box "toggleprocess" ["r"] $ \r -> do
                       v <- deref r
                       ifThenElse (v ==. true')
                         (r <~ false')
@@ -545,7 +400,7 @@ delay :: Exp Word64 -> SSM ()
 delay time = Frontend.fork [delayprocess time]
   where
     delayprocess :: Exp Word64 -> SSM ()
-    delayprocess = box "delay" ["time"] $ \time -> do
+    delayprocess = box "delayprocess" ["time"] $ \time -> do
                     r <- var (0 :: Exp Int32)
                     after time r 1
                     wait [r]
@@ -592,6 +447,8 @@ testprogram2 = boxNullary "testprogram2" $ do
   sequence_ [wait [button 0], wait [button 0]]
   delay (5*16000000)
   sequence_ $ concat $ replicate (4*5) [toggle (led 0), delay 4000000]
+
+
 
 -- | Boring setup
 mainSSM2 :: Compile (SSM ())
