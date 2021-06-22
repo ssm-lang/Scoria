@@ -1,9 +1,13 @@
-##
+################################################################################
 # Top-level Build.mk. Designed to be included by a Makefile that defines the
 # following variables:
 #
 # - PLATFORM: the platform for which targets should be built.
 # - SSMDIR: the root of the SSM source tree (i.e., where this file is).
+#
+# The including Makefile may also define the SSMTARGET to to indicate the
+# default build target. The Haskell file that defines the SSM source program
+# should be in $(SSMTARGET).hs in the same directory as the including Makefile.
 #
 # ---
 #
@@ -38,7 +42,7 @@
 # should be populated by each of the other build directories. The LIBS variable
 # is similarly used to determine libraries that the main target should depend
 # on.
-##
+################################################################################
 
 ifndef PLATFORM
 $(error PLATFORM is not defined.)
@@ -46,16 +50,32 @@ endif
 
 ifndef SSMDIR
 $(error SSMDIR is not defined.)
+else
+SSMDIR := $(abspath $(SSMDIR))
 endif
 
-# If make isn't invoked from inside a build directory, set it up and go there
-ifeq (,$(filter build, $(notdir $(abspath $(CURDIR)/..))))
+# This file is planted in the build directory to help us figure out whether we
+# are in there.
+BUILDDIRTOKEN := .ssm-build-dir
 
+################################################################################
+ifeq (,$(wildcard $(CURDIR)/$(BUILDDIRTOKEN))) # not inside build directory
+################################################################################
+
+# No built-in Make rules until we are inside the build directory.
+.SUFFIXES:
+
+########
+# For any target, set up build directory and re-run make from inside.
+##
+
+# These variables need to available when we re-invoke make.
 export PLATFORM
 export SSMDIR
-
-# No built-in rules for this Makefile.
-.SUFFIXES:
+export MAKECMDDIR := $(CURDIR)
+ifdef SSMTARGET
+export SSMTARGET
+endif
 
 BUILDDIR := $(CURDIR)/build/$(PLATFORM)
 
@@ -64,7 +84,8 @@ BUILDDIR := $(CURDIR)/build/$(PLATFORM)
 .PHONY: $(BUILDDIR)
 $(BUILDDIR):
 	@+[ -d $(BUILDDIR) ] || mkdir -p $(BUILDDIR)
-	@+$(MAKE) -C $(BUILDDIR) -f $(CURDIR)/Makefile $(MAKECMDGOALS)
+	@+touch $(BUILDDIR)/$(BUILDDIRTOKEN)
+	@+$(MAKE) -C $(BUILDDIR) -f $(SSMDIR)/Build.mk $(MAKECMDGOALS)
 
 # Do nothing for these targets, overriding the match-all rule defined below to
 # prevent recursive evaluation.
@@ -74,10 +95,16 @@ Makefile : ;
 # Match-all rule that jumps to BUILDDIR rule above, and does nothing else.
 % :: $(BUILDDIR) ; @:
 
+
+########
+# Convenice phony targets for managing build directory.
+##
+
 # Create build directory, and echo the path.
 .PHONY: make_builddir
 make_builddir:
 	@+[ -d $(BUILDDIR) ] || mkdir -p $(BUILDDIR)
+	@+touch $(BUILDDIR)/$(BUILDDIRTOKEN)
 	@+echo $(BUILDDIR)
 
 # Clean up by removing platform build directory. Note that this leaves other
@@ -91,21 +118,91 @@ clean:
 distclean:
 	$(RM) -r build
 
-else # make was invoked from inside a build directory
 
+################################################################################
+else # make was invoked from inside build directory
+################################################################################
+
+# These variables are used by runtime and platform Build.mk to orient themselves
 RUNTIMEDIR := $(SSMDIR)/runtime
 PLATFORMDIR := $(SSMDIR)/platform/$(PLATFORM)
 
+
+########
+# Compiler frontend (.hs => .c)
+##
+
+ifdef SSMTARGET
+# Default target.
+$(SSMTARGET): $(SSMTARGET).o
+$(SSMTARGET).o: $(SSMTARGET).c
+$(SSMTARGET).c: $(SSMTARGET).hs
+endif
+
+# SSM EDSL source files can be found where make was originally invoked.
+vpath %.hs $(MAKECMDDIR)
+
+# Build rule for .c files from SSM EDSL files.
+%.c: %.hs
+	stack --stack-yaml $(SSMDIR)/stack.yaml runghc $< -- -o $@
+
+
+########
+# Compiler backend/C compilation (.c => .o)
+##
+
 include $(RUNTIMEDIR)/Build.mk
 include $(PLATFORMDIR)/Build.mk
+
+# The generated code uses the pattern x << y - z without unnecessary
+# parentheses, which GCC goes out of its way to warn about without this flag.
+CFLAGS += -Wno-parentheses
 
 # Generated C files are placed in the build directory.
 GEN_SRCS := $(notdir $(wildcard *.c))
 SRCS += $(GEN_SRCS)
 
-# The generated code uses the pattern x << y - z without unnecessary
-# parentheses, which GCC goes out of its way to warn about without this flag.
-CFLAGS += -Wno-parentheses
+$(GEN_SRCS:%.c=%.o):
+
+# Leave behind build artifacts.
+.PRECIOUS: %.c %.o %.a
+
+# For compiling tools that should run on the host.
+HOSTCC = cc
+
+# Produce .d files to capture dependency information.
+CPPFLAGS += -MT $@ -MMD -MP -MF $(*F).d
+
+# Have .o targets depend on .d files, in case .d files are ever deleted.
+%.o : %.c %.d
+
+# .d dependency files, based on .c files SRCS.
+DEPFILES := $(SRCS:%.c=%.d)
+
+# Prevent dependency files from being deleted as intermediate files by declaring
+# them as explicit targets.
+$(DEPFILES):
+
+# Gather header dependency information from dependency files.
+include $(wildcard $(DEPFILES))
+
+CFLAGS += -Wall -O2 -g -Wpedantic
+
+
+########
+# Compiler backend/archiving (.o => .a)
+##
+
+ARFLAGS = -crU
+
+
+########
+# Compiler backend/linkage (.o/.a => executable/hex)
+##
+
+# We need to tell CC to look in the build directory (i.e., current directory)
+# for libraries.
+LDFLAGS += -L.
 
 # Declare an executable target for each generated C file.
 #
@@ -113,49 +210,11 @@ CFLAGS += -Wno-parentheses
 # the linker command to contain both libLIB.a (from the pre-requisite) and -lLIB
 # (from the LDLIBS) flag.
 $(GEN_SRCS:%.c=%): %: %.o $(LIBS)
-$(GEN_SRCS:%.c=%.o): $(LIBS)
 
-# Leave behind build artifacts
-.PRECIOUS: %.c %.o %.a
-
-# For compiling tools that should run on the host
-HOSTCC = cc
-
-# Produce .d files to capture dependency information
-CPPFLAGS += -MT $@ -MMD -MP -MF $(*F).d
-
-# Have .o targets depend on .d files, in case .d files are ever deleted
-%.o : %.c %.d
-
-# .d dependency files, based on .c files SRCS
-DEPFILES := $(SRCS:%.c=%.d)
-
-# Prevent dependency files from being deleted as intermediate files by declaring
-# them as explicit targets
-$(DEPFILES):
-
-# Gather header dependency information from dependency files
-include $(wildcard $(DEPFILES))
-
-CFLAGS += -std=c99 -Wall -O2 -g -Wpedantic
-ARFLAGS = -crU
-
-# We need to tell CC to look in the build directory (i.e., current directory)
-# for libraries.
-LDFLAGS += -L.
-
-# .elf and hex file generation rules
+# .elf and hex file generation rules.
 %.elf :
 	$(CC) $(LDFLAGS) -o $@ $^
 %.hex : %.elf
 	$(OBJCOPY) -O ihex $^ $@
-
-# # Running the Peng compiler
-
-# %.c : %.pen
-# 	$(PENG) --module-name=$(MODULE) --generate-c $< > $@
-
-# %.h : %.pen
-# 	$(PENG) --module-name=$(MODULE) --generate-h $< > $*.h
 
 endif
