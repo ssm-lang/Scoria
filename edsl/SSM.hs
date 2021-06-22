@@ -251,7 +251,7 @@ buttonGlobals bp =
 
 buttonHandleDriver :: ButtonPeripheral -> [C.BlockItem]
 buttonHandleDriver bp =
-  [ [citem| if(msg->msg_type == 1 && ($exp:checkDriverID)) {
+  [ [citem| if(msg->msg_type == 0 && ($exp:checkDriverID)) {
               $ty:uint64_t hw_now;
               get_hw_now(&hw_now);
 
