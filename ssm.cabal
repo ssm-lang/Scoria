@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 579d628539baa0a2fcdcafbc370afccbbdcd5b13903c85c4f088e696c6a4ed23
+-- hash: 721bc8568016e7e7e858c4453845000224fe30101c21dc0eb92959e1989f6e63
 
 name:           ssm
 version:        0.1.0.0
@@ -27,22 +27,11 @@ source-repository head
 
 library
   exposed-modules:
-      Core
-      Frontend
-      HughesList
-      HW.Board
-      LowCodeGen
-      LowCore
-      LowGenerator
-      LowInterpreter
-      LowPretty
       SSM
-      TestCases
-      Trace
   other-modules:
       Paths_ssm
   hs-source-dirs:
-      edsl
+      ssm
   build-depends:
       BinderAnn
     , QuickCheck
