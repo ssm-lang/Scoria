@@ -88,9 +88,20 @@ data LEDPeripheral = LEDPeripheral
 emptyLEDPeripheral :: LEDPeripheral
 emptyLEDPeripheral = LEDPeripheral Map.empty
 
+type Button = Bool
+
+data ButtonPeripheral = ButtonPeripheral
+  { nextDriverID :: Int                         -- Next available driver ID
+  , buttonrefs   :: Map.Map Int (Int, Ref Button)  -- Button ID -> (Driver ID, Button reference)
+  }
+
+emptyButtonPeripheral :: ButtonPeripheral
+emptyButtonPeripheral = ButtonPeripheral 0 Map.empty
+
 -- | The Compile state records which peripherals are accessed.
 data ST = ST
-  { ledperipheral :: Maybe LEDPeripheral
+  { ledperipheral    :: Maybe LEDPeripheral
+  , buttonperipheral :: Maybe ButtonPeripheral
   }
 
 -- | Compile monad
@@ -110,20 +121,46 @@ getLED i = do
         case Map.lookup i (ledrefs ledp) of
           Just ref -> return ref
           Nothing  -> do
-            let ledref = Ptr $ Static $ ("led" ++ show i, Ref (Special "led"))
-            let ledrefs' = Map.insert i ledref $ ledrefs ledp
+            let ledref   = Ptr $ Static $ ("led" ++ show i, Ref (Special "led"))
+                ledrefs' = Map.insert i ledref $ ledrefs ledp
             modify $ \st -> st { ledperipheral = Just $ ledp { ledrefs = ledrefs' } }
             return ledref
 
+-- | Get a button from the Compile monad
+getButton :: Int -> Compile (Ref Button)
+getButton i | i < 0 || i > 3 = error "invalid button identifier"
+getButton i = do
+  mbuttonp <- gets buttonperipheral
+  case mbuttonp of
+    Just buttonp -> createButton buttonp
+    Nothing      -> createButton emptyButtonPeripheral
+  where
+      createButton :: ButtonPeripheral -> Compile (Ref Button)
+      createButton buttonp = do
+        case Map.lookup i (buttonrefs buttonp) of
+          Just (_,ref) -> return ref
+          Nothing      -> do
+            let driverid    = nextDriverID buttonp
+                buttonref   = Ptr $ Static ("button" ++ show i, Ref (Special "button"))
+                buttonrefs' = Map.insert i (driverid, buttonref) $ buttonrefs buttonp
+            modify $ \st -> st
+              { buttonperipheral = Just $ buttonp { nextDriverID = driverid + 1
+                                                  , buttonrefs   = buttonrefs'
+                                                  }
+              }
+            return buttonref
+
+
 data IOPeripherals = IOP
-  { leds :: [Ref LED]
+  { leds    :: [Ref LED]
+  , buttons :: [Ref Button]
   }
 
-led :: Int -> IOPeripherals -> SSM (Ref LED)
-led i iop = return $ leds iop !! i
+led :: (?io :: IOPeripherals) => Int -> Ref LED
+led i = leds ?io !! i
 
-
-
+button :: (?io :: IOPeripherals) => Int -> Ref Button
+button i = buttons ?io !! i
 
 class GenC a where
   -- | Header file to generate
@@ -136,19 +173,17 @@ class GenC a where
   globals    :: a -> Maybe [C.Definition]
   -- | Code to run in main, if any
   mainInit   :: a -> Maybe [C.BlockItem]
-
-instance GenC LEDPeripheral where
-  header     _  = Just ("peng-led.h", ledHeader, ledHeaderIncludes)
-  source     _  = Just ("peng-led.c", ledSource, ledSourceIncludes)
-  initialize lp = Just $ ledInit lp
-  globals    lp = Just $ ledGlobals lp
-  mainInit   _  = Nothing
+  -- | How to handle incoming driver messages
+  handleDriver :: a -> Maybe [C.BlockItem]
 
 sv_t :: C.Type
 sv_t = [cty| typename sv_t |]
 
 sv_led_t :: C.Type
 sv_led_t = [cty| typename sv_led_t |]
+
+sv_button_t :: C.Type
+sv_button_t = [cty| typename sv_button_t |]
 
 peng_time_t :: C.Type
 peng_time_t = [cty| typename peng_time_t |]
@@ -176,6 +211,16 @@ bool = [cty| typename bool |]
 
 ll_driver_t :: C.Type
 ll_driver_t = [cty| typename ll_driver_t |]
+
+{-********** Start of LED C Code **********-}
+
+instance GenC LEDPeripheral where
+  header     _   = Just ("peng-led.h", ledHeader, ledHeaderIncludes)
+  source     _   = Just ("peng-led.c", ledSource, ledSourceIncludes)
+  initialize lp  = Just $ ledInit lp
+  globals    lp  = Just $ ledGlobals lp
+  mainInit   _   = Nothing
+  handleDriver _ = Nothing
 
 ledGlobals :: LEDPeripheral -> [C.Definition]
 ledGlobals ledp = concat $ map (\n -> [cunit| $ty:sv_led_t $id:n; |]) $ lednames
@@ -311,6 +356,179 @@ ledSource =
     |]
   ]
 
+{-********** End of LED C Code ***********-}
+{-********** Start of Button C Code **********-}
+zephyr_interop_t :: C.Type
+zephyr_interop_t = [cty| typename zephyr_interop_t |]
+
+instance GenC ButtonPeripheral where
+  header     bp   = Just ("peng-button.h", buttonHeader bp, buttonHeaderIncludes)
+  source     bp   = Just ("peng-button.c", buttonSource bp, buttonSourceIncludes)
+  initialize bp   = Just $ buttonInit bp
+  globals    bp   = Just $ buttonGlobals bp
+  mainInit   _    = Nothing
+  handleDriver bp = Just $ buttonHandleDriver bp
+
+buttonHeader :: ButtonPeripheral -> [C.Definition]
+buttonHeader bp =
+  [ [cedecl| $esc:("#ifndef PENG_BUTTON_H") |]
+  , [cedecl| $esc:("#define PENG_BUTTON_H") |]
+
+  , [cedecl| typedef struct {
+               /* Generic SV fields */
+               void (*update)($ty:sv_t *);
+               struct trigger *triggers;
+               $ty:peng_time_t last_updated;
+               $ty:peng_time_t event_time;
+               void (*to_string)($ty:sv_t *, char *, $ty:size_t);
+
+               /* Button specific fields */
+               $ty:bool value;
+               $ty:bool event_value;
+               $ty:ll_driver_t driver;
+             } sv_button_t;
+    |]
+  , [cedecl| void to_string_button($ty:sv_t *v, char *buffer, $ty:size_t size); |]
+  , [cedecl| void initialize_button($ty:sv_button_t *v);|]
+  , [cedecl| void initialize_buttonIO($ty:sv_button_t *v, $ty:uint32_t driverid, $ty:uint32_t buttonid);|]
+  , [cedecl| void assign_button($ty:sv_button_t *v, $ty:priority_t priority, $ty:bool value); |]
+  , [cedecl| void later_button($ty:sv_button_t *v, $ty:peng_time_t time, $ty:bool value); |]
+  , [cedecl| void update_button($ty:sv_t *var); |]
+  , [cedecl| $esc:("#endif // PENG_BUTTON_H") |]
+  ]
+
+buttonHeaderIncludes :: [C.Definition]
+buttonHeaderIncludes =
+  [ [cedecl| $esc:("#include <zephyr.h>") |]
+  , [cedecl| $esc:("#include <stdbool.h>") |]
+  , [cedecl| $esc:("#include <stdio.h>") |]
+  , [cedecl| $esc:("#include <peng.h>") |]
+  , [cedecl| $esc:("#include <ll/ll_driver.h>") |]
+  , [cedecl| $esc:("#include <ll/ll_button.h>") |]
+  ]
+
+buttonSource :: ButtonPeripheral -> [C.Definition]
+buttonSource bp =
+  [ [cedecl| $esc:("extern struct k_msgq tick_msgq;")|]
+  , [cedecl| int send_message($ty:zephyr_interop_t *this, $ty:ll_driver_msg_t msg);|]
+  , [cedecl| int send_message($ty:zephyr_interop_t *this, $ty:ll_driver_msg_t msg) {
+               return k_msgq_put(this->msgq,(void*)&msg, K_NO_WAIT);
+             }
+    |]
+  , [cedecl| $ty:zephyr_interop_t button_interop = { .msgq = &tick_msgq
+                                                   , .send_message = send_message
+                                                   }; |]
+  , [cedecl| void to_string_button($ty:sv_t *v, char *buffer, $ty:size_t size) {
+               $ty:sv_button_t* iv = ($ty:sv_button_t *) v;
+               char str[] = "button %s";
+               snprintf(buffer, size, str, iv->value ? "button-down" : "button-up");
+             }
+    |]
+  , [cedecl| void initialize_button($ty:sv_button_t *v) {
+               assert(v);
+               /* Generic initialization */
+               *v = ($ty:sv_button_t) { .to_string    = to_string_button,
+                                        .update       = update_button,
+                                        .triggers     = NULL,
+			                                  .last_updated = now,
+			                                  .event_time   = NO_EVENT_SCHEDULED
+                                      };
+             }
+    |]
+  , [cedecl| void initialize_buttonIO($ty:sv_button_t *v, $ty:uint32_t driverid, $ty:uint32_t buttonid) {
+               assert(v);
+               /* Generic initialization */
+               *v = ($ty:sv_button_t) { .to_string    = to_string_button,
+                                        .update       = update_button,
+                                        .triggers     = NULL,
+			                                  .last_updated = now,
+			                                  .event_time   = NO_EVENT_SCHEDULED
+                                      };
+
+               /* Button specific initialization */
+               if(ll_button_init(&v->driver, driverid, &button_interop, buttonid)) {
+                 printk("Button-driver %d successfully initialized\n", buttonid);
+               } else {
+                 printk("driver failed to initialize\n");
+               }
+             }
+    |]
+  , [cedecl| void assign_button($ty:sv_button_t *v, $ty:priority_t priority, $ty:bool value) {
+               v->value = value;
+               v->last_updated = now;
+               schedule_sensitive(($ty:sv_t *) v, priority);
+             }
+    |]
+  , [cedecl| void later_button($ty:sv_button_t *v, $ty:peng_time_t time, $ty:bool value) {
+               assert(v);
+               v->event_value = value;
+               later_event(($ty:sv_t *) v, time);
+             }
+    |]
+  , [cedecl| void update_button($ty:sv_t *var) {
+               assert(var);
+               assert(var->event_time == now);
+               $ty:sv_button_t *v = ($ty:sv_button_t *) var;
+               v->value = v->event_value;
+             }
+    |]
+  ]
+
+buttonSourceIncludes :: [C.Definition]
+buttonSourceIncludes =
+  [ [cedecl| $esc:("#include <zephyr.h>") |]
+  , [cedecl| $esc:("#include <stdbool.h>") |]
+  , [cedecl| $esc:("#include <stdio.h>") |]
+  , [cedecl| $esc:("#include <peng.h>") |]
+  , [cedecl| $esc:("#include <ll/ll_driver.h>") |]
+  , [cedecl| $esc:("#include <ll/ll_button.h>") |]
+  , [cedecl| $esc:("#include <hal/zephyr/svm_zephyr.h>")|]
+  ]
+
+-- citem
+buttonInit :: ButtonPeripheral -> [C.BlockItem]
+buttonInit bp = concat $ map initbutton $ Map.toList (buttonrefs bp)
+  where
+      initbutton :: (Int, (Int, Ref Button)) -> [C.BlockItem]
+      initbutton (buttonid, (driverid, (Ptr r))) =
+        [ [citem| initialize_buttonIO(&$id:(refName r), $int:driverid, $int:buttonid); |]
+        , [citem| $id:(refName r).value  = false; |]
+        , [citem| buttons[$int:driverid] = &$id:(refName r);|]
+        ]
+
+buttonGlobals :: ButtonPeripheral -> [C.Definition]
+buttonGlobals bp =
+  [ [cedecl| $ty:sv_button_t *buttons[$int:(Map.size (buttonrefs bp))];|]
+  ] ++ map buttondecl (Map.toList $ buttonrefs bp)
+  where
+    buttondecl :: (Int, (Int, Ref Button)) -> C.Definition
+    buttondecl (driverid, (buttonid, (Ptr r))) =
+      [cedecl| $ty:sv_button_t $id:(refName r); |]
+
+buttonHandleDriver :: ButtonPeripheral -> [C.BlockItem]
+buttonHandleDriver bp =
+  [ [citem| if(recv_msg.msg_type == 1 && ($exp:checkDriverID)) {
+              $ty:uint32_t count;
+              counter_get_value(counter_dev, &count);
+              now = count;
+
+              /* Fetch button variable from buttons schedule it in 1 tick */
+              $ty:sv_button_t* button = buttons[recv_msg.driver_id];
+              later_button(button, now + 1, recv_msg.data);
+            }
+  |] ]
+  where
+    driverIDs :: [Int]
+    driverIDs = map fst $ Map.elems (buttonrefs bp)
+
+    checkDriverID :: C.Exp
+    checkDriverID =
+      foldl
+        (\curr id -> [cexp| $exp:curr || recv_msg.driver_id == $int:id|])
+        [cexp|false|]
+        driverIDs
+{-********** End of Button C Code **********-}
+
 makeInitializeFunction :: [C.BlockItem] -> C.Definition
 makeInitializeFunction items = [cedecl| void initializeIO() { $items:items } |]
 
@@ -318,11 +536,12 @@ ll_driver_msg_t :: C.Type
 ll_driver_msg_t = [cty| typename ll_driver_msg_t |]
 
 staticZephyrCode :: C.Definition     -- Initialization procedure
+                 -> [C.BlockItem]    -- Cases to handle driver messages
                  -> [C.BlockItem]    -- Statements to initialize the SSM program
                  -> ( [C.Definition] -- Actual code
                     , [C.Definition] -- List of includes
                     )
-staticZephyrCode ioinit prginit =
+staticZephyrCode ioinit msgcases prginit =
   ( [ ioinit
     , [cedecl| void top_return($ty:act_t *act) {
                 return;
@@ -348,12 +567,10 @@ staticZephyrCode ioinit prginit =
 
                   k_msgq_get(&tick_msgq, &recv_msg, K_FOREVER);
 
-                  switch(recv_msg.msg_type) {
-                    case 0:
-                      break;
-                    default:
-                      printk("default case - type: %d\n", recv_msg.msg_type);
+                  if(recv_msg.msg_type == 0 && recv_msg.driver_id == -1) {
+                    printk("woke up from timer, time to call tick\n");
                   }
+                  $items:msgcases
 
                   now = next_event_time();
                   tick();
@@ -398,7 +615,7 @@ staticZephyrCode ioinit prginit =
       |]
     , [cedecl| void hw_tick(const struct device *dev, $ty:uint8_t chan, $ty:uint32_t ticks, void *user_data) {
                 $ty:ll_driver_msg_t msg = { .driver_id = -1
-                                          , .msg_type  = 1
+                                          , .msg_type  = 0
                                           , .data      = 0
                                           , .timestamp = 0
                                           };
@@ -503,14 +720,16 @@ data Peripheral where
 
 -- | Dummy instance for Peripherals
 instance GenC Peripheral where
-  header     (Peripheral p) = header p
-  source     (Peripheral p) = source p
-  initialize (Peripheral p) = initialize p
-  globals    (Peripheral p) = globals p
-  mainInit   (Peripheral p) = mainInit p
+  header     (Peripheral p)   = header p
+  source     (Peripheral p)   = source p
+  initialize (Peripheral p)   = initialize p
+  globals    (Peripheral p)   = globals p
+  handleDriver (Peripheral p) = handleDriver p
+  mainInit   (Peripheral p)   = mainInit p
 
 stToPeripherals :: ST -> [Peripheral]
-stToPeripherals st = concat [ maybe [] (\p -> [Peripheral p]) (ledperipheral st)]
+stToPeripherals st = concat [ maybe [] (\p -> [Peripheral p]) (ledperipheral st)
+                            , maybe [] (\p -> [Peripheral p]) (buttonperipheral st)]
 
 -- | Merge all C-Code that's generated for the peripherals
 genPeripheralCode :: [Peripheral]
@@ -518,6 +737,7 @@ genPeripheralCode :: [Peripheral]
                      , [C.Definition]  -- All includes required by the peripherals
                      , [C.Definition]  -- All globablly declared variables and other important stuff
                      , [C.BlockItem]   -- All initialization statements (to go into a procedure)
+                     , [C.BlockItem]   -- All cases that can handle driver messages
                      , [C.BlockItem]   -- Any code that is meant to run in main before program init
                      )
 genPeripheralCode ps =
@@ -525,8 +745,9 @@ genPeripheralCode ps =
       (_, src, srcincl) = getAll source     (<>) ([], [], []) ps
       gbls              = getAll globals    (<>) [] ps
       inits             = getAll initialize (<>) [] ps
+      msgcases          = getAll handleDriver (<>) [] ps
       minits            = getAll mainInit   (<>) [] ps
-  in (hdr <> src, hdrincl <> srcincl, gbls, inits, minits)
+  in (hdr <> src, hdrincl <> srcincl, gbls, inits, msgcases, minits)
   where
     getAll :: (a -> Maybe b) -> (c -> b -> c) -> c -> [a] -> c
     getAll f g init = foldl g init . map fromJust . filter isJust . map f
@@ -538,7 +759,7 @@ genCFile mi prg ps = pretty 120 $ pprList compunit
   where
     hdrsrc,includes,gbls :: [C.Definition]
     inits,minits         :: [C.BlockItem]
-    (hdrsrc, includes, gbls, inits, minits) = genPeripheralCode ps
+    (hdrsrc, includes, gbls, inits, msgcases, minits) = genPeripheralCode ps
     
     ioinit :: C.Definition
     ioinit   = makeInitializeFunction inits
@@ -550,7 +771,7 @@ genCFile mi prg ps = pretty 120 $ pprList compunit
     (ssmprog, ssmincludes) = compileCDefs False mi prg'
 
     zephyrcd,zincludes :: [C.Definition]
-    (zephyrcd, zincludes) = staticZephyrCode ioinit (prgInit prg')
+    (zephyrcd, zincludes) = staticZephyrCode ioinit msgcases (prgInit prg')
 
     compunit :: [C.Definition]
     compunit = concat [ (nub (includes <> zincludes <> ssmincludes))
@@ -561,7 +782,7 @@ genCFile mi prg ps = pretty 120 $ pprList compunit
                       ]
 
 totalCompile :: Compile (SSM ()) -> String
-totalCompile cunit = let (ssm, st) = runState cunit $ ST Nothing
+totalCompile cunit = let (ssm, st) = runState cunit $ ST Nothing Nothing
                      in genCFile Nothing ssm (stToPeripherals st)
 
 
@@ -590,19 +811,14 @@ delay time = Frontend.fork [delayprocess time]
 
 testprogram :: (?io :: IOPeripherals) => SSM ()
 testprogram = boxNullary "testprogram" $ do
-  led0 <- led 0 ?io
-  led1 <- led 1 ?io
-  led2 <- led 2 ?io
-  led3 <- led 3 ?io
-
   while' true' $ do
-    toggle led0
+    toggle $ led 0
     delay 4000000
-    toggle led1
+    toggle $ led 1
     delay 4000000
-    toggle led2
+    toggle $ led 2
     delay 4000000
-    toggle led3
+    toggle $ led 3
     delay 4000000
 
 
@@ -613,4 +829,28 @@ mainSSM = do
   led2 <- getLED 2
   led3 <- getLED 3
 
-  let ?io = IOP [led0, led1, led2, led3] in return testprogram
+  let ?io = IOP [led0, led1, led2, led3] [] in return testprogram
+
+
+
+
+
+
+
+
+
+-- I am manually using ticks here, but this should be handled by the compiler
+-- later on. 16 000 000 = 1 second.
+
+testprogram2 :: (?io :: IOPeripherals) => SSM ()
+testprogram2 = boxNullary "testprogram2" $ do
+  sequence_ [wait [button 0], wait [button 0]]
+  delay (5*16000000)
+  sequence_ $ concat $ replicate (4*5) [toggle (led 0), delay 4000000]
+
+-- | Boring setup
+mainSSM2 :: Compile (SSM ())
+mainSSM2 = do
+  button0 <- getButton 0
+  led0    <- getLED 0
+  let ?io = IOP [led0] [button0] in return testprogram2
