@@ -134,18 +134,17 @@ PLATFORMDIR := $(SSMDIR)/platform/$(PLATFORM)
 
 ifdef SSMTARGET
 # Default target.
-$(SSMTARGET): $(SSMTARGET).o
-$(SSMTARGET).o: $(SSMTARGET).c
-$(SSMTARGET).c: $(SSMTARGET).hs
+$(SSMTARGET):
 endif
 
 # SSM EDSL source files can be found where make was originally invoked.
 vpath %.hs $(MAKECMDDIR)
 
-# Build rule for .c files from SSM EDSL files.
-%.c: %.hs
-	stack --stack-yaml $(SSMDIR)/stack.yaml runghc $< -- -o $@
+SSM_SRCS := $(foreach hs,$(wildcard $(MAKECMDDIR)/*.hs),$(notdir $(hs)))
 
+# Build rule for .c files from SSM EDSL files.
+$(SSM_SRCS:%.hs=%.c): %.c: %.hs
+	stack --stack-yaml $(SSMDIR)/stack.yaml runghc $< -- -o $@
 
 ########
 # Compiler backend/C compilation (.c => .o)
@@ -159,7 +158,11 @@ include $(PLATFORMDIR)/Build.mk
 CFLAGS += -Wno-parentheses
 
 # Generated C files are placed in the build directory.
+# TODO: remove this, or at least make this specific to the trace platform.
+# This is no longer needed for generic builds.
 GEN_SRCS := $(notdir $(wildcard *.c))
+
+SRCS += $(SSM_SRCS:%.hs=%.c)
 SRCS += $(GEN_SRCS)
 
 $(GEN_SRCS:%.c=%.o):
@@ -210,6 +213,7 @@ LDFLAGS += -L.
 # the linker command to contain both libLIB.a (from the pre-requisite) and -lLIB
 # (from the LDLIBS) flag.
 $(GEN_SRCS:%.c=%): %: %.o $(LIBS)
+$(SSM_SRCS:%.hs=%): %: %.o $(LIBS)
 
 # .elf and hex file generation rules.
 %.elf :
