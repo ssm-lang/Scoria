@@ -161,10 +161,8 @@ button :: (?iobuttons :: IOButton) => Int -> Ref Button
 button i = ?iobuttons !! i
 
 class GenC a where
-  -- | Header file to generate
-  header     :: a -> Maybe (String, [C.Definition], [C.Definition])
-  -- | Source file to generate
-  source     :: a -> Maybe (String, [C.Definition], [C.Definition])
+  -- | Header files to include
+  include    :: a -> C.Definition
   -- | Initialize IO code to inline in the initialize function
   initialize :: a -> Maybe [C.BlockItem]
   -- | Global definitions
@@ -174,9 +172,6 @@ class GenC a where
   -- | How to handle incoming driver messages
   handleDriver :: a -> Maybe [C.BlockItem]
 
-sv_t :: C.Type
-sv_t = [cty| typename sv_t |]
-
 sv_led_t :: C.Type
 sv_led_t = [cty| typename sv_led_t |]
 
@@ -185,12 +180,6 @@ sv_button_t = [cty| typename sv_button_t |]
 
 peng_time_t :: C.Type
 peng_time_t = [cty| typename peng_time_t |]
-
-priority_t :: C.Type
-priority_t = [cty| typename priority_t |]
-
-size_t :: C.Type
-size_t = [cty| typename size_t |]
 
 act_t :: C.Type
 act_t = [cty| typename act_t |]
@@ -204,17 +193,10 @@ uint32_t = [cty| typename uint32_t |]
 uint64_t :: C.Type
 uint64_t = [cty| typename uint64_t |]
 
-bool :: C.Type
-bool = [cty| typename bool |]
-
-ll_driver_t :: C.Type
-ll_driver_t = [cty| typename ll_driver_t |]
-
 {-********** Start of LED C Code **********-}
 
 instance GenC LEDPeripheral where
-  header     _   = Just ("peng-led.h", ledHeader, ledHeaderIncludes)
-  source     _   = Just ("peng-led.c", ledSource, ledSourceIncludes)
+  include    _   = [cedecl| $esc:("#include <peng-led.h>")|]
   initialize lp  = Just $ ledInit lp
   globals    lp  = Just $ ledGlobals lp
   mainInit   _   = Nothing
@@ -234,254 +216,19 @@ ledInit ledp = concatMap stmts leds
                   , [citem| $id:n.value = false; |]
                   ]
 
-ledHeaderIncludes :: [C.Definition]
-ledHeaderIncludes =
-  [ [cedecl| $esc:("#include <stdbool.h>")      |]
-  , [cedecl| $esc:("#include <stdio.h>")        |]
-  , [cedecl| $esc:("#include <peng.h>")         |]
-  , [cedecl| $esc:("#include <ll/ll_driver.h>") |]
-  , [cedecl| $esc:("#include <ll/ll_led.h>")    |]
-  ]
-
-ledHeader :: [C.Definition]
-ledHeader =
-  [ [cedecl| $esc:("#ifndef PENG_LED_H") |]
-  , [cedecl| $esc:("#define PENG_LED_H") |]
-
-  , [cedecl| typedef struct {
-               /* Generic SV fields */
-               void (*update)($ty:sv_t *);
-               struct trigger *triggers;
-               $ty:peng_time_t last_updated;
-               $ty:peng_time_t event_time;
-               void (*to_string)($ty:sv_t *, char *, $ty:size_t);
-
-               /* LED specific fields */
-               $ty:bool value;
-               $ty:bool event_value;
-               $ty:bool can_use_driver;
-               $ty:ll_driver_t driver;
-             } sv_led_t;
-    |]
-  , [cedecl| void to_string_led($ty:sv_t *v, char *buffer, $ty:size_t size); |]
-  , [cedecl| void initialize_led($ty:sv_led_t *v);|]
-  , [cedecl| void initialize_ledIO($ty:sv_led_t *v, $ty:uint32_t ledid);|]
-  , [cedecl| void assign_led($ty:sv_led_t *v, $ty:priority_t priority, $ty:bool value); |]
-  , [cedecl| void later_led($ty:sv_led_t *v, $ty:peng_time_t time, $ty:bool value); |]
-  , [cedecl| void update_led($ty:sv_t *var); |]
-  , [cedecl| $esc:("#endif // PENG_LED_H") |]
-  ]
-
-ledSourceIncludes :: [C.Definition]
-ledSourceIncludes =
-  [ [cedecl| $esc:("#include <zephyr.h>")       |]
-  , [cedecl| $esc:("#include <stdbool.h>")      |]
-  , [cedecl| $esc:("#include <stdio.h>")        |]
-  , [cedecl| $esc:("#include <peng.h>")         |]
-  , [cedecl| $esc:("#include <ll/ll_driver.h>") |]
-  , [cedecl| $esc:("#include <ll/ll_led.h>")    |]
-  ]
-
-ledSource :: [C.Definition]
-ledSource =
-  [[cedecl| void to_string_led($ty:sv_t *v, char *buffer, $ty:size_t size) {
-               $ty:sv_led_t* iv = ($ty:sv_led_t *) v;
-               char str[] = "led %s";
-               snprintf(buffer, size, str, iv->value ? "on" : "off");
-               return;
-             }
-    |]
-  , [cedecl| void initialize_led($ty:sv_led_t *v) {
-               assert(v);
-               /* Generic initialization */
-               *v = ($ty:sv_led_t) { .to_string        = to_string_led
-                                     , .update         = update_led
-                                     , .triggers       = NULL
-                                     , .last_updated   = now
-                                     , .event_time     = NO_EVENT_SCHEDULED
-                                     , .can_use_driver = false
-                                     };
-             }
-    |]
-  , [cedecl| void initialize_ledIO($ty:sv_led_t *v, $ty:uint32_t ledid) {
-               assert(v);
-               /* Generic initialization */
-               *v = ($ty:sv_led_t) { .to_string        = to_string_led
-                                     , .update         = update_led
-                                     , .triggers       = NULL
-                                     , .last_updated   = now
-                                     , .event_time     = NO_EVENT_SCHEDULED
-                                     , .can_use_driver = true
-                                     };
-               /* LED specific initialization */
-               if(ll_led_init(&v->driver, ledid, 0)) {
-                 printk("LED-driver %d successfully initialized\n", ledid);
-               } else {
-                 printk("LED-driver %d failed to initialize\n", ledid);
-               }
-             }
-    |]
-  , [cedecl| void assign_led($ty:sv_led_t *v, $ty:priority_t priority, $ty:bool value) {
-               v->value = value;
-               v->last_updated = now;
-               schedule_sensitive(($ty:sv_t *) v, priority);
-               
-               /* After performing the assignment, reflect the new value in the driver */
-               if(v->can_use_driver) {
-                 $ty:uint8_t cmd = v->value ? 1 : 0;
-                 ll_write(&v->driver, &cmd, 1);
-               }
-             }
-    |]
-  , [cedecl| void later_led($ty:sv_led_t *v, $ty:peng_time_t time, $ty:bool value) {
-               assert(v);
-               v->event_value = value;
-               later_event(($ty:sv_t *) v, time);
-             }
-    |]
-  , [cedecl| void update_led($ty:sv_t *var) {
-               assert(var);
-               assert(var->event_time == now);
-               $ty:sv_led_t *v = ($ty:sv_led_t *) var;
-               v->value = v->event_value;
-
-               /* After updating the value, reflect the new value in the driver */
-               if(v->can_use_driver) {
-                 $ty:uint8_t cmd = v->value ? 1 : 0;
-                 ll_write(&v->driver, &cmd, 1);
-               }
-             }
-    |]
-  ]
-
 {-********** End of LED C Code ***********-}
+
+
 {-********** Start of Button C Code **********-}
 zephyr_interop_t :: C.Type
 zephyr_interop_t = [cty| typename zephyr_interop_t |]
 
 instance GenC ButtonPeripheral where
-  header     bp   = Just ("peng-button.h", buttonHeader bp, buttonHeaderIncludes)
-  source     bp   = Just ("peng-button.c", buttonSource bp, buttonSourceIncludes)
+  include    _    = [cedecl| $esc:("#include <peng-button.h>")|]
   initialize bp   = Just $ buttonInit bp
   globals    bp   = Just $ buttonGlobals bp
   mainInit   _    = Nothing
   handleDriver bp = Just $ buttonHandleDriver bp
-
-buttonHeader :: ButtonPeripheral -> [C.Definition]
-buttonHeader bp =
-  [ [cedecl| $esc:("#ifndef PENG_BUTTON_H") |]
-  , [cedecl| $esc:("#define PENG_BUTTON_H") |]
-
-  , [cedecl| typedef struct {
-               /* Generic SV fields */
-               void (*update)($ty:sv_t *);
-               struct trigger *triggers;
-               $ty:peng_time_t last_updated;
-               $ty:peng_time_t event_time;
-               void (*to_string)($ty:sv_t *, char *, $ty:size_t);
-
-               /* Button specific fields */
-               $ty:bool value;
-               $ty:bool event_value;
-               $ty:ll_driver_t driver;
-             } sv_button_t;
-    |]
-  , [cedecl| void to_string_button($ty:sv_t *v, char *buffer, $ty:size_t size); |]
-  , [cedecl| void initialize_button($ty:sv_button_t *v);|]
-  , [cedecl| void initialize_buttonIO($ty:sv_button_t *v, $ty:uint32_t driverid, $ty:uint32_t buttonid);|]
-  , [cedecl| void assign_button($ty:sv_button_t *v, $ty:priority_t priority, $ty:bool value); |]
-  , [cedecl| void later_button($ty:sv_button_t *v, $ty:peng_time_t time, $ty:bool value); |]
-  , [cedecl| void update_button($ty:sv_t *var); |]
-  , [cedecl| $esc:("#endif // PENG_BUTTON_H") |]
-  ]
-
-buttonHeaderIncludes :: [C.Definition]
-buttonHeaderIncludes =
-  [ [cedecl| $esc:("#include <zephyr.h>") |]
-  , [cedecl| $esc:("#include <stdbool.h>") |]
-  , [cedecl| $esc:("#include <stdio.h>") |]
-  , [cedecl| $esc:("#include <peng.h>") |]
-  , [cedecl| $esc:("#include <ll/ll_driver.h>") |]
-  , [cedecl| $esc:("#include <ll/ll_button.h>") |]
-  ]
-
-buttonSource :: ButtonPeripheral -> [C.Definition]
-buttonSource bp =
-  [ [cedecl| $esc:("extern struct k_msgq tick_msgq;")|]
-  , [cedecl| int send_message($ty:zephyr_interop_t *this, $ty:ll_driver_msg_t msg);|]
-  , [cedecl| int send_message($ty:zephyr_interop_t *this, $ty:ll_driver_msg_t msg) {
-               return k_msgq_put(this->msgq,(void*)&msg, K_NO_WAIT);
-             }
-    |]
-  , [cedecl| $ty:zephyr_interop_t button_interop = { .msgq = &tick_msgq
-                                                   , .send_message = send_message
-                                                   }; |]
-  , [cedecl| void to_string_button($ty:sv_t *v, char *buffer, $ty:size_t size) {
-               $ty:sv_button_t* iv = ($ty:sv_button_t *) v;
-               char str[] = "button %s";
-               snprintf(buffer, size, str, iv->value ? "button-down" : "button-up");
-             }
-    |]
-  , [cedecl| void initialize_button($ty:sv_button_t *v) {
-               assert(v);
-               /* Generic initialization */
-               *v = ($ty:sv_button_t) { .to_string    = to_string_button,
-                                        .update       = update_button,
-                                        .triggers     = NULL,
-			                                  .last_updated = now,
-			                                  .event_time   = NO_EVENT_SCHEDULED
-                                      };
-             }
-    |]
-  , [cedecl| void initialize_buttonIO($ty:sv_button_t *v, $ty:uint32_t driverid, $ty:uint32_t buttonid) {
-               assert(v);
-               /* Generic initialization */
-               *v = ($ty:sv_button_t) { .to_string    = to_string_button,
-                                        .update       = update_button,
-                                        .triggers     = NULL,
-			                                  .last_updated = now,
-			                                  .event_time   = NO_EVENT_SCHEDULED
-                                      };
-
-               /* Button specific initialization */
-               if(ll_button_init(&v->driver, driverid, &button_interop, buttonid)) {
-                 printk("Button-driver %d successfully initialized\n", buttonid);
-               } else {
-                 printk("driver failed to initialize\n");
-               }
-             }
-    |]
-  , [cedecl| void assign_button($ty:sv_button_t *v, $ty:priority_t priority, $ty:bool value) {
-               v->value = value;
-               v->last_updated = now;
-               schedule_sensitive(($ty:sv_t *) v, priority);
-             }
-    |]
-  , [cedecl| void later_button($ty:sv_button_t *v, $ty:peng_time_t time, $ty:bool value) {
-               assert(v);
-               v->event_value = value;
-               later_event(($ty:sv_t *) v, time);
-             }
-    |]
-  , [cedecl| void update_button($ty:sv_t *var) {
-               assert(var);
-               assert(var->event_time == now);
-               $ty:sv_button_t *v = ($ty:sv_button_t *) var;
-               v->value = v->event_value;
-             }
-    |]
-  ]
-
-buttonSourceIncludes :: [C.Definition]
-buttonSourceIncludes =
-  [ [cedecl| $esc:("#include <zephyr.h>") |]
-  , [cedecl| $esc:("#include <stdbool.h>") |]
-  , [cedecl| $esc:("#include <stdio.h>") |]
-  , [cedecl| $esc:("#include <peng.h>") |]
-  , [cedecl| $esc:("#include <ll/ll_driver.h>") |]
-  , [cedecl| $esc:("#include <ll/ll_button.h>") |]
-  , [cedecl| $esc:("#include <hal/zephyr/svm_zephyr.h>")|]
-  ]
 
 -- citem
 buttonInit :: ButtonPeripheral -> [C.BlockItem]
@@ -718,12 +465,11 @@ data Peripheral where
 
 -- | Dummy instance for Peripherals
 instance GenC Peripheral where
-  header     (Peripheral p)   = header p
-  source     (Peripheral p)   = source p
-  initialize (Peripheral p)   = initialize p
-  globals    (Peripheral p)   = globals p
+  include      (Peripheral p) = include p
+  initialize   (Peripheral p) = initialize p
+  globals      (Peripheral p) = globals p
   handleDriver (Peripheral p) = handleDriver p
-  mainInit   (Peripheral p)   = mainInit p
+  mainInit     (Peripheral p) = mainInit p
 
 stToPeripherals :: ST -> [Peripheral]
 stToPeripherals st = concat [ maybe [] (\p -> [Peripheral p]) (ledperipheral st)
@@ -731,21 +477,19 @@ stToPeripherals st = concat [ maybe [] (\p -> [Peripheral p]) (ledperipheral st)
 
 -- | Merge all C-Code that's generated for the peripherals
 genPeripheralCode :: [Peripheral]
-                  -> ( [C.Definition]  -- Concatenation of header files and source files
-                     , [C.Definition]  -- All includes required by the peripherals
+                  -> ( [C.Definition]  -- All includes required by the peripherals
                      , [C.Definition]  -- All globablly declared variables and other important stuff
                      , [C.BlockItem]   -- All initialization statements (to go into a procedure)
                      , [C.BlockItem]   -- All cases that can handle driver messages
                      , [C.BlockItem]   -- Any code that is meant to run in main before program init
                      )
 genPeripheralCode ps =
-  let (_, hdr, hdrincl) = getAll header     (<>) ([], [], []) ps
-      (_, src, srcincl) = getAll source     (<>) ([], [], []) ps
+  let includes          = map include ps
       gbls              = getAll globals    (<>) [] ps
       inits             = getAll initialize (<>) [] ps
       msgcases          = getAll handleDriver (<>) [] ps
       minits            = getAll mainInit   (<>) [] ps
-  in (hdr <> src, hdrincl <> srcincl, gbls, inits, msgcases, minits)
+  in (includes, gbls, inits, msgcases, minits)
   where
     getAll :: (a -> Maybe b) -> (c -> b -> c) -> c -> [a] -> c
     getAll f g init = foldl g init . map fromJust . filter isJust . map f
@@ -755,9 +499,9 @@ genPeripheralCode ps =
 genCFile :: Maybe Int -> SSM () -> [Peripheral] -> String
 genCFile mi prg ps = pretty 120 $ pprList compunit
   where
-    hdrsrc,includes,gbls :: [C.Definition]
+    includes,gbls :: [C.Definition]
     inits,minits         :: [C.BlockItem]
-    (hdrsrc, includes, gbls, inits, msgcases, minits) = genPeripheralCode ps
+    (includes, gbls, inits, msgcases, minits) = genPeripheralCode ps
     
     ioinit :: C.Definition
     ioinit   = makeInitializeFunction inits
@@ -773,7 +517,6 @@ genCFile mi prg ps = pretty 120 $ pprList compunit
 
     compunit :: [C.Definition]
     compunit = concat [ (nub (includes <> zincludes <> ssmincludes))
-                      , hdrsrc
                       , gbls
                       , ssmprog
                       , zephyrcd
