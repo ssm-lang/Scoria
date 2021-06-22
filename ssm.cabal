@@ -27,15 +27,6 @@ source-repository head
 
 library
   exposed-modules:
-      Core
-      Frontend
-      HughesList
-      HW.Board
-      LowCodeGen
-      LowCore
-      LowGenerator
-      LowInterpreter
-      LowPretty
       SSM
       Ssm.Compiler.Cli
       TestCases
@@ -43,7 +34,7 @@ library
   other-modules:
       Paths_ssm
   hs-source-dirs:
-      edsl
+      ssm
   build-depends:
       BinderAnn
     , QuickCheck

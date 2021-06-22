@@ -39,6 +39,9 @@ dependencies:
 library:
   source-dirs: edsl
 
+library:
+  source-dirs: ssm
+
 executables:
   ssm-exe:
     main:                Main.hs
