@@ -151,16 +151,14 @@ getButton i = do
             return buttonref
 
 
-data IOPeripherals = IOP
-  { leds    :: [Ref LED]
-  , buttons :: [Ref Button]
-  }
+type IOLED    = [Ref LED]
+type IOButton = [Ref Button]
 
-led :: (?io :: IOPeripherals) => Int -> Ref LED
-led i = leds ?io !! i
+led :: (?ioleds :: IOLED) => Int -> Ref LED
+led i = ?ioleds !! i
 
-button :: (?io :: IOPeripherals) => Int -> Ref Button
-button i = buttons ?io !! i
+button :: (?iobuttons :: IOButton) => Int -> Ref Button
+button i = ?iobuttons !! i
 
 class GenC a where
   -- | Header file to generate
@@ -809,7 +807,7 @@ delay time = Frontend.fork [delayprocess time]
                     after time r 1
                     wait [r]
 
-testprogram :: (?io :: IOPeripherals) => SSM ()
+testprogram :: (?ioleds :: IOLED) => SSM ()
 testprogram = boxNullary "testprogram" $ do
   while' true' $ do
     toggle $ led 0
@@ -829,7 +827,8 @@ mainSSM = do
   led2 <- getLED 2
   led3 <- getLED 3
 
-  let ?io = IOP [led0, led1, led2, led3] [] in return testprogram
+  let ?ioleds = [led0, led1, led2, led3]
+  return testprogram
 
 
 
@@ -842,7 +841,10 @@ mainSSM = do
 -- I am manually using ticks here, but this should be handled by the compiler
 -- later on. 16 000 000 = 1 second.
 
-testprogram2 :: (?io :: IOPeripherals) => SSM ()
+testprogram2 :: ( ?ioleds    :: IOLED
+                , ?iobuttons :: IOButton
+                )
+             => SSM ()
 testprogram2 = boxNullary "testprogram2" $ do
   sequence_ [wait [button 0], wait [button 0]]
   delay (5*16000000)
@@ -853,4 +855,6 @@ mainSSM2 :: Compile (SSM ())
 mainSSM2 = do
   button0 <- getButton 0
   led0    <- getLED 0
-  let ?io = IOP [led0] [button0] in return testprogram2
+  let ?ioleds    = [led0]
+      ?iobuttons = [button0]
+  return testprogram2
