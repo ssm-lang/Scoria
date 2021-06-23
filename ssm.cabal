@@ -31,6 +31,14 @@ library
       Ssm.Compiler.Cli
       TestCases
       Trace
+      SSM.Core.LowSyntax
+      SSM.Core.Syntax
+      SSM.Frontend.Box
+      SSM.Frontend.Language
+      SSM.Language
+      SSM.Pretty
+      SSM.Pretty.LowSyntax
+      SSM.Util.HughesList
   other-modules:
       Paths_ssm
   hs-source-dirs:
