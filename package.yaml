@@ -36,8 +36,8 @@ dependencies:
 - time
 - bytestring
 
-library:
-  source-dirs: edsl
+#library:
+#  source-dirs: edsl
 
 library:
   source-dirs: ssm
