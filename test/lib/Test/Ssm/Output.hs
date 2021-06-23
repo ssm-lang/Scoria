@@ -20,9 +20,9 @@ import           Data.List                      ( isPrefixOf
                                                 )
 import           System.Timeout                 ( timeout )
 
-import           LowCore                        ( Program )
-import           LowInterpreter                 ( interpret )
-import qualified Trace                         as Tr
+import           SSM.Core.LowSyntax             ( Program )
+import           SSM.Interpret.Interpreter      ( interpret )
+import qualified SSM.Interpret.Trace           as Tr
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC

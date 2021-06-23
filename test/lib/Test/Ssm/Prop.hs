@@ -6,8 +6,8 @@ module Test.Ssm.Prop
   , doProgramSpec
   ) where
 
-import           LowCore                        ( Program )
-import           LowGenerator                   ( ) -- instance Arbitrary Program
+import           SSM.Core.LowSyntax             ( Program )
+import           Test.Ssm.Generator             ( ) -- instance Arbitrary Program
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC

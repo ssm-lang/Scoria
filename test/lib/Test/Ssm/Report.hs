@@ -18,8 +18,8 @@ import           System.Directory               ( createDirectoryIfMissing
                                                 , setPermissions
                                                 )
 
-import           LowCore                        ( Program )
-import           LowPretty                      ( prettyProgram )
+import           SSM.Core.LowSyntax             ( Program )
+import           SSM.Pretty                     ( prettyProgram )
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
@@ -114,7 +114,7 @@ reportProgramOnFail slug program = do
     [ "module Regression." ++ slugStr slug ++ "Spec where"
     , ""
     , "import Data.Map (fromList)"
-    , "import LowCore"
+    , "import SSM.Core.LowSyntax"
     , "import qualified Test.Ssm.Prop as T"
     , "import qualified Test.Hspec as H"
     , "import qualified Test.Hspec.QuickCheck as H"

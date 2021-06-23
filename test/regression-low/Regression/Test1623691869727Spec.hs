@@ -1,7 +1,7 @@
 module Regression.Test1623691869727Spec where
 
 import Data.Map (fromList)
-import LowCore
+import SSM.Core.LowSyntax
 import qualified Test.Ssm.Prop as T
 import qualified Test.Hspec as H
 import qualified Test.Hspec.QuickCheck as H
