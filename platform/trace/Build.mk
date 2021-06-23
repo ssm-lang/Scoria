@@ -17,10 +17,8 @@ vpath %.c $(PLATFORMDIR)/src
 LDLIBS += -lplatform
 LIBS += libplatform.a
 
-PLATFORMSRC = ssm-debug.c
+PLATFORMSRC = ssm-trace.c
 
 SRCS += $(PLATFORMSRC)
 
 libplatform.a : libplatform.a($(PLATFORMSRC:%.c=%.o))
-
-# ssm-debug.o: ssm-debug.c
