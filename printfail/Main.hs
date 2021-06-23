@@ -2,8 +2,8 @@ module Main where
 
 import System.Environment
 
-import LowPretty
-import SSM
+import SSM.Pretty
+import SSM.Core.LowSyntax
 
 main :: IO ()
 main = do
