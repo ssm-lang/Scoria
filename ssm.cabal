@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 721bc8568016e7e7e858c4453845000224fe30101c21dc0eb92959e1989f6e63
+-- hash: a8c1d64a0655e2747de2cff95233d0268a41f7781a3694afcda5012f333d95b9
 
 name:           ssm
 version:        0.1.0.0
@@ -28,6 +28,14 @@ source-repository head
 library
   exposed-modules:
       SSM
+      SSM.Core.LowSyntax
+      SSM.Core.Syntax
+      SSM.Frontend.Box
+      SSM.Frontend.Language
+      SSM.Language
+      SSM.Pretty
+      SSM.Pretty.LowSyntax
+      SSM.Util.HughesList
   other-modules:
       Paths_ssm
   hs-source-dirs:
