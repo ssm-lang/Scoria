@@ -46,7 +46,7 @@ slugTarget (SlugNamed     n          ) = n
 doCompile :: Monad m => Slug -> Program -> QC.PropertyM m String
 doCompile slug program = do
   let cSrc = compile_ True tickLimit program
-  reportOnFail slug (slugTarget slug ++ ".c") cSrc
+  reportOnFail slug (slugStr slug ++ ".c") cSrc
   return cSrc
 
 -- | Try to compile a C program using make.
