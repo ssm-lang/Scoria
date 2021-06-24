@@ -20,9 +20,8 @@ module SSM.Interpret.Internal
     , enqueue
     , dequeue
 
-      -- * Event management
-    , schedule_event
-    , delete_events
+      -- * Event queue management
+    , eventqueueSize
 
       -- * Blocking calls
     , sensitize
@@ -232,50 +231,6 @@ lookupRef r = do
       Nothing  -> case Map.lookup r (localrefs p) of
           Just ref -> return ref
           Nothing -> error $ "interpreter error - can not find variable " ++ r
-
-schedule_event :: Reference -> Word64 -> SSMExp -> Interp s ()
-schedule_event r thn val = do
-    st <- get
-
-    e <- lookupRef (refName r)
-    
-    when (now st > thn) $ error "bad after"
-
-    -- fetch ref so we can update the scheduled information
-    (ref,pr,b,mt,_) <- lift' $ readSTRef e
-    lift' $ writeSTRef e (ref,pr,b,Just thn, Just val)
-    
-    -- if it was scheduled before we remove the old one from the eventqueue
-    -- and just insert it again.
-    if isJust mt
-        then do let newevs = insert_event thn e (delete_event (fromJust mt) e (events st))
-                modify $ \st -> st { events = newevs }
-    -- otherwise we check if the queue is full before we schedule the new event
-        else if numevents st == eventqueueSize
-            then error "eventqueue full"
-            else do let es' = insert_event thn e (events st)
-                    modify $ \st -> st { events    = es'
-                                       , numevents = numevents st + 1
-                                       }
-
-insert_event :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
-insert_event when v m = adjustWithDefault (v :) [v] when m
-  where
-      adjustWithDefault :: Ord k => (a -> a) -> a -> k -> Map.Map k a -> Map.Map k a
-      adjustWithDefault f v k m =
-          if Map.member k m
-              then Map.adjust f k m
-              else Map.insert k v m
-
-delete_event :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
-delete_event when v m = case Map.lookup when m of
-    Just [x] -> if x == v then Map.delete when m else m
-    Just x   -> Map.adjust (delete v) when m
-    Nothing  -> m
-
-delete_events :: [(Word64, Var s)] -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
-delete_events [] m         = m
-delete_events ((t,v):xs) m = delete_events xs $ delete_event t v m
 
 -- | Make the procedure wait for writes to the variable
 sensitize :: String -> Interp s ()

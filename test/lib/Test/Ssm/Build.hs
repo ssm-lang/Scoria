@@ -45,13 +45,8 @@ slugTarget (SlugNamed     n          ) = n
 -- | Compile an SSM program to a C program's string representation.
 doCompile :: Monad m => Slug -> Program -> QC.PropertyM m String
 doCompile slug program = do
-<<<<<<< HEAD
-  let cSrc = compile_ True tickLimit program
-  reportOnFail slug (slugStr slug ++ ".c") cSrc
-=======
   let cSrc = compile program True tickLimit
   reportOnFail slug (slugTarget slug ++ ".c") cSrc
->>>>>>> Moved the quickcheck stuf - still some stuff left to do there
   return cSrc
 
 -- | Try to compile a C program using make.
