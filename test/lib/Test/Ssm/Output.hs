@@ -21,7 +21,7 @@ import           Data.List                      ( isPrefixOf
 import           System.Timeout                 ( timeout )
 
 import           SSM.Core.LowSyntax             ( Program )
-import           SSM.Interpret.Interpreter      ( interpret )
+import           SSM.Interpret.Interpreter2     ( interpret )
 import qualified SSM.Interpret.Trace           as Tr
 
 import qualified Test.QuickCheck               as QC
