@@ -28,10 +28,10 @@ extern unsigned long debug_count;
     printf(__VA_ARGS__);                                                       \
   }
 
-#define DEBUG_ASSERT(assertion, msg, ...)                                      \
+#define DEBUG_ASSERT(assertion, ...)                                           \
   do {                                                                         \
     if (!(assertion)) {                                                        \
-      printf(msg, ##__VA_ARGS__);                                              \
+      printf(__VA_ARGS__);                                                     \
       exit(1);                                                                 \
     }                                                                          \
   } while (0)
