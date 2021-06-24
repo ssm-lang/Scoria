@@ -253,10 +253,10 @@ genMain program =
 
   refPrints = map refPrint $ rights $ args program
   refPrint (ref, typ) = [citem|
-    DEBUG_PRINT("result %s %s %s",  DEBUG_SV_GET_VAR_NAME($id:ref.sv.debug),
-                                    DEBUG_SV_GET_TYPE_NAME($id:ref.sv.debug),
-                                    DEBUG_SV_GET_VALUE_REPR($id:ref.sv.debug,
-                                    &$id:ref.sv));|]
+    DEBUG_PRINT("result %s %s %s\n",  DEBUG_SV_GET_VAR_NAME($id:ref.sv.debug),
+                                      DEBUG_SV_GET_TYPE_NAME($id:ref.sv.debug),
+                                      DEBUG_SV_GET_VALUE_REPR($id:ref.sv.debug,
+                                      &$id:ref.sv));|]
 
 -- | Generate definitions for an SSM 'Procedure'.
 --
