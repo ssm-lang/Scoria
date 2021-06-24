@@ -42,21 +42,6 @@ dependencies:
 library:
   source-dirs: ssm
 
-executables:
-  ssm-exe:
-    main:                Main.hs
-    source-dirs:
-    - app
-    # - example
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - ssm
-    - time
-    - criterion
-
   print-ssm-from-file:
     main:                Main.hs
     source-dirs:

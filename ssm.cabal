@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 28c4ea69855fe2abc3d5fcae26e23efe5612b541d970ccbc5ab6e57246ca3745
+-- hash: cdca2a4a870411a0e7c19b3ad83ae10dff9062b9eff2924fd6400999e5f4481f
 
 name:           ssm
 version:        0.1.0.0
@@ -72,73 +72,6 @@ library
     , time
   default-language: Haskell2010
 
-executable print-ssm-from-file
-  main-is: Main.hs
-  other-modules:
-      Core
-      Frontend
-      HughesList
-      HW.Board
-      LowCodeGen
-      LowCore
-      LowGenerator
-      LowInterpreter
-      LowPretty
-      SSM
-      Ssm.Compiler.Cli
-      TestCases
-      Trace
-      Paths_ssm
-  hs-source-dirs:
-      printfail
-      edsl
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      BinderAnn
-    , QuickCheck
-    , base >=4.7 && <5
-    , bytestring
-    , containers
-    , deepseq
-    , extra
-    , language-c-quote
-    , mainland-pretty
-    , megaparsec
-    , mtl
-    , parser-combinators
-    , prettyprinter
-    , ssm
-    , text
-    , time
-  default-language: Haskell2010
-
-executable ssm-exe
-  main-is: Main.hs
-  other-modules:
-      Paths_ssm
-  hs-source-dirs:
-      app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      BinderAnn
-    , QuickCheck
-    , base >=4.7 && <5
-    , bytestring
-    , containers
-    , criterion
-    , deepseq
-    , extra
-    , language-c-quote
-    , mainland-pretty
-    , megaparsec
-    , mtl
-    , parser-combinators
-    , prettyprinter
-    , ssm
-    , text
-    , time
-  default-language: Haskell2010
-
 test-suite 1-regression-low
   type: exitcode-stdio-1.0
   main-is: Spec.hs
@@ -148,13 +81,10 @@ test-suite 1-regression-low
       Test.Ssm.Output
       Test.Ssm.Prop
       Test.Ssm.Report
-<<<<<<< HEAD
       Regression.EmptyFunSpec
       Regression.FiveForkerSpec
       Regression.LaterAssignOverwriteSpec
-=======
       Test.Ssm.Shrink
->>>>>>> Moved the quickcheck stuf - still some stuff left to do there
       Regression.ManyContsSpec
       Regression.MultOverflowIndirectSpec
       Regression.MultOverflowSpec
