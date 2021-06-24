@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b1991aa556adb223d8f6599b709233cb803b7c2277769c10feba7ddc17bad78c
+-- hash: 28c4ea69855fe2abc3d5fcae26e23efe5612b541d970ccbc5ab6e57246ca3745
 
 name:           ssm
 version:        0.1.0.0
@@ -45,7 +45,6 @@ library
       SSM.Interpret.Exp
       SSM.Interpret.Internal
       SSM.Interpret.Interpreter
-      SSM.Interpret.Interpreter2
       SSM.Interpret.Trace
       SSM.Language
       SSM.Pretty
