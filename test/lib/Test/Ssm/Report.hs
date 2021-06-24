@@ -2,7 +2,7 @@ module Test.Ssm.Report
   ( (</>)
   , reportOnFail
   , reportFileOnFail
-  , printUnixError
+  , reportUnixError
   , reportProgramOnFail
   , Slug(..)
   , slugStr
@@ -63,27 +63,6 @@ reportSlug :: Monad m => Slug -> QC.PropertyM m ()
 reportSlug slug = QC.monitor $ QC.counterexample $ unlines
   ["", "Report directory: " ++ reportDir slug, ""]
 
--- | Print a Unix error in a Quickcheck Property monad transformer.
-printUnixError :: Monad m => Int -> String -> String -> QC.PropertyM m ()
-printUnixError c out err =
-  QC.monitor
-    $  QC.counterexample
-    $  "Error code: "
-    ++ show c
-    ++ "\n\n"
-    ++ "stdout:\n"
-    ++ out'
-    ++ "\n\n"
-    ++ "stderr:\n"
-    ++ err'
-    ++ "\n"
- where
-  out' = trunc "" reportLimit out
-  err' = trunc "" reportLimit err
-  trunc acc _ []       = reverse acc
-  trunc acc 0 (x : _ ) = reverse ("..." ++ x : acc)
-  trunc acc n (x : xs) = trunc (x : acc) (n - 1) xs
-
 -- | Write string s to file at fp if the test fails
 reportOnFail :: Monad m => Slug -> FilePath -> String -> QC.PropertyM m ()
 reportOnFail slug fp s = QC.monitor $ QC.whenFail $ do
@@ -125,6 +104,32 @@ reportProgramOnFail slug program = do
     , "spec :: H.Spec"
     , "spec = T.doProgramSpec \"" ++ slugStr slug ++ "\" p"
     ]
+
+-- | Report a Unix error in a Quickcheck Property monad transformer.
+reportUnixError
+  :: Monad m => Slug -> [String] -> (Int, String, String) -> QC.PropertyM m ()
+reportUnixError slug cmd (c, out, err) = do
+  reportOnFail slug "unix.err" msg
+  QC.monitor $ QC.counterexample msg
+ where
+  msg =
+    "Command: "
+      ++ unwords (map quote cmd)
+      ++ "\n\n"
+      ++ "Error code: "
+      ++ show c
+      ++ "\n\n"
+      ++ "stdout:\n\n"
+      ++ trunc "" reportLimit out
+      ++ "\n----\n"
+      ++ "stderr:\n\n"
+      ++ trunc "" reportLimit err
+      ++ "\n----\n"
+  quote s = if ' ' `elem` s then ['\''] ++ s ++ ['\''] else s
+  trunc acc _ []       = reverse acc
+  trunc acc 0 (x : _ ) = reverse ("..." ++ x : acc)
+  trunc acc n (x : xs) = trunc (x : acc) (n - 1) xs
+
 
 -- | Cheap shorthand to concat a directory to a path with '/'.
 --

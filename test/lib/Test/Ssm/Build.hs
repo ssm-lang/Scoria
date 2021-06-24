@@ -19,9 +19,9 @@ import qualified Test.QuickCheck.Monadic       as QC
 
 import           Test.Ssm.Report                ( (</>)
                                                 , Slug(..)
-                                                , printUnixError
                                                 , reportFileOnFail
                                                 , reportOnFail
+                                                , reportUnixError
                                                 , slugStr
                                                 )
 
@@ -61,21 +61,27 @@ doMake slug cSrc = do
   (code, out, err) <- QC.run $ make "make_builddir"
   case code of
     ExitSuccess   -> return ()
-    ExitFailure c -> printUnixError c out err >> fail "Make make_builddir error"
+    ExitFailure c -> do
+      reportUnixError slug ("make" : mkArgs "make_builddir") (c, out, err)
+      fail "Make make_builddir error"
 
   let execPath = dropWhileEnd isSpace out </> target
 
   QC.run $ writeFile (execPath ++ ".c") cSrc
 
   (code, out, err) <- QC.run $ make target
-  reportFileOnFail slug execPath (slugStr slug ++ ".exe")
   case code of
-    ExitSuccess   -> return execPath
-    ExitFailure c -> printUnixError c out err >> fail "Make target error"
+    ExitSuccess -> do
+      reportFileOnFail slug execPath (slugStr slug ++ ".exe")
+      return execPath
+    ExitFailure c -> do
+      reportUnixError slug ("make" : mkArgs target) (c, out, err)
+      fail "Make target error"
 
  where
   target = slugTarget slug
-  make t = readProcessWithExitCode "make" ["PLATFORM=" ++ buildPlatform, t] ""
+  make t = readProcessWithExitCode "make" (mkArgs t) ""
+  mkArgs t = ["PLATFORM=" ++ buildPlatform, t]
 
 -- | Test compiled program with valgrind.
 --
@@ -92,7 +98,9 @@ doVg slug fp = do
   case code of
     ExitSuccess -> return res
     ExitFailure c
-      | c == 123  -> printUnixError c out err >> fail "Valgrind error"
+      | c == 123 -> do
+        reportUnixError slug ("valgrind" : args) (c, out, err)
+        fail "Valgrind error"
       | otherwise -> return res
   where args = ["--error-exitcode=123", "--exit-on-first-error=yes", fp]
 
