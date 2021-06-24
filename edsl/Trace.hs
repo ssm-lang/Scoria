@@ -39,20 +39,20 @@ data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
 
 type Output = [OutputEntry]
 
-testoutput = Prelude.unlines [ "event 0 value int32 0"
+testoutput = Prelude.unlines [ "event 0 value i32 0"
                              , "event 1 value bool 1"
                              , "negative depth"
                              , "contqueue full"
-                             , "result a uint64 2343546543245"
-                             , "event 2 value int32 (-1)"
+                             , "result a u64 2343546543245"
+                             , "event 2 value i32 (-1)"
                              , "now 3 eventqueuesize 3"
                              , "bad after"
                              , "contqueue full"
                              , "numconts 283"
                              , "now 5 eventqueuesize 5"
                              , "fork mywait mywait mysum"
-                             , "event 6 value int32 7"
-                             , "result x int64 1"
+                             , "event 6 value i32 7"
+                             , "result x i64 1"
                              , "fork mywait"
                              , "numconts 325"
                              , "contqueue full"
@@ -63,7 +63,7 @@ testoutput = Prelude.unlines [ "event 0 value int32 0"
                              , "bad after"
                              , "numconts 0"
                              , "contqueue full"
-                             , "result zt uint64 3423523234"
+                             , "result zt u64 3423523234"
                              , "result z bool 1"
                              , "numconts 28387"
                              , "negative depth"
@@ -190,9 +190,9 @@ pIdent = do
                  , "full"
                  , "negative"
                  , "depth"
-                 , "int32"
-                 , "int64"
-                 , "uint64"
+                 , "i32"
+                 , "i64"
+                 , "u64"
                  , "bool"]
 pRes :: Parser SSMExp
 pRes = do
@@ -201,19 +201,19 @@ pRes = do
   where
       pInt :: Parser SSMExp
       pInt = do
-          pSymbol "int32"
+          pSymbol "i32"
           num <- choice [try (parens signed), signed]
-          return $ Lit TInt32 . LInt32 $ num
+          return $ Lit TInt32 $ LInt32 num
 
       pInt64 :: Parser SSMExp
       pInt64 = do
-          pSymbol "int64"
+          pSymbol "i64"
           num <- choice [ try (parens signed), signed]
-          return $ Lit TInt64 $ LInt64 $ num
+          return $ Lit TInt64 $ LInt64 num
 
       pUInt64 :: Parser SSMExp
       pUInt64 = do
-          pSymbol "uint64"
+          pSymbol "u64"
           num <- choice [ try (parens signed), Lexer.decimal]
           return $ Lit TUInt64 $ LUInt64 num
 
