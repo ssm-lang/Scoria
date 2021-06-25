@@ -1,4 +1,4 @@
-module Regression.TestEmptyFunSpec where
+module Regression.EmptyFunSpec where
 
 import Data.Map (fromList)
 import LowCore
@@ -10,4 +10,4 @@ p :: Program
 p = Program {entry = "fun1", args = [], funs = fromList [("fun1",Procedure {name = "fun1", arguments = [], body = []})]}
 
 spec :: H.Spec
-spec = T.doProgramSpec "TestEmptyFun" p
+spec = T.doProgramSpec "EmptyFun" p
