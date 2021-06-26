@@ -2,7 +2,6 @@ module SSM.Interpret.Interpreter ( interpret ) where
 
 import SSM.Util.HughesList
 import SSM.Interpret.API
-import SSM.Interpret.Exp
 import SSM.Core.LowSyntax
 import qualified SSM.Interpret.Trace as T
 
