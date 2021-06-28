@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9638d87b71ad1e9b1eddd1e6c5ea4052dc6797c0dbb0f4d12d22d1708a3c790a
+-- hash: 7c3b1e9c39f7cc172a06a4d1691c0caef52a982d1421710947318571d71ab306
 
 name:           ssm
 version:        0.1.0.0
@@ -67,6 +67,45 @@ library
     , mtl
     , parser-combinators
     , prettyprinter
+    , text
+    , time
+  default-language: Haskell2010
+
+executable print-ssm-from-file
+  main-is: Main.hs
+  other-modules:
+      Core
+      Frontend
+      HughesList
+      HW.Board
+      LowCodeGen
+      LowCore
+      LowGenerator
+      LowInterpreter
+      LowPretty
+      SSM
+      TestCases
+      Trace
+      Paths_ssm
+  hs-source-dirs:
+      printfail
+      edsl
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      BinderAnn
+    , QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , deepseq
+    , extra
+    , language-c-quote
+    , mainland-pretty
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , ssm
     , text
     , time
   default-language: Haskell2010
