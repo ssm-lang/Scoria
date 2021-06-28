@@ -40,35 +40,51 @@ library:
   source-dirs: ssm
 
 tests:
-  1-regression-low:
-    main:                Spec.hs
-    source-dirs:
-    - test/lib
-    - test/regression-low
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - ssm
-    - directory
-    - process
-    - text
-    - QuickCheck
-    - hspec
-  2-arbitrary:
-    main:                Spec.hs
-    source-dirs:
-    - test/lib
-    - test/arbitrary
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - ssm
-    - directory
-    - process
-    - text
-    - QuickCheck
-    - hspec
+ dummy-test:
+   main:                Spec.hs
+   source-dirs:
+     - test/lib
+     - test/newtest
+   ghc-options:
+   - -threaded
+   - -rtsopts
+   - -with-rtsopts=-N
+   dependencies:
+   - ssm
+   - directory
+   - process
+   - text
+   - QuickCheck
+   - hspec
+#  1-regression-low:
+#    main:                Spec.hs
+#    source-dirs:
+#    - test/lib
+#    - test/regression-low
+#    ghc-options:
+#   - -threaded
+#   - -rtsopts
+#   - -with-rtsopts=-N
+#   dependencies:
+#   - ssm
+#   - directory
+#   - process
+#   - text
+#   - QuickCheck
+#   - hspec
+#  2-arbitrary:
+#    main:                Spec.hs
+#    source-dirs:
+#    - test/lib
+#    - test/arbitrary
+#    ghc-options:
+#    - -threaded
+#    - -rtsopts
+#    - -with-rtsopts=-N
+#    dependencies:
+#    - ssm
+#    - directory
+#    - process
+#    - text
+#    - QuickCheck
+#    - hspec
