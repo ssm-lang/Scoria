@@ -1,8 +1,8 @@
 module SSM.Interpret.Interpreter ( interpret ) where
 
-import SSM.Util.HughesList
-import SSM.Interpret.API
 import SSM.Core.LowSyntax
+import SSM.Util.HughesList
+import SSM.Interpret.Internal
 import qualified SSM.Interpret.Trace as T
 
 import qualified Data.Map as Map
