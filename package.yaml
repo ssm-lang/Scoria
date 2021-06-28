@@ -42,6 +42,7 @@ dependencies:
 library:
   source-dirs: ssm
 
+executables:
   print-ssm-from-file:
     main:                Main.hs
     source-dirs:
