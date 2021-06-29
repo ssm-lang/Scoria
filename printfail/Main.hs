@@ -3,7 +3,7 @@ module Main where
 import System.Environment
 
 import SSM.Pretty
-import SSM.Core.LowSyntax
+import SSM.Core.Syntax
 
 main :: IO ()
 main = do

@@ -21,7 +21,7 @@ import Data.Word
 import Data.Maybe
 import Data.List
 
-import SSM.Core.LowSyntax
+import SSM.Core.Syntax
 import SSM.Util.HughesList
 
 import Control.Monad.ST.Lazy

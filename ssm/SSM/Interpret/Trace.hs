@@ -16,7 +16,7 @@ import GHC.Generics
 import Data.Int
 import Data.Word
 
-import SSM.Core.Syntax hiding (Result, Fork)
+import SSM.Core.Syntax hiding (Fork)
 
 import System.IO.Unsafe
 

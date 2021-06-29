@@ -1,6 +1,6 @@
 module SSM.Backend.C.Compile where
 
-import SSM.Core.LowSyntax
+import SSM.Core.Syntax
 import SSM.Backend.C.CodeGen
 import SSM.Backend.C.MainLoop
 

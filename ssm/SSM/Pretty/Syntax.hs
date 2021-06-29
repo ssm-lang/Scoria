@@ -1,4 +1,5 @@
-module SSM.Pretty.LowSyntax where
+{-| This module exposes a pretty printer of programs. -}
+module SSM.Pretty.Syntax ( prettyProgram ) where
 
 import qualified Data.Map as Map
 import Data.List
@@ -8,7 +9,7 @@ import Control.Monad.Reader
 import Control.Monad.Writer
     ( execWriter, MonadWriter(tell), Writer )
 
-import SSM.Core.LowSyntax
+import SSM.Core.Syntax
     ( getVarName,
       BinOp(..),
       Reference,
@@ -42,7 +43,9 @@ intercalateM ma (x:y:xs) = do
     xs' <- intercalateM ma (y:xs)
     return $ x' : y' : xs'
 
-
+{- | Pretty print a program. There is no control of line width currently.
+If your program contains many nested if's or something, they will be turned
+into quite wide statements. -}
 prettyProgram :: Program -> String
 prettyProgram ssm = let wr = runReaderT (prettyProgram' ssm) 0
                         h  = execWriter wr

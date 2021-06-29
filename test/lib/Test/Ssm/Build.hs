@@ -9,7 +9,7 @@ import           System.Exit                    ( ExitCode(..) )
 import           System.Process                 ( readProcessWithExitCode )
 
 import           SSM.Backend.C.Compile          ( compile )
-import           SSM.Core.LowSyntax             ( Program )
+import           SSM.Core.Syntax                ( Program )
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
