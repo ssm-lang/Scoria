@@ -1,7 +1,7 @@
 module SSM.Interpret.Interpreter ( interpret ) where
 
 import SSM.Core.Syntax
-import SSM.Util.HughesList
+import SSM.Util.HughesList hiding ((++))
 import SSM.Interpret.Internal
 import qualified SSM.Interpret.Trace as T
 
