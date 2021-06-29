@@ -6,13 +6,13 @@ module SSM.Frontend.Language
     ( -- * The SSM Embedded language
 
       -- ** References
-      Ref(..)
+      Ref
     , inputref
     , var
     , deref
 
       -- ** Expressions
-    , Exp(..)
+    , Exp
     , (<.)
     , (==.)
     , neg
@@ -134,10 +134,6 @@ instance Arg (Ref a) where
     arg name (x:xs) (Ptr (e,t)) = do
         emit $ Argument name x (Right (e,t))
         return (Ptr (x, t), xs)
-
--- | Possible results of SSM procedures (they can't return anything)
-instance Res () where
-    result name () = emit $ Result name
 
 -- | When interpreting or compiling a SSM program that requires input references,
 -- supply this value instead.
