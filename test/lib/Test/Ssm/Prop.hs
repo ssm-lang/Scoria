@@ -9,13 +9,10 @@ module Test.Ssm.Prop
 import           LowCore                        ( Program )
 import           LowGenerator                   ( ) -- instance Arbitrary Program
 
+import qualified Test.Hspec                    as H
+import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
-
-import           Test.Hspec                     ( Spec(..) )
-import           Test.Hspec.QuickCheck          ( modifyMaxSuccess
-                                                , prop
-                                                )
 
 import           Test.Ssm.Build                 ( doCompile
                                                 , doExec
@@ -69,11 +66,11 @@ propCorrect tn program = QC.monadicIO $ do
   iTrace      <- doInterpret slug program (length $ lines out)
   doCompareTraces slug iTrace cTrace
 
-doProgramSpec :: String -> Program -> Spec
+doProgramSpec :: String -> Program -> H.Spec
 doProgramSpec name p = do
-  once $ prop "compiles" $ propCompiles tn p
-  once $ prop "runs without memory errors" $ propValgrind tn p
-  once $ prop "runs according to interpreter" $ propCorrect tn p
+  once $ H.prop "compiles" $ propCompiles tn p
+  once $ H.prop "runs without memory errors" $ propValgrind tn p
+  once $ H.prop "runs according to interpreter" $ propCorrect tn p
  where
-  once = modifyMaxSuccess (const 1)
+  once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name
