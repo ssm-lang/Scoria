@@ -1,7 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 module SSM.Backend.C.MainLoop where
 
-import SSM.Core.LowSyntax
+import SSM.Core.Syntax
 import SSM.Backend.C.Definitions
 import SSM.Backend.C.Exp
 

@@ -1,7 +1,7 @@
 module Regression.ManyContsSpec where
 
 import           Data.Map                       ( fromList )
-import           SSM.Core.LowSyntax
+import           SSM.Core.Syntax
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.Ssm.Prop                 as T

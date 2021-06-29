@@ -9,7 +9,7 @@ import Data.Maybe
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-import SSM.Core.LowSyntax
+import SSM.Core.Syntax
 import SSM.Util.HughesList
 
 import Test.Ssm.Shrink hiding (Ref, Variable)

@@ -15,7 +15,7 @@ import qualified Data.Map                      as Map
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
 
-import           SSM.Core.LowSyntax
+import           SSM.Core.Syntax
 import SSM.Backend.C.Definitions
 import SSM.Backend.C.Exp
 

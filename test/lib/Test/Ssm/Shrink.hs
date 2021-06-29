@@ -4,7 +4,7 @@ module Test.Ssm.Shrink where
 
 
 import SSM.Util.HughesList
-import SSM.Core.LowSyntax
+import SSM.Core.Syntax
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map

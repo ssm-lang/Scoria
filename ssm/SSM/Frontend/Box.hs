@@ -1,7 +1,19 @@
 -- | This module provides a machinery that helps with creating and applying procedures.
-module SSM.Frontend.Box where
+module SSM.Frontend.Box
+    ( -- * Box machinery
 
-import SSM.Core.Syntax ( SSM, SSMStm(Procedure), emit )
+      -- ** Procedures
+      Box(..)
+    , BoxNullary(..)
+
+      -- ** Arguments
+    , Arg(..)
+
+      -- ** Results
+    , Res(..)
+    ) where
+
+import SSM.Frontend.Syntax ( SSM, SSMStm(Procedure), emit )
 
 -- | The class of types that can appear as arguments to our procedures
 class Arg a where

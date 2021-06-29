@@ -20,7 +20,7 @@ import           Data.List                      ( isPrefixOf
                                                 )
 import           System.Timeout                 ( timeout )
 
-import           SSM.Core.LowSyntax             ( Program )
+import           SSM.Core.Syntax                ( Program )
 import           SSM.Interpret.Interpreter      ( interpret )
 import qualified SSM.Interpret.Trace           as Tr
 

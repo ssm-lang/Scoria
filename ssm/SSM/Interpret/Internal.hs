@@ -70,7 +70,7 @@ import SSM.Util.HughesList
 import SSM.Interpret.Types
 --import SSM.Interpret.Exp
 import qualified SSM.Interpret.Trace as T
-import SSM.Core.LowSyntax
+import SSM.Core.Syntax
 
 import qualified Data.Map as Map
 import qualified Data.IntMap as IntMap
