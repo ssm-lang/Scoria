@@ -6,8 +6,8 @@ module SSM.Pretty
     ) where
 
 --import SSM.Core.Syntax ( SSM )
-import SSM.Frontend.Syntax ( SSM, transpile )
+import SSM.Core.Syntax
 import SSM.Pretty.Syntax ( prettyProgram )
 
-prettySSM :: SSM () -> String
-prettySSM = prettyProgram . transpile
+prettySSM :: SSMProgram a => a -> String
+prettySSM = prettyProgram . toProgram

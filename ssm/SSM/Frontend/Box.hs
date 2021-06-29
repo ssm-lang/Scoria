@@ -13,7 +13,7 @@ module SSM.Frontend.Box
     , Res(..)
     ) where
 
-import SSM.Frontend.Syntax ( SSM, SSMStm(Procedure), emit )
+import SSM.Frontend.Syntax ( SSM, SSMStm(Procedure, Result), emit )
 
 -- | The class of types that can appear as arguments to our procedures
 class Arg a where
@@ -34,6 +34,10 @@ class Res b where
     result :: String  -- ^ Name of the procedure we are returning from
            -> b       -- ^ The result
            -> SSM b
+
+-- | Possible results of SSM procedures (they can't return anything)
+instance Res () where
+    result name () = emit $ Result name
 
 -- | Class of types that can be boxed (turned into a procedure)
 class Box b where

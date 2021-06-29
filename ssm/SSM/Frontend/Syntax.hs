@@ -10,6 +10,7 @@ of the forked call, but rather the complete procedure definition (as a monadic
 computation).
 -}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleInstances #-}
 module SSM.Frontend.Syntax
     ( -- * Types
       S.Type(..)
@@ -244,3 +245,8 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       getArgs (Procedure _: xs)   = getArgs xs
       getArgs (Argument _ x a:xs) = ((x, either S.expType S.refType a), a) : getArgs xs
       getArgs _                     = []
+
+{- | Instance of SSMProgram, so that the compiler knows how to turn the frontend
+representation into something that it can generate code for. -}
+instance S.SSMProgram (SSM ()) where
+  toProgram = transpile

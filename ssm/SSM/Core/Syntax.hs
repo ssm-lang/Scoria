@@ -38,6 +38,7 @@ module SSM.Core.Syntax
 
       -- ** Programs
     , Program(..)
+    , SSMProgram(..)
     ) where
 
 --import qualified SSM.Core.Syntax as S
@@ -222,3 +223,11 @@ data Program = Program
       -- | Map that associates procedure names with their definitions.
     , funs :: Map.Map String Procedure
     } deriving (Show, Read)
+
+-- | Class of types that can be converted to a `Program`.
+class SSMProgram a where
+  -- | This function takes an `a` and converts it to a `Program`
+  toProgram :: a -> Program
+
+instance SSMProgram Program where
+  toProgram = id
