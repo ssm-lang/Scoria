@@ -25,15 +25,17 @@ Now imagine @h1 = ([1,2] ++)@ and @h2 = ([3,4] ++)@, then @fromHughes (h1 ++ h2)
 
 @
 fromHughes (([1,2] ++) . ([3,4] ++))           ==
-fromHughes (\x -> (([1,2] ++) . ([3,4] ++)) x) ==
-(\x -> (([1,2] ++) . ([3,4] ++)) x) $ []       ==
+fromHughes (\\x -> (([1,2] ++) . ([3,4] ++)) x) ==
+(\\x -> (([1,2] ++) . ([3,4] ++)) x) $ []       ==
 (([1,2] ++) .  ([3,4] ++)) []                  ==
 ([1,2] ++) ([3,4] ++ [])                       ==
 @
+
 Now, reading from this list forces all of the list to be evaluated, since composition is
 evaluated by applying to argument to the rightmost function and piping the result through
 all the composed functions. Since the list is now constructed from the 'back', it is
 traversed only once. Linear Time.
+
 @
 [1,2] ++ [3,4]                                 ==
 [1,2,3,4]

@@ -66,7 +66,7 @@ module SSM.Interpret.Internal
     , getBool
     ) where
 
-import SSM.Util.HughesList
+import SSM.Util.HughesList (toHughes)
 import SSM.Interpret.Types
 --import SSM.Interpret.Exp
 import qualified SSM.Interpret.Trace as T
