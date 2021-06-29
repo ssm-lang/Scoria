@@ -1,7 +1,6 @@
 module SSM.Compile where
 
-import SSM.Core.Syntax
-import SSM.Core.LowSyntax
+import SSM.Frontend.Syntax
 
 import SSM.Backend.C.Compile
 

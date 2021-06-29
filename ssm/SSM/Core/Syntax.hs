@@ -1,18 +1,24 @@
-{-# LANGUAGE DerivingVia #-}
+{-| This module implements the core abstract syntax. This syntax is meant to be
+completely detached from the embedded language, and could thus be a target for
+a parser or something else (in our case the embedded language, however). The
+rest of the compiler will work with this representation (compiler, interpreter,
+pretty printer etc). -}
 module SSM.Core.Syntax
-    ( -- * Types
+    ( -- * SSM Core Syntax
+
+      -- ** Types
       Type(..)
     , dereference
     , mkReference
     , isReference
     , SSMType(..)
 
-      -- * References
+      -- ** References
     , Reference(..)
     , refType
     , refName
 
-      -- * Expressions
+      -- ** Expressions
     , SSMExp(..)
     , SSMLit(..)
     , UnaryOpE(..)
@@ -20,26 +26,27 @@ module SSM.Core.Syntax
     , BinOp(..)
     , expType
 
-      -- * Names
+      -- ** Names
     , Name(..)
     , getVarName
 
-      -- * Statements & SSM monad
-    , SSMStm(..)
-    , SSM(..)
-    , SSMSt(..)
-    , runSSM
-    , pureSSM
-    , emit
-    , fresh
-    , getProcedureName
+      -- ** Statements
+    , Stm(..)
+
+      -- ** Procedures
+    , Procedure(..)
+
+      -- ** Programs
+    , Program(..)
     ) where
 
-import Control.Monad.State
-    ( gets, modify, execState, MonadState, State, StateT(StateT) )
+--import qualified SSM.Core.Syntax as S
 
-import Data.Int ( Int32, Int64 )
-import Data.Word ( Word8, Word64 )
+import Data.Int
+import Data.Word
+import qualified Data.Map as Map
+import Control.Monad.State.Lazy
+    ( forM, modify, runState, MonadState(put, get), State )
 
 -- Types
 
@@ -67,11 +74,10 @@ isReference :: Type -> Bool
 isReference (Ref _) = True
 isReference _       = False
 
-{-| The class of Haskell types that can be marshalled into a representation
-in the SSM language.
-
--}
+{-| The class of Haskell types that can be marshalled to a representation
+in the SSM language. -}
 class SSMType a where
+    -- | Take a @proxy a@ and turn that into a `Type` that represents @a@.
     typeOf :: proxy a -> Type
 
 instance SSMType Word8 where
@@ -168,68 +174,51 @@ getVarName (Fresh n)      = n
 getVarName (Captured _ n) = n
 
 
--- SSM monad and statement type (mutually recursive)
+-- Programs
 
-{- | A high level, untyped version of the statements that make up an SSM program.
-Ensuring type safety is the job of the Frontend. -}
-data SSMStm
-    -- | Variable/Stream operations
-    = NewRef Name SSMExp       -- ^ Create a new named reference with an initial value
-    | GetRef Name Reference    -- ^ Dereference a reference, place the result in a var
-    | SetRef Reference SSMExp  -- ^ Set a reference
-    {-| Set a local variable. Expression variables can currently only be created when
-    they are given to a procedure as an argument, or by dereferencing a reference. -}
-    | SetLocal SSMExp SSMExp
+{- | A lower level representation of the statements that make up the body of
+an SSM program. -}
+data Stm
+    {-| Create a new reference with the given name, which references a value of the
+    given type, with the initial value specified by the expression. -}
+    = NewRef Name Type SSMExp
+    {-| Dereference an expression and put the result in a variable with the given name &
+    with the given type.-}
+    | GetRef Name Type Reference
+    | SetRef Reference SSMExp  -- ^ Set the value of a reference
+    {-| Set the value of a local expression specified by the name, with the given type,
+    with the new value specified by the expression. -}
+    | SetLocal Name Type SSMExp
 
-    -- | Control operations
-    | If SSMExp (SSM ()) (Maybe (SSM ()))  -- ^ Conditional execution
-    | While SSMExp (SSM ())                -- ^ Loop construct
-            
-    -- | SSM specific operations
-    | After SSMExp Reference SSMExp  -- ^ Scheduled assignment
-    | Wait [Reference]               -- ^ Wait for any of the references to be written to
-    | Fork [SSM ()]                  -- ^ Fork a list of procedures
+    | If SSMExp [Stm] [Stm]  -- ^ Conditional execution
+    | While SSMExp [Stm]     -- ^ Loop construct
+    | Skip                   -- ^ No-op
 
-    -- | Procedure construction
-    | Procedure String  -- ^ Marks the start of a procedure
-    {-| Records the name an argument has and what value the procedure was applied to -}
-    | Argument String String (Either SSMExp Reference)
-    | Result String  -- ^ Mark the end of a procedure
+    -- | After d r v - After d units of time the reference r should get the new value v
+    | After SSMExp Reference SSMExp
+    | Wait [Reference]  -- ^ Wait for any of the references to be written to
+    {-| Fork procedures. The procedures are now identified by their name, and the fork
+    site contains only that name and the arguments to apply the function to. -}
+    | Fork [(String, [Either SSMExp Reference])]
+    deriving (Show, Eq, Read)
 
-{- | The state maintained by the SSM monad. A counter for generating fresh names and
-a list of statements that make up the program. -}
-data SSMSt = SSMSt { counter    :: Int
-                   , statements :: [SSMStm]
-                   }
+-- | A procedure has a name, parameter names & types and a body.
+data Procedure = Procedure
+    { -- | Name of the procedure.
+      name      :: String
+      -- | Parameter names and types of the procedure.
+     , arguments :: [(String, Type)]
+      -- | Statements that make up this procedure.
+    , body      :: [Stm]
+    } deriving (Eq, Show, Read)
 
--- | The SSM monad is used to build programs. It is a state monad the records statements.
-newtype SSM a = SSM (State SSMSt a)
-  deriving Functor            via State SSMSt
-  deriving Applicative        via State SSMSt
-  deriving Monad              via State SSMSt
-  deriving (MonadState SSMSt) via State SSMSt
-
--- | Run a SSM program and get the statements from it.
-runSSM :: SSM a -> [SSMStm]
-runSSM (SSM program) = statements $ execState program (SSMSt 0 [])
-
--- | Take a list of statements and turn them into an SSM computation.
-pureSSM :: [SSMStm] -> SSM ()
-pureSSM stmts = modify $ \st -> st { statements = stmts }
-
--- | Emit an SSM statement.
-emit :: SSMStm -> SSM ()
-emit stm = modify $ \st -> st { statements = statements st ++ [stm]}
-
--- | Fetch a fresh name from the environment.
-fresh :: SSM String
-fresh = do
-    i <- gets counter
-    modify $ \st -> st { counter = i + 1 }
-    return $ "v" ++ show i
-
-{- | Get the name of a procedure, where the procedure is represented by a list of
-statements that make up its body. -}
-getProcedureName :: [SSMStm] -> String
-getProcedureName (Procedure n:_) = n
-getProcedureName _               = error "not a procedure"
+{- | A program has an entry point, arguments to that entry point and a map that maps
+procedure names to their definitions. -}
+data Program = Program
+    { -- | Name of the procedure that is the program entrypoint.
+      entry :: String
+      -- | Arguments the entrypoint was applied to.
+    , args :: [Either SSMExp Reference]
+      -- | Map that associates procedure names with their definitions.
+    , funs :: Map.Map String Procedure
+    } deriving (Show, Read)

@@ -7,7 +7,7 @@ module Test.Ssm.Prop
   , semanticIncorrectSpec
   ) where
 
-import           SSM.Core.LowSyntax             ( Program )
+import           SSM.Core.Syntax                ( Program )
 import           Test.Ssm.Generator             ( ) -- instance Arbitrary Program
 
 import qualified Test.Hspec                    as H

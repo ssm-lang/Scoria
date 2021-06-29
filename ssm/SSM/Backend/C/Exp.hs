@@ -1,7 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 module SSM.Backend.C.Exp where
 
-import SSM.Core.LowSyntax
+import SSM.Core.Syntax
 import SSM.Backend.C.Definitions
 
 import Language.C.Quote.GCC ( cexp )
