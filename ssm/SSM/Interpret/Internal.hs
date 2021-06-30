@@ -12,7 +12,6 @@ module SSM.Interpret.Internal
     , params
     , getReferences
     , emitResult
-    , (<#>)
 
       -- * Talking about time
     , SSM.Interpret.Internal.now
@@ -67,6 +66,7 @@ module SSM.Interpret.Internal
     ) where
 
 import SSM.Util.HughesList (toHughes)
+import SSM.Util.Operators  ((<#>))
 import SSM.Interpret.Types
 --import SSM.Interpret.Exp
 import qualified SSM.Interpret.Trace as T
@@ -133,13 +133,6 @@ emitResult = do
         (ref,_,_,_,_) <- lift' $ readSTRef v
         val <- lift' $ readSTRef ref
         tell $ toHughes [T.Result n val]
-
--- | Infix operator for applying a unlifted argument to a lifted function.
--- Surprised that I did not find this anywhere.
-(<#>) :: Applicative f => f (a -> b) -> a -> f b
-fa <#> b = fa <*> pure b
-infixl 4 <#>
-
 
 
 
