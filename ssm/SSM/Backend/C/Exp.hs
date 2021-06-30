@@ -1,8 +1,8 @@
 {-# LANGUAGE QuasiQuotes #-}
-module SSM.Backend.C.Exp where
+module SSM.Backend.C.Exp ( genExp ) where
 
 import SSM.Core.Syntax
-import SSM.Backend.C.Definitions
+import SSM.Backend.C.Identifiers
 
 import Language.C.Quote.GCC ( cexp )
 import qualified Language.C.Syntax             as C

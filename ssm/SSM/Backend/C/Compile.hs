@@ -1,4 +1,4 @@
-module SSM.Backend.C.Compile where
+module SSM.Backend.C.Compile ( compile ) where
 
 import SSM.Core.Syntax
 import SSM.Backend.C.CodeGen

@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module SSM.Backend.C.CodeGen where
+module SSM.Backend.C.CodeGen ( compile_ ) where
 
 import           Control.Monad.State.Lazy       ( State
                                                 , evalState
@@ -16,7 +16,7 @@ import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
 
 import           SSM.Core.Syntax
-import SSM.Backend.C.Definitions
+import SSM.Backend.C.Identifiers
 import SSM.Backend.C.Exp
 
 import           Debug.Trace
