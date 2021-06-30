@@ -1,8 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleInstances #-}
-module Trace where
+module SSM.Interpret.Trace where
 
 import qualified Data.Text as T
 import Data.Void
@@ -16,7 +14,7 @@ import GHC.Generics
 import Data.Int
 import Data.Word
 
-import Core hiding (Result, Fork)
+import SSM.Core.Syntax hiding (Fork)
 
 import System.IO.Unsafe
 
@@ -35,7 +33,7 @@ data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
                  | ContQueueFull
                  | NegativeDepth
                  | BadAfter
-  deriving (Show, Eq, Generic, NFData)
+  deriving (Show, Eq)
 
 type Output = [OutputEntry]
 

@@ -1,6 +1,6 @@
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
-import qualified Test.Ssm.Prop                 as T
+import qualified Test.SSM.Prop                 as T
 
 import           Test.Hspec                     ( describe
                                                 , hspec

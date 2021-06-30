@@ -1,4 +1,4 @@
-module Test.Ssm.Build
+module Test.SSM.Build
   ( doCompile
   , doMake
   , doExec
@@ -11,13 +11,13 @@ import           System.Directory               ( createDirectoryIfMissing )
 import           System.Exit                    ( ExitCode(..) )
 import           System.Process                 ( readProcessWithExitCode )
 
-import           LowCodeGen                     ( compile_ )
-import           LowCore                        ( Program )
+import           SSM.Backend.C.Compile          ( compile )
+import           SSM.Core.Syntax                ( Program )
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
 
-import           Test.Ssm.Report                ( (</>)
+import           Test.SSM.Report                ( (</>)
                                                 , Slug(..)
                                                 , reportFileOnFail
                                                 , reportOnFail
@@ -45,8 +45,8 @@ slugTarget (SlugNamed     n          ) = n
 -- | Compile an SSM program to a C program's string representation.
 doCompile :: Monad m => Slug -> Program -> QC.PropertyM m String
 doCompile slug program = do
-  let cSrc = compile_ True tickLimit program
-  reportOnFail slug (slugStr slug ++ ".c") cSrc
+  let cSrc = compile program True tickLimit
+  reportOnFail slug (slugTarget slug ++ ".c") cSrc
   return cSrc
 
 -- | Try to compile a C program using make.

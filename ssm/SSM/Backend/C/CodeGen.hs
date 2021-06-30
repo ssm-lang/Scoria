@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-module LowCodeGen where
+module SSM.Backend.C.CodeGen ( compile_ ) where
 
 import           Control.Monad.State.Lazy       ( State
                                                 , evalState
@@ -15,28 +15,23 @@ import qualified Data.Map                      as Map
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
 
-import           LowCore
+import           SSM.Core.Syntax
+import SSM.Backend.C.Identifiers
+import SSM.Backend.C.Exp
 
 import           Debug.Trace
-import           Text.PrettyPrint.Mainland      ( pretty )
-import           Text.PrettyPrint.Mainland.Class
-                                                ( pprList )
 
 -- | Use snake_case for c literals
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
--- | This function takes a `Program` and returns a string, which contains the
--- pretty-printed content of the generated C file.
-compile_
-  :: Bool      -- ^ Whether to generate a main function
-  -> Maybe Int -- ^ An optional tick limit (FIXME: apparently unused?)
-  -> Program   -- ^ The program to be compiled
-  -> String    -- ^ The pretty-printed content of the generated C file
-compile_ m tl program = pretty 120 $ pprList compUnit
+-- | This function takes a `Program` and returns a pair where the first component is
+-- the compiled program and the second is a list of all include statements.
+compile_ :: Program -> ([C.Definition], [C.Definition])
+compile_ program = (compUnit, includes)
  where
-  compUnit = preamble ++ decls ++ defns ++ if m then genMain program else []
+  compUnit = preamble ++ decls ++ defns
 
-  preamble = genPreamble tl
+  preamble = genPreamble
   (decls, defns) =
     concat2 $ unzip $ map genProcedure $ Map.elems (funs program)
   concat2 (x, y) = (concat x, concat y)
@@ -75,123 +70,11 @@ addLocal n t = modify $ \st -> st { locals = (n, t) : locals st }
 maxWaits :: Int -> TR ()
 maxWaits rs = modify $ \st -> st { numwaits = rs `max` numwaits st }
 
-{-------- C identifiers --------}
--- These variables represent the magic identifiers that must be coordinated
--- between the C runtime and the generated code, as well as some helpers to
--- generate C type nodes for user-defined types.
-
--- | Type alias for C identifiers.
-type CIdent = String
-
-top_return :: CIdent
-top_return = "top_return"
-
-fork :: CIdent
-fork = "act_fork"
-
-act_enter :: CIdent
-act_enter = "act_enter"
-
-act_leave :: CIdent
-act_leave = "act_leave"
-
-event_on :: CIdent
-event_on = "event_on"
-
-sensitize :: CIdent
-sensitize = "sensitize"
-
-desensitize :: CIdent
-desensitize = "desensitize"
-
-unsched_event :: CIdent
-unsched_event = "unsched_event"
-
-time_t :: C.Type
-time_t = [cty|typename ssm_time_t|]
-
-priority_t :: C.Type
-priority_t = [cty|typename priority_t|]
-
-depth_t :: C.Type
-depth_t = [cty|typename depth_t|]
-
-trigger_t :: C.Type
-trigger_t = [cty|struct trigger|]
-
-stepf_t :: C.Type
-stepf_t = [cty|typename stepf_t|]
-
-uint16_t :: C.Type
-uint16_t = [cty|typename uint16_t|]
-
-bool_t :: C.Type
-bool_t = [cty|typename bool|]
-
-{---- Activation record identifiers ----}
-
--- | The type of the activation record base class.
-act_t :: C.Type
-act_t = [cty|struct act|]
-
--- | Obtain the name of the activation record struct for a routine.
-act_ :: String -> CIdent
-act_ routineName = "act_" ++ routineName ++ "_t"
-
--- | Obtain the name of the step function of a routine.
-step_ :: String -> CIdent
-step_ routineName = "step_" ++ routineName
-
--- | Obtain the name for the enter function of a routine.
-enter_ :: String -> CIdent
-enter_ routineName = "enter_" ++ routineName
-
--- | Obtain the name of each trigger for a routine.
-trig_ :: Int -> CIdent
-trig_ i = "trig" ++ show i
-
-{---- Type identifiers ----}
-
--- | The type of the scheduled variable base class.
-sv_t :: C.Type
-sv_t = [cty|struct sv|]
-
--- | Maps SSM `Type` to identifier of base type.
---
--- Note that this unwraps reference types and returns the base type.
-typeId :: Type -> CIdent
-typeId TInt32  = "i32"
-typeId TInt64  = "i64"
-typeId TUInt64 = "u64"
-typeId TUInt8  = "u8"
-typeId TBool   = "bool"
-typeId (Ref t) = typeId t
-
--- | Obtain the name of the scheduled variable type for an SSM `Type`.
-svt_ :: Type -> C.Type
-svt_ ty = [cty|typename $id:(typeId ty ++ "_svt")|]
-
--- | Obtain the name of the initialize method for an SSM `Type`.
-initialize_ :: Type -> CIdent
-initialize_ ty = "initialize_" ++ typeId ty
-
--- | Obtain the name of the assign method for an SSM `Type`.
-assign_ :: Type -> CIdent
-assign_ ty = "assign_" ++ typeId ty
-
--- | Obtain the name of the later method for an SSM `Type`.
-later_ :: Type -> CIdent
-later_ ty = "later_" ++ typeId ty
-
 {-------- Code generation --------}
 
 -- | Generate include statements, to be placed at the top of the generated C.
-genPreamble :: Maybe Int -> [C.Definition]
-genPreamble tickLimit = [cunit|
-$esc:("#include \"ssm-program.h\"")
-
-/** Used by DEBUG_PRINT as a microtick threshold */
-$ty:time_t limit = $exp:limit;
+genPreamble :: [C.Definition]
+genPreamble = [cunit|
 
 /**
  * Circumvent optimizations that take advantage of C's undefined signed
@@ -202,61 +85,11 @@ static int _add(int a, int b) {
   return a + b;
 }
 |]
-  where limit = maybe [cexp|ULONG_MAX|] (\i -> [cexp|$int:i|]) tickLimit
 
--- | Generate C definition for the main program and the top_return function,
--- both to be placed at the bottom of the generated C (or at least after the
--- type definitions and function prototypes).
-genMain :: Program -> [C.Definition]
-genMain program =
-  [ [cedecl| void $id:top_return($ty:act_t *act) { return; } |]
-  , [cedecl|
-      int main(void) {
-        $ty:act_t top = { .step = $id:top_return };
-
-        /* Initialize variables to be passed to the main SSM procedure */
-        $items:argInits
-
-        /* Enter main SSM procedure */
-        $id:fork($id:enter($args:enterArgs));
-
-        $ty:time_t next;
-        do {
-          tick();
-          next = next_event_time();
-          set_now(next);
-        } while (next != NO_EVENT_SCHEDULED);
-
-        /* Print the final values of the arguments declared earlier */
-        $items:refPrints
-      }
-    |]
-  ]
- where
-  enter = enter_ $ entry program
-  enterArgs =
-    [[cexp|&top|], [cexp|PRIORITY_AT_ROOT|], [cexp|DEPTH_AT_ROOT|]]
-      ++ map enterArg (args program)
-  enterArg (Left  ssmExp  ) = genExp [] ssmExp
-  -- ^ TODO: this is buggy if ssmExp contains a var?? Maybe double check what's
-  -- going on with that.
-  enterArg (Right (ref, _)) = [cexp|&$id:ref|]
-
-  argInits = concatMap argInit $ rights $ args program
-  argInit (ref, typ) =
-    [ [citem|$ty:(svt_ typ) $id:ref;|]
-    , [citem|$id:(initialize_ typ)(&$id:ref);|]
-    , [citem|$id:ref.value = 0;|]
-      -- Args to the main SSM procedure are always given default values of 0.
-    , [citem|DEBUG_SV_SET_VAR_NAME($id:ref.sv.debug, $string:ref);|]
-    ]
-
-  refPrints = map refPrint $ rights $ args program
-  refPrint (ref, typ) = [citem|
-    DEBUG_PRINT("result %s %s %s\n",  DEBUG_SV_GET_VAR_NAME($id:ref.sv.debug),
-                                      DEBUG_SV_GET_TYPE_NAME($id:ref.sv.debug),
-                                      DEBUG_SV_GET_VALUE_REPR($id:ref.sv.debug,
-                                      &$id:ref.sv));|]
+includes :: [C.Definition]
+includes = [cunit|
+$esc:("#include \"ssm-program.h\"")
+|]
 
 -- | Generate definitions for an SSM 'Procedure'.
 --
@@ -304,7 +137,7 @@ genEnter = do
   ts <- gets numwaits
   ls <- gets locals
   let act   = [cty|typename $id:act'|]
-      act'  = act_ $ name p -- Hack to use this typename as expr in macros
+      act'  = act_ $ name p -- hack to use this typename as expr in macros
       enter = enter_ $ name p
       step  = step_ $ name p
       params =
@@ -390,6 +223,8 @@ genStep = do
 -- Note that this compilation scheme might not work if the language were to
 -- support return statements. This could be fixed by generating a break, and
 -- moving the leave call to outside of the switch statement in 'genStep'.
+--
+-- TODOs: remove hard-coded act variable name.
 genCase :: Stm -> TR [C.Stm]
 genCase (NewRef n t v) = do
   locs <- map fst <$> gets locals
@@ -438,6 +273,7 @@ genCase (After d (lvar, t) v) = do
         then [cexp|&acts->$id:lvar|]
         else [cexp|acts->$id:lvar|]
       rhs = genExp locs v
+      -- | NOTE: we add `now` to the delay here.
   return [[cstm| $id:(later_ t)($exp:lhs, now + $exp:del, $exp:rhs);|]]
 genCase (Wait ts) = do
   caseNum <- nextCase
@@ -487,30 +323,3 @@ genCase (Fork cs) = do
        , [cstm| case $int:caseNum: ; |]
        ]
 genCase Skip = return []
-
--- | Generate C expression from 'SSMExp' and a list of local variables.
-genExp :: [String] -> SSMExp -> C.Exp
-genExp _  (Var _ n              ) = [cexp|acts->$id:n.value|]
-genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
-genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
-genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename i64) $int:i|]
-genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename u64) $int:i|]
-genExp _  (Lit _ (LBool   True )) = [cexp|true|]
-genExp _  (Lit _ (LBool   False)) = [cexp|false|]
-genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
-genExp ls (UOpR _ (n, _) Changed)
-  | n `elem` ls = [cexp|event_on(&acts->$id:n.sv)|]
-  | otherwise   = [cexp|event_on(&acts->$id:n->sv)|]
--- | Circumvent optimizations that take advantage of C's undefined signed
--- integer wraparound behavior. FIXME: remove this hack, which is probably not
--- robust anyway if C is aggressive about inlining.
-genExp ls (BOp ty e1 e2 op)
-  | ty == TInt32 && op == OPlus = [cexp|_add($exp:c1, $exp:c2)|]
-  | otherwise                   = gen op
- where
-  (c1, c2) = (genExp ls e1, genExp ls e2)
-  gen OPlus  = [cexp|$exp:c1 + $exp:c2|]
-  gen OMinus = [cexp|$exp:c1 - $exp:c2|]
-  gen OTimes = [cexp|$exp:c1 * $exp:c2|]
-  gen OLT    = [cexp|$exp:c1 < $exp:c2|]
-  gen OEQ    = [cexp|$exp:c1 == $exp:c2|]

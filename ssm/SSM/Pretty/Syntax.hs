@@ -1,14 +1,27 @@
-module LowPretty where
+{-| This module exposes a pretty printer of programs. -}
+module SSM.Pretty.Syntax ( prettyProgram ) where
 
-import Control.Monad.State
-import Control.Monad.Reader
-import Control.Monad.Writer
-import Data.List
 import qualified Data.Map as Map
-import HughesList
+import Data.List
 
-import qualified Core as C
-import LowCore
+import Control.Monad.Reader
+    ( ReaderT(runReaderT), MonadReader(local, ask) )
+import Control.Monad.Writer
+    ( execWriter, MonadWriter(tell), Writer )
+
+import SSM.Core.Syntax
+    ( getVarName,
+      BinOp(..),
+      Reference,
+      SSMExp(..),
+      SSMLit(..),
+      Type(..),
+      UnaryOpE(..),
+      UnaryOpR(..),
+      Procedure(body, name, arguments),
+      Program(funs, args, entry),
+      Stm(..) )
+import SSM.Util.HughesList ( fromHughes, toHughes, Hughes )
 
 type PP a = ReaderT Int                    -- current level of indentation
               (Writer (Hughes String)) a   -- output
@@ -30,7 +43,9 @@ intercalateM ma (x:y:xs) = do
     xs' <- intercalateM ma (y:xs)
     return $ x' : y' : xs'
 
-
+{- | Pretty print a program. There is no control of line width currently.
+If your program contains many nested if's or something, they will be turned
+into quite wide statements. -}
 prettyProgram :: Program -> String
 prettyProgram ssm = let wr = runReaderT (prettyProgram' ssm) 0
                         h  = execWriter wr
