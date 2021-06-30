@@ -4,13 +4,17 @@
 ##
 
 CPPFLAGS += -I $(RUNTIMEDIR)/include
-LDLIBS += -lpeng
+LDLIBS += -lssm
 
 vpath %.c $(RUNTIMEDIR)/src
+vpath %.c $(RUNTIMEDIR)/test
 
-RUNTIMESRC := peng-scheduler.c peng-bool.c peng-int64.c peng-int.c peng-uint8.c
+RUNTIMESRC := ssm-queue.c ssm-sched.c ssm-types.c
+TESTSRC := test-ssm-queue.c
 
-SRCS += $(RUNTIMESRC)
-LIBS += libpeng.a
+SRCS += $(RUNTIMESRC) $(TESTSRC)
+LIBS += libssm.a
 
-libpeng.a : libpeng.a($(RUNTIMESRC:%.c=%.o))
+libssm.a : libssm.a($(RUNTIMESRC:%.c=%.o))
+
+test-ssm-queue:

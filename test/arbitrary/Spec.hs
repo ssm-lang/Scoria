@@ -21,11 +21,13 @@ main :: IO ()
 main = hspec $ do
   describe "Random program" $ do
 
-    prop "compiles to a binary (via C)"
-      $ T.propCompiles T.RandomTest
+    -- Uncomment these to run them first, though note that propCorrect already
+    -- tests these internally.
 
-    prop "compiles and runs without memory errors"
-      $ T.propValgrind T.RandomTest
+    -- prop "compiles to a binary (via C)"
+    --   $ T.propCompiles T.RandomTest
+    -- prop "compiles and runs without memory errors"
+    --   $ T.propValgrind T.RandomTest
 
     prop "compiles and runs according to interpreter"
       $ T.propCorrect T.RandomTest
