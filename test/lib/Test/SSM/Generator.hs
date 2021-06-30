@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
-module Test.Ssm.Generator where
+module Test.SSM.Generator where
 
 import Data.List
 import Data.Word
@@ -12,7 +12,7 @@ import qualified Data.Set as Set
 import SSM.Core.Syntax
 import SSM.Util.HughesList hiding ( (++) )
 
-import Test.Ssm.Shrink hiding (Ref, Variable)
+import Test.SSM.Shrink hiding (Ref, Variable)
 
 import Test.QuickCheck
 import Test.QuickCheck.Gen.Unsafe ()
