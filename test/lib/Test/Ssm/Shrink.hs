@@ -3,7 +3,7 @@
 module Test.Ssm.Shrink where
 
 
-import SSM.Util.HughesList
+import SSM.Util.HughesList hiding ( (++) )
 import SSM.Core.Syntax
 
 import qualified Data.Set as Set
