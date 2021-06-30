@@ -9,17 +9,17 @@ import qualified Language.C.Syntax             as C
 
 -- | Generate C expression from 'SSMExp' and a list of local variables.
 genExp :: [String] -> SSMExp -> C.Exp
-genExp _  (Var _ n              ) = [cexp|act->$id:n.value|]
+genExp _  (Var _ n              ) = [cexp|acts->$id:n.value|]
 genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
 genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
-genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename int64) $int:i|]
-genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename uint64) $int:i|]
+genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename i64) $int:i|]
+genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename u64) $int:i|]
 genExp _  (Lit _ (LBool   True )) = [cexp|true|]
 genExp _  (Lit _ (LBool   False)) = [cexp|false|]
 genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
 genExp ls (UOpR _ (n, _) Changed)
-  | n `elem` ls = [cexp|event_on(($ty:sv_t *) &act->$id:n)|]
-  | otherwise   = [cexp|event_on(($ty:sv_t *) act->$id:n)|]
+  | n `elem` ls = [cexp|event_on(&acts->$id:n.sv)|]
+  | otherwise   = [cexp|event_on(&acts->$id:n->sv)|]
 -- | Circumvent optimizations that take advantage of C's undefined signed
 -- integer wraparound behavior. FIXME: remove this hack, which is probably not
 -- robust anyway if C is aggressive about inlining.

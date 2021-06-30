@@ -28,17 +28,13 @@ genMain program tickLimit =
         $items:argInits
 
         /* Enter main SSM procedure */
-        $id:fork(($ty:act_t *) $id:enter($args:enterArgs));
-
-        tick();
-        DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
-        for (;;) {
-          now = next_event_time();
-          if (now == NO_EVENT_SCHEDULED)
-            break;
+        $id:fork($id:enter($args:enterArgs));
+        $ty:time_t next;
+        do {
           tick();
-          DEBUG_PRINT("now %lu eventqueuesize %d\n", now, event_queue_len);
-        }
+          next = next_event_time();
+          set_now(next);
+        } while (next != NO_EVENT_SCHEDULED);
 
         /* Print the final values of the arguments declared earlier */
         $items:refPrints
@@ -50,10 +46,7 @@ genMain program tickLimit =
 
   enter = enter_ $ entry program
   enterArgs =
-    [ [cexp|($ty:act_t *) &top|]
-      , [cexp|PRIORITY_AT_ROOT|]
-      , [cexp|DEPTH_AT_ROOT|]
-      ]
+      [[cexp|&top|], [cexp|PRIORITY_AT_ROOT|], [cexp|DEPTH_AT_ROOT|]]
       ++ map enterArg (args program)
   enterArg (Left  ssmExp  ) = genExp [] ssmExp
   -- ^ TODO: this is buggy if ssmExp contains a var?? Maybe double check what's
@@ -65,20 +58,13 @@ genMain program tickLimit =
     [ [citem|$ty:(svt_ typ) $id:ref;|]
     , [citem|$id:(initialize_ typ)(&$id:ref);|]
     , [citem|$id:ref.value = 0;|]
+    , [citem|DEBUG_SV_SET_VAR_NAME($id:ref.sv.debug, $string:ref);|]
       -- Args to the main SSM procedure are always given default values of 0.
     ]
 
   refPrints = map refPrint $ rights $ args program
-  refPrint (ref, typ) =
-    [citem|printf($string:fmtString, $id:fmtType, ($ty:fmtCast) $id:ref.value);|]
-   where
-    -- | We need to explicitly check if typ is an unsigned type to give it the
-    -- appropriate formatter and cast.
-    --
-    -- TODO: once we move the formatters and type gen stuff into Haskell itself,
-    -- we can just look it up from there.
-    fmtString | typ `elem` [Ref TUInt64, Ref TUInt8] = "result " ++ ref ++ " %s %lu\n"
-              | otherwise                    = "result " ++ ref ++ " %s %ld\n"
-    fmtType = "str_" ++ typeId typ
-    fmtCast | typ `elem` [Ref TUInt64, Ref TUInt8] = [cty|unsigned long|]
-            | otherwise                    = [cty|long|]
+  refPrint (ref, typ) = [citem|
+    DEBUG_PRINT("result %s %s %s\n", DEBUG_SV_GET_VAR_NAME($id:ref.sv.debug),
+                                     DEBUG_SV_GET_TYPE_NAME($id:ref.sv.debug),
+                                     DEBUG_SV_GET_VALUE_REPR($id:ref.sv.debug,
+                                     &$id:ref.sv));|]

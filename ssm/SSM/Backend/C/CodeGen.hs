@@ -75,7 +75,6 @@ maxWaits rs = modify $ \st -> st { numwaits = rs `max` numwaits st }
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]
 genPreamble = [cunit|
-extern $ty:time_t now;
 
 /**
  * Circumvent optimizations that take advantage of C's undefined signed
@@ -89,11 +88,7 @@ static int _add(int a, int b) {
 
 includes :: [C.Definition]
 includes = [cunit|
-$esc:("#include \"peng-platform.h\"")
-$esc:("#include \"peng.h\"")
-$esc:("#include \"formatters.h\"")
-$esc:("#include <stdio.h>")
-$esc:("#include <stdint.h>")
+$esc:("#include \"ssm-program.h\"")
 |]
 
 -- | Generate definitions for an SSM 'Procedure'.
@@ -117,7 +112,7 @@ genStruct = do
   ls <- gets locals
   return [cedecl|
     typedef struct {
-      $sdecls:aCTIVATION_RECORD_FIELDS
+      struct act act;
 
       $sdecls:(map param (arguments p))
       $sdecls:(map local ls)
@@ -126,16 +121,6 @@ genStruct = do
     } $id:(act_ $ name p);
   |]
  where
-  aCTIVATION_RECORD_FIELDS =
-    [ [csdecl|$ty:stepf_t *step;|]
-    , [csdecl|struct act *caller;|]
-    , [csdecl|$ty:uint16_t pc;|]
-    , [csdecl|$ty:uint16_t children;|]
-    , [csdecl|$ty:priority_t priority;|]
-    , [csdecl|$ty:depth_t depth;|]
-    , [csdecl|$ty:bool_t scheduled;|]
-    ]
-
   param (n, Ref t) = [csdecl|$ty:(svt_ t) *$id:n;|]
   param (n, t    ) = [csdecl|$ty:(svt_ t) $id:n;|]
 
@@ -151,29 +136,30 @@ genEnter = do
   p  <- gets procedure
   ts <- gets numwaits
   ls <- gets locals
-  let act   = [cty|typename $id:(act_ $ name p)|]
+  let act   = [cty|typename $id:act'|]
+      act'  = act_ $ name p -- hack to use this typename as expr in macros
       enter = enter_ $ name p
       step  = step_ $ name p
       params =
         [cparams|$ty:act_t *caller, $ty:priority_t priority, $ty:depth_t depth|]
           ++ map param (arguments p)
   return
-    ( [cedecl|$ty:act *$id:enter($params:params);|]
+    ( [cedecl|$ty:act_t *$id:enter($params:params);|]
     , [cedecl|
-        $ty:act *$id:enter($params:params) {
-          $ty:act_t *gen_act = $id:act_enter(sizeof($ty:act), $id:step, caller, priority, depth);
-          $ty:act *act = ($ty:act *) gen_act;
+        $ty:act_t *$id:enter($params:params) {
+          $ty:act_t *actg = $id:act_enter(sizeof($ty:act), $id:step, caller, priority, depth);
+          $ty:act *acts = container_of(actg, $id:act', act);
 
           /* Initialize and assign parameters */
           $stms:(concatMap initParam (arguments p))
 
           /* Initialize locals */
-          $stms:(map initLocal ls)
+          $stms:(concat $ map initLocal ls)
 
           /* Initialize triggers */
           $stms:(map initTrig [1..ts])
 
-          return act;
+          return actg;
         }
       |]
     )
@@ -182,15 +168,18 @@ genEnter = do
   param (n, Ref t) = [cparam|$ty:(svt_ t) *$id:n|]
   param (n, t    ) = [cparam|typename $id:(typeId t) $id:n|]
 
-  initParam (n, Ref t) = [[cstm|act->$id:n = $id:n;|]]
+  initParam (n, Ref t) = [[cstm|acts->$id:n = $id:n;|]]
   initParam (n, t) =
-    [ [cstm|$id:(initialize_ t)(&act->$id:n);|]
-    , [cstm|act->$id:n.value = $id:n;|]
+    [ [cstm|$id:(initialize_ t)(&acts->$id:n);|]
+    , [cstm|acts->$id:n.value = $id:n;|]
     ]
 
-  initLocal (n, t) = [cstm| $id:(initialize_ t)(&act->$id:n);|]
+  initLocal (n, t) =
+    [ [cstm| $id:(initialize_ t)(&acts->$id:n);|]
+    , [cstm| DEBUG_SV_SET_VAR_NAME(acts->$id:n.sv.debug, $string:n); |]
+    ]
 
-  initTrig i = [cstm| act->$id:trig.act = gen_act;|]
+  initTrig i = [cstm| acts->$id:trig.act = actg;|]
     where trig = "trig" ++ show i
 
 -- | Generate the step function for an SSM 'Procedure'.
@@ -205,20 +194,21 @@ genStep = do
   cases <- concat <$> mapM genCase (body p)
   refs  <- gets locals
   final <- nextCase
-  let step = step_ $ name p
-      act  = [cty|typename $id:(act_ $ name p)|]
+  let act  = [cty|typename $id:act'|]
+      act' = act_ $ name p -- Hack to use this typename as expr in macros
+      step = step_ $ name p
   return
-    ( [cedecl|void $id:step($ty:act_t *gen_act);|]
+    ( [cedecl|void $id:step($ty:act_t *actg);|]
     , [cedecl|
-        void $id:step($ty:act_t *gen_act) {
-          $ty:act *act = ($ty:act *) gen_act; /* FIXME: remove cast */
-          switch (gen_act->pc) {
+        void $id:step($ty:act_t *actg) {
+          $ty:act *acts = container_of(actg, $id:act', act);
+          switch (actg->pc) {
           case 0:;
             $stms:cases
 
-          case $int:final:; /* FIXME: this last case is not needed */
+          case $int:final:;
             $stms:(map dequeue refs)
-            leave(gen_act, sizeof($ty:act));
+            $id:act_leave(actg, sizeof($ty:act));
             return;
           }
           printf("Error: Unreachable\n");
@@ -226,7 +216,7 @@ genStep = do
         }
       |]
     )
-  where dequeue (s, _) = [cstm|$id:dequeue_event(($ty:sv_t *) &act->$id:s);|]
+  where dequeue (var, _) = [cstm|$id:unsched_event(&acts->$id:var.sv);|]
 
 -- | Generate the list of statements from each 'Stm' in an SSM 'Procedure'.
 --
@@ -239,32 +229,32 @@ genCase :: Stm -> TR [C.Stm]
 genCase (NewRef n t v) = do
   locs <- map fst <$> gets locals
   let lvar = getVarName n
-      lhs  = [cexp|&act->$id:lvar|]
+      lhs  = [cexp|&acts->$id:lvar|]
       rhs  = genExp locs v
   addLocal lvar t
-  return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
+  return [[cstm|$id:(assign_ t)($exp:lhs, actg->priority, $exp:rhs);|]]
 genCase (GetRef n t (rvar, _)) = do
   locs <- map fst <$> gets locals
   let lvar = getVarName n
-      lhs  = [cexp|&act->$id:lvar|]
+      lhs  = [cexp|&acts->$id:lvar|]
       rhs  = if rvar `elem` locs
-        then [cexp|act->$id:rvar.value|]
-        else [cexp|act->$id:rvar->value|]
-  addLocal lvar t -- FIXME: I guess GetRef also declares a variable??
-  return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
+        then [cexp|acts->$id:rvar.value|]
+        else [cexp|acts->$id:rvar->value|]
+  addLocal lvar t
+  return [[cstm|$id:(assign_ t)($exp:lhs, actg->priority, $exp:rhs);|]]
 genCase (SetRef (lvar, t) e) = do
   locs <- map fst <$> gets locals
   let lhs = if lvar `elem` locs
-        then [cexp|&act->$id:lvar|]
-        else [cexp|act->$id:lvar|]
+        then [cexp|&acts->$id:lvar|]
+        else [cexp|acts->$id:lvar|]
       rhs = genExp locs e
-  return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
+  return [[cstm|$id:(assign_ t)($exp:lhs, actg->priority, $exp:rhs);|]]
 genCase (SetLocal n t e) = do
   locs <- map fst <$> gets locals
   let lvar = getVarName n
-      lhs  = [cexp|&act->$id:lvar|]
+      lhs  = [cexp|&acts->$id:lvar|]
       rhs  = genExp locs e
-  return [[cstm|$id:(assign_ t)($exp:lhs, gen_act->priority, $exp:rhs);|]]
+  return [[cstm|$id:(assign_ t)($exp:lhs, actg->priority, $exp:rhs);|]]
 genCase (If c t e) = do
   locs <- map fst <$> gets locals
   let cnd = genExp locs c
@@ -280,8 +270,8 @@ genCase (After d (lvar, t) v) = do
   locs <- map fst <$> gets locals
   let del = genExp locs d
       lhs = if lvar `elem` locs
-        then [cexp|&act->$id:lvar|]
-        else [cexp|act->$id:lvar|]
+        then [cexp|&acts->$id:lvar|]
+        else [cexp|acts->$id:lvar|]
       rhs = genExp locs v
       -- | NOTE: we add `now` to the delay here.
   return [[cstm| $id:(later_ t)($exp:lhs, now + $exp:del, $exp:rhs);|]]
@@ -292,35 +282,35 @@ genCase (Wait ts) = do
   let trigs = zip [1 ..] $ map (genTrig locs) ts
   return
     $  fmap sensitizeTrig trigs
-    ++ [ [cstm| gen_act->pc = $int:caseNum; |]
+    ++ [ [cstm| actg->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]
        ]
     ++ fmap desensitizeTrig trigs
  where
   sensitizeTrig (i, trig) =
-    [cstm|$id:sensitize(($ty:sv_t *) $exp:trig, &act->$id:(trig_ i));|]
-  desensitizeTrig (i, _) = [cstm|$id:desensitize(&act->$id:(trig_ i));|]
-  genTrig refs (trig, _) =
-    if trig `elem` refs then [cexp|&act->$id:trig|] else [cexp|act->$id:trig|]
+    [cstm|$id:sensitize($exp:trig, &acts->$id:(trig_ i));|]
+  desensitizeTrig (i, _) = [cstm|$id:desensitize(&acts->$id:(trig_ i));|]
+  genTrig locs (trig, _) = if trig `elem` locs
+    then [cexp|&acts->$id:trig.sv|]
+    else [cexp|&acts->$id:trig->sv|]
 genCase (Fork cs) = do
   locs    <- map fst <$> gets locals
   caseNum <- nextCase
   let
-    genCall i (r, as) =
-      [cstm|$id:fork(($ty:act_t *) $id:(enter_ r)($args:enterArgs));|]
+    genCall i (r, as) = [cstm|$id:fork($id:(enter_ r)($args:enterArgs));|]
      where
       enterArgs =
-        [ [cexp|gen_act|]
-          , [cexp|act->priority + $int:i * (1 << $exp:newDepth)|]
+        [ [cexp|actg|]
+          , [cexp|actg->priority + $int:i * (1 << $exp:newDepth)|]
           , newDepth
           ]
           ++ map genArg as
       genArg (Left e) = genExp locs e
       genArg (Right (r, _)) =
-        if r `elem` locs then [cexp|&act->$id:r|] else [cexp|act->$id:r|]
+        if r `elem` locs then [cexp|&acts->$id:r|] else [cexp|acts->$id:r|]
 
-      newDepth = [cexp|act->depth - $int:depthSub|]
+      newDepth = [cexp|actg->depth - $int:depthSub|]
       depthSub =
         (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Int
 
@@ -328,7 +318,7 @@ genCase (Fork cs) = do
   return
     $ [cstm| DEBUG_PRINT($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |]
     : zipWith genCall [0 :: Int ..] cs
-    ++ [ [cstm| gen_act->pc = $int:caseNum; |]
+    ++ [ [cstm| actg->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]
        ]

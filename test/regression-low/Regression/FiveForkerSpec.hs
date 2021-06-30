@@ -1,8 +1,8 @@
 module Regression.FiveForkerSpec where
 
 import Data.Map (fromList)
-import LowCore
-import qualified Test.Ssm.Prop as T
+import SSM.Core.Syntax
+import qualified Test.SSM.Prop as T
 import qualified Test.Hspec as H
 import qualified Test.Hspec.QuickCheck as H
 

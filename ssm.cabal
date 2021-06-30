@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2560ad3f818298a09235fc63321ea292288df6ad3af8fe7b10df8eed3d478b79
+-- hash: 7c5ef2bb41dc6e39b583b1e5a6ef8bfdb487a6f99aa4189e08e6f072ef2591b5
 
 name:           ssm
 version:        0.1.0.0
@@ -27,9 +27,6 @@ source-repository head
 
 library
   exposed-modules:
-      Ssm.Compiler.Cli
-      TestCases
-      Trace
       SSM.Backend.C.CodeGen
       SSM.Backend.C.Compile
       SSM.Backend.C.Exp
@@ -85,6 +82,7 @@ executable print-ssm-from-file
       LowInterpreter
       LowPretty
       SSM
+      Ssm.Compiler.Cli
       TestCases
       Trace
       Paths_ssm
@@ -115,16 +113,15 @@ test-suite 1-regression-low
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Regression.EmptyFunSpec
-      Regression.FiveForkerSpec
-      Regression.LaterAssignOverwriteSpec
-      Test.Ssm.Shrink
       Test.SSM.Build
       Test.SSM.Generator
       Test.SSM.Output
       Test.SSM.Prop
       Test.SSM.Report
       Test.SSM.Shrink
+      Regression.EmptyFunSpec
+      Regression.FiveForkerSpec
+      Regression.LaterAssignOverwriteSpec
       Regression.ManyContsSpec
       Regression.MultOverflowIndirectSpec
       Regression.MultOverflowSpec
@@ -133,6 +130,7 @@ test-suite 1-regression-low
       Regression.Test1624504860035Spec
       Regression.Test1624507133117Spec
       Regression.Test1624511150452Spec
+      Regression.Test1625068655962Spec
       Paths_ssm
   hs-source-dirs:
       test/lib
