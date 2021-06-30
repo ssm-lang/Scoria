@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c072e78fd2f3d458707ff9fe3e12b00facae153ec4dec571de34b101fb59b077
+-- hash: 2560ad3f818298a09235fc63321ea292288df6ad3af8fe7b10df8eed3d478b79
 
 name:           ssm
 version:        0.1.0.0
@@ -115,15 +115,16 @@ test-suite 1-regression-low
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Test.Ssm.Build
-      Test.Ssm.Generator
-      Test.Ssm.Output
-      Test.Ssm.Prop
-      Test.Ssm.Report
       Regression.EmptyFunSpec
       Regression.FiveForkerSpec
       Regression.LaterAssignOverwriteSpec
       Test.Ssm.Shrink
+      Test.SSM.Build
+      Test.SSM.Generator
+      Test.SSM.Output
+      Test.SSM.Prop
+      Test.SSM.Report
+      Test.SSM.Shrink
       Regression.ManyContsSpec
       Regression.MultOverflowIndirectSpec
       Regression.MultOverflowSpec
@@ -163,12 +164,12 @@ test-suite 2-arbitrary
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Test.Ssm.Build
-      Test.Ssm.Generator
-      Test.Ssm.Output
-      Test.Ssm.Prop
-      Test.Ssm.Report
-      Test.Ssm.Shrink
+      Test.SSM.Build
+      Test.SSM.Generator
+      Test.SSM.Output
+      Test.SSM.Prop
+      Test.SSM.Report
+      Test.SSM.Shrink
       Paths_ssm
   hs-source-dirs:
       test/lib

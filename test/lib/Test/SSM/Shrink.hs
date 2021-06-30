@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
-module Test.Ssm.Shrink where
+module Test.SSM.Shrink where
 
 
 import SSM.Util.HughesList hiding ( (++) )
