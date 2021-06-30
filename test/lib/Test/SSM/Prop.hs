@@ -1,4 +1,4 @@
-module Test.Ssm.Prop
+module Test.SSM.Prop
   ( propCompiles
   , propValgrind
   , propCorrect
@@ -7,7 +7,7 @@ module Test.Ssm.Prop
   ) where
 
 import           SSM.Core.Syntax                ( Program )
-import           Test.Ssm.Generator             ( ) -- instance Arbitrary Program
+import           Test.SSM.Generator             ( ) -- instance Arbitrary Program
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
@@ -17,16 +17,16 @@ import           Test.Hspec.QuickCheck          ( modifyMaxSuccess
                                                 , prop
                                                 )
 
-import           Test.Ssm.Build                 ( doCompile
+import           Test.SSM.Build                 ( doCompile
                                                 , doExec
                                                 , doMake
                                                 , doVg
                                                 )
-import           Test.Ssm.Output                ( doCompareTraces
+import           Test.SSM.Output                ( doCompareTraces
                                                 , doInterpret
                                                 , doParseOutput
                                                 )
-import           Test.Ssm.Report                ( Slug(..)
+import           Test.SSM.Report                ( Slug(..)
                                                 , TestName(..)
                                                 , getSlug
                                                 , reportProgramOnFail

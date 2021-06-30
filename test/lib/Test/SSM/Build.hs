@@ -1,4 +1,4 @@
-module Test.Ssm.Build
+module Test.SSM.Build
   ( doCompile
   , doMake
   , doExec
@@ -14,7 +14,7 @@ import           SSM.Core.Syntax                ( Program )
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
 
-import           Test.Ssm.Report                ( (</>)
+import           Test.SSM.Report                ( (</>)
                                                 , Slug(..)
                                                 , slugStr
                                                 , printUnixError
