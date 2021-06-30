@@ -17,7 +17,7 @@ CPUOPTIONS = -mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-d16 -mthumb
 # -fdata-sections
 #     Puts everything in its own section in the elf file.
 #     Not clear it's useful
-CFLAGS += -Wall -O2 -std=gnu99 $(CPUOPTIONS) -ffunction-sections -fdata-sections
+CFLAGS += -Wall -O2 $(CPUOPTIONS) -ffunction-sections -fdata-sections
 
 vpath %.c $(PLATFORMDIR)/src
 

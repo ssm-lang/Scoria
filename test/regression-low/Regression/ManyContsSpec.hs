@@ -48,4 +48,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.doProgramSpec "ManyConts" p
+spec = T.correctSpec "ManyConts" p

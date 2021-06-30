@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 674a1a273eef06cd0a76ddf9ef37b8207fc40885bfd5cbf62c25b4f696a7da47
+-- hash: 2e2eff5c455ef50aa98efd507d336e3e374a0bf346a023b18b1a709296e0ae70
 
 name:           ssm
 version:        0.1.0.0
@@ -129,7 +129,53 @@ executable ssm-exe
     , time
   default-language: Haskell2010
 
-test-suite dummy-test
+test-suite 1-regression-low
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Test.Ssm.Build
+      Test.Ssm.Output
+      Test.Ssm.Prop
+      Test.Ssm.Report
+      Regression.EmptyFunSpec
+      Regression.FiveForkerSpec
+      Regression.LaterAssignOverwriteSpec
+      Regression.ManyContsSpec
+      Regression.MultOverflowIndirectSpec
+      Regression.MultOverflowSpec
+      Regression.Test1623630765726Spec
+      Regression.Test1623691869727Spec
+      Regression.Test1624504860035Spec
+      Regression.Test1624507133117Spec
+      Regression.Test1624511150452Spec
+      Paths_ssm
+  hs-source-dirs:
+      test/lib
+      test/regression-low
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      BinderAnn
+    , QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , deepseq
+    , directory
+    , extra
+    , hspec
+    , language-c-quote
+    , mainland-pretty
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , process
+    , ssm
+    , text
+    , time
+  default-language: Haskell2010
+
+test-suite 2-arbitrary
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -140,7 +186,7 @@ test-suite dummy-test
       Paths_ssm
   hs-source-dirs:
       test/lib
-      test/newtest
+      test/arbitrary
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
