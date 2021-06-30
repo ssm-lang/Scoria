@@ -102,7 +102,7 @@ reportProgramOnFail slug program = do
     , "p = " ++ show program
     , ""
     , "spec :: H.Spec"
-    , "spec = T.doProgramSpec \"" ++ slugStr slug ++ "\" p"
+    , "spec = T.correctSpec \"" ++ slugStr slug ++ "\" p"
     ]
 
 -- | Report a Unix error in a Quickcheck Property monad transformer.
