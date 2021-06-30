@@ -1,3 +1,4 @@
+{-| This module exposes some generic operators. -}
 module SSM.Util.Operators
     ( (<#>) ) where
 
