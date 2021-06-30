@@ -10,7 +10,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import SSM.Core.Syntax
-import SSM.Util.HughesList
+import SSM.Util.HughesList hiding ( (++) )
 
 import Test.Ssm.Shrink hiding (Ref, Variable)
 
