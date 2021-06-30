@@ -87,4 +87,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.doProgramSpec "Test1623630765726Spec" p
+spec = T.correctSpec "Test1623630765726Spec" p

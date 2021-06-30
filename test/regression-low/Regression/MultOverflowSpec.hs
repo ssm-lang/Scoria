@@ -42,4 +42,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.doProgramSpec "MultOverflowSpec" p
+spec = T.semanticIncorrectSpec "MultOverflowSpec" p
