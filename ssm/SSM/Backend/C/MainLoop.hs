@@ -1,8 +1,8 @@
 {-# LANGUAGE QuasiQuotes #-}
-module SSM.Backend.C.MainLoop where
+module SSM.Backend.C.MainLoop ( genMain ) where
 
 import SSM.Core.Syntax
-import SSM.Backend.C.Definitions
+import SSM.Backend.C.Identifiers
 import SSM.Backend.C.Exp
 
 import Data.Either
