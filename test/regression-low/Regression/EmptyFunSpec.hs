@@ -10,4 +10,4 @@ p :: Program
 p = Program {entry = "fun1", args = [], funs = fromList [("fun1",Procedure {name = "fun1", arguments = [], body = []})]}
 
 spec :: H.Spec
-spec = T.doProgramSpec "EmptyFun" p
+spec = T.correctSpec "EmptyFun" p

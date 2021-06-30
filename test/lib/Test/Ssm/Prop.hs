@@ -3,7 +3,8 @@ module Test.Ssm.Prop
   , propValgrind
   , propCorrect
   , TestName(..)
-  , doProgramSpec
+  , correctSpec
+  , semanticIncorrectSpec
   ) where
 
 import           LowCore                        ( Program )
@@ -66,11 +67,28 @@ propCorrect tn program = QC.monadicIO $ do
   iTrace      <- doInterpret slug program (length $ lines out)
   doCompareTraces slug iTrace cTrace
 
-doProgramSpec :: String -> Program -> H.Spec
-doProgramSpec name p = do
+-- | Spec that ensures an SSM program compiles to valid C that compiles and runs
+-- without memory errors, and behaves the same as the interpreter.
+--
+-- Used to build passing integration tests.
+correctSpec :: String -> Program -> H.Spec
+correctSpec name p = do
   once $ H.prop "compiles" $ propCompiles tn p
   once $ H.prop "runs without memory errors" $ propValgrind tn p
   once $ H.prop "runs according to interpreter" $ propCorrect tn p
+ where
+  once = H.modifyMaxSuccess (const 1)
+  tn   = NamedTest name
+
+-- | Spec that ensures an SSM program compiles to valid C that compiles and runs
+-- without memory errors, but behaves different from the interpreter.
+--
+-- Used to note discrepancies with the interpreter in the regression test suite.
+semanticIncorrectSpec :: String -> Program -> H.Spec
+semanticIncorrectSpec name p = do
+  once $ H.prop "compiles" $ propCompiles tn p
+  once $ H.prop "runs without memory errors" $ propValgrind tn p
+  once $ H.prop "does not match interpreter" $ QC.expectFailure $ propCorrect tn p
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name

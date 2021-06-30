@@ -31,4 +31,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.doProgramSpec "LaterAssignOverwriteSpec" p
+spec = T.correctSpec "LaterAssignOverwriteSpec" p
