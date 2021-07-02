@@ -4,6 +4,8 @@ where they are referenced.-}
 {-# LANGUAGE QuasiQuotes #-}
 module SSM.Backend.C.Identifiers
     ( -- * Identifiers
+      {- | These are identifiers that are recognized by the C runtime system, and can be
+      used while generating code which targets the runtime system. -}
       CIdent
     , top_return
     , fork
@@ -15,23 +17,30 @@ module SSM.Backend.C.Identifiers
     , unsched_event
 
       -- * C Types
+      -- | These are types that the runtime system declares.
     , time_t
     , trigger_t
     , priority_t
     , depth_t
     , stepf_t
-    , uint16_t
-    , bool_t
     , act_t
     , sv_t
+      {- | These are (a subset of the) types that the runtime system includes and uses
+      internally. These are just the ones that the code generator needs to talk about. -}
+    , uint16_t
+    , bool_t
 
       -- * Constructing Identifiers from strings
+      -- | These functions create identifiers from some known [pre|suf]fix.
     , act_
     , step_
     , enter_
     , trig_
 
       -- * Constructing Identifiers from types
+      {- | Some identifiers need to be prefixed or suffixed with some type information,
+      such as @later_int@, @later_bool@ etc. We create identifiers like these and others
+      by using these functions. -}
     , typeId
     , svt_
     , initialize_
@@ -44,11 +53,6 @@ import SSM.Core.Syntax
 
 import Language.C.Quote.GCC ( cty )
 import qualified Language.C.Syntax             as C
-
-{-------- C identifiers --------}
--- These variables represent the magic identifiers that must be coordinated
--- between the C runtime and the generated code, as well as some helpers to
--- generate C type nodes for user-defined types.
 
 -- | Type alias for C identifiers.
 type CIdent = String
