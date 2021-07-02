@@ -33,6 +33,14 @@ tickLimit = Just 7500
 buildPlatform :: String
 buildPlatform = "trace"
 
+-- | Size of the act queue
+actQueueSize :: Int
+actQueueSize = 1024
+
+-- | Size of the act queue
+eventQueueSize :: Int
+eventQueueSize = 2048
+
 -- | Obtain the target name from a test Slug.
 --
 -- Use the magic target name "arbitrary" for randomly generated tests to avoid
@@ -58,30 +66,26 @@ doCompile slug program = do
 -- TODO: pass in DEBUG flag here
 doMake :: Slug -> String -> QC.PropertyM IO FilePath
 doMake slug cSrc = do
-  (code, out, err) <- QC.run $ make "make_builddir"
-  case code of
-    ExitSuccess   -> return ()
-    ExitFailure c -> do
-      reportUnixError slug ("make" : mkArgs "make_builddir") (c, out, err)
-      fail "Make make_builddir error"
+  _   <- make "clean"
+  out <- make "make_builddir"
 
   let execPath = dropWhileEnd isSpace out </> target
-
   QC.run $ writeFile (execPath ++ ".c") cSrc
 
-  (code, out, err) <- QC.run $ make target
-  case code of
-    ExitSuccess -> do
-      reportFileOnFail slug execPath (slugStr slug ++ ".exe")
-      return execPath
-    ExitFailure c -> do
-      reportUnixError slug ("make" : mkArgs target) (c, out, err)
-      fail "Make target error"
+  _ <- make target
+  reportFileOnFail slug execPath (slugStr slug ++ ".exe")
 
+  return execPath
  where
   target = slugTarget slug
-  make t = readProcessWithExitCode "make" (mkArgs t) ""
-  mkArgs t = ["PLATFORM=" ++ buildPlatform, t]
+  mkArgs t = ["PLATFORM=" ++ buildPlatform, "ACT_QUEUE_SIZE=" ++ show actQueueSize, "EVENT_QUEUE_SIZE=" ++ show eventQueueSize, t]
+  make t = do
+    (code, out, err) <- QC.run $ readProcessWithExitCode "make" (mkArgs t) ""
+    case code of
+      ExitSuccess   -> return out
+      ExitFailure c -> do
+        reportUnixError slug ("make" : mkArgs t) (c, out, err)
+        fail "Make target error"
 
 -- | Test compiled program with valgrind.
 --
