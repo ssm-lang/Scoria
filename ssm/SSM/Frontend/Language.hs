@@ -1,3 +1,10 @@
+{-| This module exposes the interface a programmer is meant to use when writing
+SSM programs. This is probably subject to extensive change as we move forward.
+
+Right now there is no way to write polymorphic SSM procedures, if that procedure
+needs to do anything other than waiting on its input references. There's an open
+issue on GitHub where we are discussing monomorphisation strategies.
+-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -6,18 +13,33 @@ module SSM.Frontend.Language
     ( -- * The SSM Embedded language
 
       -- ** References
+      {- | References in the language are parameterised over the type they reference.
+      
+      References can be aquired in 2 different ways. Either your SSM procedure
+      receives a reference as an argument, in which case the reference is guaranteed
+      to be alive for at least as long as your procedure, or you can create a new
+      reference by using `var`. References created using `var` will be deallocated
+      once the current process terminates. -}
       Ref
     , inputref
     , var
     , deref
 
       -- ** Expressions
+      {- | Expressions are parameterised over the type they have.
+      
+      If the type variable `a` has a `Num` instance and a `SSMType` instance, `Exp a`
+      also has a `Num` instance. Expressions are also subjected to less than comparisons
+      and equality checks. -}
     , Exp
     , (<.)
     , (==.)
     , neg
 
       -- *** Literals
+      {- | The `Num` instance will in many cases figure out what type your literal should
+      have, but if that is not the case, these functions can be used to explicitly create
+      a literal of a concrete type.-}
     , int32
     , int64
     , uint8
@@ -26,6 +48,9 @@ module SSM.Frontend.Language
     , false'
 
       -- ** Primitive statements
+      {- | These are the primitive statements of the SSM language. Your procedure
+      body is constructed by using these functions. The language is sequential, so the
+      order in which you call these functions matters, naturally. -}
     , (<~)
     , wait
     , after
@@ -36,6 +61,7 @@ module SSM.Frontend.Language
     , while'
 
       -- ** Derived statements
+      -- | These are statements that are derived from the language primitives.
     , waitAll
 
     ) where
