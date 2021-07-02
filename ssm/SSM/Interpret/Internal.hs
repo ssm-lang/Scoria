@@ -227,7 +227,7 @@ eventQueueSize = gets numevents
 
 -- | Upper bound on the number of events that may be scheduled at any given time.
 eventqueueSize :: Int
-eventqueueSize = 256
+eventqueueSize = 2056
 
 {- | Perform all the events scheduled for this instance, enqueueing those processes that
 are waiting for one of these events to happen. -}
@@ -301,7 +301,7 @@ dequeue = do
 
 -- | Upper bound on the size of the ready queue
 contqueueSize :: Int
-contqueueSize = 128
+contqueueSize = 1024
 
 -- | Size of the ready queue
 contQueueSize :: Interp s Int
