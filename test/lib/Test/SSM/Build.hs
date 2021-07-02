@@ -33,6 +33,14 @@ tickLimit = Just 7500
 buildPlatform :: String
 buildPlatform = "trace"
 
+-- | Size of the act queue
+actQueueSize :: Int
+actQueueSize = 1024
+
+-- | Size of the act queue
+eventQueueSize :: Int
+eventQueueSize = 2048
+
 -- | Obtain the target name from a test Slug.
 --
 -- Use the magic target name "arbitrary" for randomly generated tests to avoid
@@ -70,7 +78,7 @@ doMake slug cSrc = do
   return execPath
  where
   target = slugTarget slug
-  mkArgs t = ["PLATFORM=" ++ buildPlatform, "ACT_QUEUE_SIZE=1024", "EVENT_QUEUE_SIZE=2048", t]
+  mkArgs t = ["PLATFORM=" ++ buildPlatform, "ACT_QUEUE_SIZE=" ++ show actQueueSize, "EVENT_QUEUE_SIZE=" ++ show eventQueueSize, t]
   make t = do
     (code, out, err) <- QC.run $ readProcessWithExitCode "make" (mkArgs t) ""
     case code of
