@@ -2,6 +2,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 module SSM.Frontend.Language
     ( -- * The SSM Embedded language
 
@@ -39,6 +41,8 @@ module SSM.Frontend.Language
     , waitAll
 
     ) where
+
+import Prelude hiding ( and, or )
 
 import Data.Int
 import Data.Word
@@ -206,6 +210,88 @@ var (Exp e) = do
 -- | Block until any of the references in the input list are be written to.
 wait :: [Ref a] -> SSM ()
 wait r = emit $ Wait (map (\(Ptr r') -> r') r)
+
+waitNew :: Waitable a => a -> SSM ()
+waitNew a = emit $ Wait $ mkWaitable a
+
+class Waitable a where
+    mkWaitable :: a -> [Reference]
+
+instance Waitable (Ref a) where
+    mkWaitable (Ptr x) = [x]
+
+instance Waitable [Ref a] where
+    mkWaitable xs = map (\(Ptr x) -> x) xs
+
+instance Waitable [Reference] where
+    mkWaitable = id
+
+concatwaitable :: (Waitable a, Waitable b) => a -> b -> [Reference]
+concatwaitable a b = mkWaitable a ++ mkWaitable b
+
+and :: (Waitable a, Waitable b) => a -> b -> [Reference]
+and = concatwaitable
+
+bar :: Ref Int32 -> Ref Int32 -> Ref Bool -> Ref Word64 -> Ref Bool -> SSM ()
+bar = box "bar" ["i1","i2","b1","w","b2"] $ \i1 i2 b1 w b2 -> do
+    waitNew $ i1      `and`
+              i2      `and`
+              [i1,i2] `and`
+              w       `and`
+              [b1,b2]
+
+data WaitItem where
+    WaitItem :: Ref a -> WaitItem
+
+waitNew2 :: [WaitItem] -> SSM ()
+waitNew2 xs = emit $ Wait $ map (\(WaitItem (Ptr x)) -> x) xs
+
+mkWaitItem :: Ref a -> WaitItem
+mkWaitItem = WaitItem
+
+baz :: Ref Int32 -> Ref Int32 -> Ref Bool -> Ref Word64 -> Ref Bool -> SSM ()
+baz = box "baz" ["i1","i2","b1","w","b2"] $ \i1 i2 b1 w b2 -> do
+    waitNew2 $ [mkWaitItem i1, mkWaitItem i2, mkWaitItem b1, mkWaitItem w, mkWaitItem b2]
+
+
+--waitNew :: Waitable a => a -> SSM ()
+--waitNew a = emit $ Wait $ mkWaitable a
+
+newtype WaitRefs = WaitRefs [Reference]
+
+class Waitable2 a where
+    mkWaitable2 :: a -> WaitRefs
+
+instance Waitable2 (Ref a) where
+    mkWaitable2 (Ptr x) = WaitRefs [x]
+
+instance Waitable2 [Ref a] where
+    mkWaitable2 xs = WaitRefs $ map (\(Ptr x) -> x) xs
+
+instance Waitable2 WaitRefs where
+    mkWaitable2 = id
+
+concatwaitable2 :: (Waitable2 a, Waitable2 b) => a -> b -> WaitRefs
+concatwaitable2 a b = let (WaitRefs a') = mkWaitable2 a
+                          (WaitRefs b') = mkWaitable2 b
+                      in WaitRefs $ a' ++ b'
+
+for :: Waitable2 a => a -> WaitRefs
+for a = mkWaitable2 a
+
+or :: (Waitable2 a, Waitable2 b) => a -> b -> WaitRefs
+or = concatwaitable2
+
+waitNew3 :: WaitRefs -> SSM ()
+waitNew3 (WaitRefs xs) = emit $ Wait xs
+
+foo :: Ref Int32 -> Ref Int32 -> Ref Bool -> Ref Word64 -> Ref Bool -> SSM ()
+foo = box "foo" ["i1","i2","b1","w","b2"] $ \i1 i2 b1 w b2 -> do
+    waitNew3 $ for i1  `or`
+               i2      `or`
+               [i1,i2] `or`
+               w       `or`
+               [b1,b2]
 
 {- | Scheduled assignment. @after d r v@ means that after @a@ units of time, the
 reference @r@ should receive the value @v@. -}
