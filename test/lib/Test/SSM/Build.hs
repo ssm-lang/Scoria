@@ -70,7 +70,7 @@ doMake slug cSrc = do
   return execPath
  where
   target = slugTarget slug
-  mkArgs t = ["PLATFORM=" ++ buildPlatform, "CONT_QUEUE_SIZE=0", "EVENT_QUEUE_SIZE=0", t]
+  mkArgs t = ["PLATFORM=" ++ buildPlatform, "ACT_QUEUE_SIZE=1024", "EVENT_QUEUE_SIZE=2048", t]
   make t = do
     (code, out, err) <- QC.run $ readProcessWithExitCode "make" (mkArgs t) ""
     case code of
