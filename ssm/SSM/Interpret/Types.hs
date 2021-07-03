@@ -3,6 +3,7 @@ SSM program, represented in the `SSM.Core.Syntax` format. While the interpreter 
 meant to evaluate programs the same way the runtime system does, the model used here
 is slightly simpler. Some of the definitions are similar but not identical to the
 corresponding RTS ones. -}
+{-# LANGUAGE StrictData #-}
 module SSM.Interpret.Types
     ( -- * Types
       -- ** Schedulable variables

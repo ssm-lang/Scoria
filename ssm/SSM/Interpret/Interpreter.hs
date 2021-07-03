@@ -1,3 +1,4 @@
+{-| This module exports the SSM interpreter! -}
 module SSM.Interpret.Interpreter ( interpret ) where
 
 import SSM.Core.Syntax
@@ -14,6 +15,15 @@ import Control.Monad.Writer.Lazy
 import Control.Monad.State.Lazy
 import Control.Monad.ST.Lazy
 
+{-| Interpret an SSM program.
+
+The output is the debug information specified in `SSM.Interpret.Trace`, which is
+used by the testing machinery to evaluate the semantics of the interpreter.
+
+The interpreter itself is lazy, so it can handle non terminating programs without
+issue. What you do to get the output in that case is to ask it for a finite amount
+of output, such as @take 10000 (interpret program)@. After evaluating enough to give
+you @10000@ trace items, it will not evaluate more. -}
 interpret :: Program -> T.Output
 interpret p = runST interpret'
   where
