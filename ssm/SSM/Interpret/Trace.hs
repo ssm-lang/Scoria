@@ -1,6 +1,28 @@
+{-| This module declares a @Trace@ datatype that is used to describe output of a SSM
+program. The interpreter directly outputs elements of this type, while the generated
+C code prints lines to the terminal representing the trace items. For this reason
+there is also a parser for trace items implemented by this module.
+
+This module and the data type it exposes are tightly coupled to the testing framework.
+The trace items are used to compare the C code and the interpreter for equality, making
+sure that they have the same semantics. The interpreter should not necessarily be so
+tightly coupled with the testing framework, so this module and the interpreter should
+eventually be refactored to reflect this. -}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
-module SSM.Interpret.Trace where
+module SSM.Interpret.Trace
+    ( -- ** Trace items
+      -- | The actual trace items that can be emitted by the interpreter/RTS
+      OutputEntry(..)
+      -- ** Interpreter output
+      -- | The interpreter pretty much just outputs a list of trace items
+    , Output(..)
+
+      -- ** Parser
+      {- | To handle the output produced by the generated C code, this parser is
+      available. It will parse one line of output at a time. -}
+    , parseLine
+    ) where
 
 import qualified Data.Text as T
 import Data.Void
@@ -21,20 +43,43 @@ import System.IO.Unsafe
 trace :: Show a => a -> a
 trace x = unsafePerformIO $ putStrLn (show x) >> return x
 
+-- | Textbook parser definition
 type Parser a = Parsec Void T.Text a
 
-data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
-                 | Event Word64 SSMExp     -- ^ now, new variable value
-                 | Fork [String]        -- ^ Fork call, names of forked procedures
-                 | Result String SSMExp -- ^ variable name and final value
-                 | NumConts Int
-                 | Crash
-                 | EventQueueFull
-                 | ContQueueFull
-                 | NegativeDepth
-                 | BadAfter
-  deriving (Show, Eq)
+-- | Variants of output that evaluating a SSM programs can produce
+data OutputEntry
+    {-| @Instant n s@ says that model time @n@ just finished evaluating, and that
+    there are @s@ events in the event queue currently. -}
+    = Instant Word64 Int
+    {-| @Event n v@ says that we just performed an update that was scheduled for model
+    time @n@ by giving a variable the new value @v@. Ideally we'll alter this to also
+    include the variable name, for greater clarity. -}
+    | Event Word64 SSMExp
+    {-| @Fork [procs]@ says that we are about to fork the processes identified by their
+    names in @procs@. -}
+    | Fork [String]
+    {- | @Result var v@ says that after the program terminated, the variable @var@ had
+    the final value @v@. -}
+    | Result String SSMExp
+    -- | @NumConts s@ says that the size of the readyqueue is currently @s@.
+    | NumConts Int
+    -- | @Crash@ says that the program crashed.
+    | Crash
+    {- | @EventQueueFull@ says that the program crashed because the event queue ran out
+    of space. -}
+    | EventQueueFull
+    {- | @ContQueueFull@ says that the program crashed because the ready queue ran out of
+    space. -}
+    | ContQueueFull
+    {- | @NegativeDepth@ says that the program crashed because the depth of a process ran
+    out as it was forking more children. -}
+    | NegativeDepth
+    {- | @BadAfter@ says that the program crashed because an attempt was made to schedule
+    an update for a variable at a time that had already passed. -}
+    | BadAfter
+    deriving (Show, Eq)
 
+-- | The interpreter output is simply a list of `OutputEntry`
 type Output = [OutputEntry]
 
 testoutput = Prelude.unlines [ "event 0 value i32 0"
@@ -78,6 +123,7 @@ mkTrace inp = fromRight $ parse pTrace "" (T.pack inp)
       fromRight (Left a)  = error $ "parsing of test results failed: " ++ show a
       fromRight (Right b) = b
 
+-- | Parse a single line of output from the C code
 parseLine :: String -> Maybe OutputEntry
 parseLine inp = toMaybe $ parse pTraceItem "" (T.pack inp)
   where

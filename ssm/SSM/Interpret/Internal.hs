@@ -1,11 +1,15 @@
-{-| This module exposes the API a module can communicate with in order to interpret
-a Program. I've tried to make a clear line so that nothing about the internals of
-the different types in SSM.Interpret.Internal leaks to the interpreter. -}
+{-| This module exposes a lot of helper functions and auxiliary definitions that the
+actual interpreter will use to interpret programs. The file is quite large and contains
+a lot of definitions, but I hope it is not unmanagable. -}
 module SSM.Interpret.Internal
     ( -- * Interpretation monad
+      -- | Interpretation monad that is re-exported from `SSM.Interpret.Types`
       Interp
 
       -- ** Functions that help define the `interpret` function
+      {- | While interpreting statements is quite straight forward, there is some
+      initial work required with setting up the interpretation state. These functions
+      are meant to aid in that process. -}
     , mkProc
     , variableStorage
     , interpState
@@ -14,10 +18,13 @@ module SSM.Interpret.Internal
     , emitResult
 
       -- * Talking about time
+      {- | These two functions can be used to interact with the model time. Setting the
+      model time is supposed to be done only by the scheduler. -}
     , SSM.Interpret.Internal.now
     , setNow
 
       -- * Interacting with the event queue
+      -- | Managing the event queue is done by interacting with these functions.
     , eventQueueSize
     , eventQueueEmpty
     , nextEventTime
@@ -25,6 +32,9 @@ module SSM.Interpret.Internal
     , schedule_event
 
       -- * Interacting with the ready queue
+      {- | The ready queue is managed by these functions. Processes can be scheduled and
+      descheduled, and the size of the queue can be quieried. As a bonus, functions for
+      setting and getting the current process is also exposed here. -}
     , enqueue
     , dequeue
     , contQueueSize
@@ -32,10 +42,13 @@ module SSM.Interpret.Internal
     , setCurrentProcess
 
       -- * Instruction management
+      {- | Functions for talking about the instructions a process still has to execute
+      before it can terminate. -}
     , nextInstruction
     , pushInstructions
 
       -- * Interacting with references
+      -- | Writing to and reading from references are done using these functions.
     , newRef
     , writeRef
     , readRef
@@ -161,8 +174,8 @@ setNow w = modify $ \st -> st { SSM.Interpret.Types.now = w }
 
 {-********** Interacting with the event queue **********-}
 
-{- | Schedule a delayed update of a reference. The reference `r` will get the value `val`
-in `thn` units of time. -} 
+{- | Schedule a delayed update of a reference. The reference @r@ will get the value @val@
+in @thn@ units of time. -} 
 schedule_event :: Reference -> Word64 -> SSMExp -> Interp s ()
 schedule_event r thn val = do
     st <- get
@@ -360,22 +373,27 @@ createVar e = do
     lift' $ newVar' v now'
 
 {- | Create a new reference with an initial value, and add it to the current process's
-variable storage. It is considered written to when it is created. -}
+variable storage. It is considered written to when it is created.
+
+Note: it is added to the map containing the local variables. -}
 newRef :: Name -> SSMExp -> Interp s ()
 newRef n e = do
     ref <- createVar e
     p <- gets process
     modify $ \st -> st { process = p { localrefs = Map.insert (getVarName n) ref (localrefs p) } }
 
--- | Create a new variable with an initial value, and adds it to the current process's
--- variable storage. When a variable is created it is considered written to.
+{- | Create a new variable with an initial value, and adds it to the current process's
+variable storage. When a variable is created it is considered written to.
+
+Note: This does the same thing as `NewRef`, but it adds the reference to the map
+containing variables & references supplied by a caller. -}
 newVar :: Name -> SSMExp -> Interp s ()
 newVar n e = do
     ref <- createVar e
     p <- gets process
     modify $ \st -> st { process = p { variables = Map.insert (getVarName n) ref (variables p) } }
 
--- | Write a value to a reference.
+-- | Write a value to a variable.
 writeRef :: String -> SSMExp -> Interp s ()
 writeRef r e = do
     p <- gets process
@@ -387,15 +405,15 @@ writeRef r e = do
                            writeVar ref v
             Nothing -> error $ "interpreter error - can not find variable " ++ r
 
--- | Read a variable from the current processes environment.
+-- | Read the value of a reference
 readRef :: Reference -> Interp s SSMExp
 readRef r = do
     r <- lookupRef (refName r)
     (vr,_,_,_,_) <- lift' $ readSTRef r
     lift' $ readSTRef vr
 
-
--- | Function returns True if variable was written in this instant, and otherwise False.
+{- | This function returns True if variable was written in this instant, and otherwise
+False. -}
 wasWritten :: String -> Interp s SSMExp
 wasWritten r = do
     p <- gets process

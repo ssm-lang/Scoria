@@ -3,11 +3,12 @@ syntax is at a higher level than that of SSM.Core.Syntax, and must be
 transpiled to the lower representation before it can be compiled or interpreted.
 
 A lot of the types and functions that are exported are simply re-exported from
-SSM.Core.Syntax. The most notable change is that these high level statements are
-mutually recursively defined with a monad that is used to construct programs.
-Another notable change is that fork statements now contain not just a description
-of the forked call, but rather the complete procedure definition (as a monadic
-computation).
+SSM.Core.Syntax. Please refer to that module for more detailed documentation, if
+not a lot can be found in this module. The most notable change is that these
+high level statements are mutually recursively defined with a monad that is
+used to construct programs. Another notable change is that fork statements now
+contain not just a description of the forked call, but rather the complete
+procedure definition (as a monadic computation).
 -}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
