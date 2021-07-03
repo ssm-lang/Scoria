@@ -1,6 +1,12 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
-module SSM.Interpret where
+module SSM.Interpret
+    ( interpret
+    , Interpretable
+    , customContQueueSize
+    , customEventQueueSize
+    , customQueueSizes
+    ) where
 
 import SSM.Core.Syntax
 import qualified SSM.Interpret.Interpreter as I
@@ -24,11 +30,21 @@ instance SSMProgram a => Interpretable a where
     toConfiguration a = I.InterpretConfig 1024 2048 (toProgram a)
 
 {- | Dummy instance for custom configurations. Don't do anything with them, just
-return them as they are given. -}
-instance Interpretable I.InterpretConfig where
+return them as they are given.
+
+Note: Slightly unsure of the use of overlapping here - I will need to read into
+that and document it more precisely. -}
+instance {-# OVERLAPPING #-} Interpretable I.InterpretConfig where
     toConfiguration = id
 
-{- | To run a test with custom sizes, use this function to override the default
-values. -}
-withCustomSizes :: Int -> Int -> Program -> I.InterpretConfig
-withCustomSizes = I.InterpretConfig
+-- | Specify custmo continuation queue & event queue-sizes
+customQueueSizes :: Interpretable a => Int -> Int -> a -> I.InterpretConfig
+customQueueSizes cont event a = customContQueueSize cont (customEventQueueSize event a)
+
+-- | Specify custom continuation queue size
+customContQueueSize :: Interpretable a => Int -> a -> I.InterpretConfig
+customContQueueSize i a = (toConfiguration a) { I.boundContQueueSize = i }
+
+-- | Specify custom event queue size
+customEventQueueSize :: Interpretable a => Int -> a -> I.InterpretConfig
+customEventQueueSize i a = (toConfiguration a) {I.boundEventQueueSize = i }
