@@ -386,7 +386,7 @@ newRef n e = do
 variable storage. When a variable is created it is considered written to.
 
 Note: This does the same thing as `NewRef`, but it adds the reference to the map
-containing variables & references supplied by a caller. -}
+containing expression variables & references supplied by a caller. -}
 newVar :: Name -> SSMExp -> Interp s ()
 newVar n e = do
     ref <- createVar e
@@ -467,7 +467,7 @@ writeVar_ ref e prio = do
               lift' $ writeSTRef r (ref, Map.delete (priority p) procs,b,me,mv)
           enqueue $ p { waitingOn = Nothing }
 
--- | Look up a variable in the currently running process variable store.
+-- | Look up a variable in the current process's variable store.
 lookupRef :: String -> Interp s (Var s)
 lookupRef r = do
     p <- gets process
