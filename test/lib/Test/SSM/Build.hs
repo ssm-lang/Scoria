@@ -37,9 +37,17 @@ buildPlatform = "trace"
 actQueueSize :: Int
 actQueueSize = 1024
 
+-- | List to store act queue sizes for testing
+actQueueSizes :: [Int]
+actQueueSizes = [32, 256, 2048]
+
 -- | Size of the act queue
 eventQueueSize :: Int
 eventQueueSize = 2048
+
+-- | List to store event queue sizes for testing
+eventQueueSizes :: [Int]
+eventQueueSizes = [32, 256, 2048]
 
 -- | Obtain the target name from a test Slug.
 --
@@ -78,7 +86,7 @@ doMake slug cSrc = do
   return execPath
  where
   target = slugTarget slug
-  mkArgs t = ["PLATFORM=" ++ buildPlatform, "ACT_QUEUE_SIZE=" ++ show actQueueSize, "EVENT_QUEUE_SIZE=" ++ show eventQueueSize, t]
+  mkArgs t (a, e) = ["PLATFORM=" ++ buildPlatform, "ACT_QUEUE_SIZE=" ++ show a, "EVENT_QUEUE_SIZE=" ++ show e, t]
   make t = do
     (code, out, err) <- QC.run $ readProcessWithExitCode "make" (mkArgs t) ""
     case code of
