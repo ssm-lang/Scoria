@@ -28,7 +28,7 @@ module SSM.Frontend.Language
       -- ** Expressions
       {- | Expressions are parameterised over the type they have.
       
-      If the type variable `a` has a `Num` instance and a `SSMType` instance, `Exp a`
+      If the type variable @a@ has a `Num` instance and a `SSMType` instance, @Exp a@
       also has a `Num` instance. Expressions are also subjected to less than comparisons
       and equality checks. -}
     , Exp
@@ -190,27 +190,27 @@ but this should be remedied down the road) -}
 neg :: (Num a, SSMType a) => Exp a -> Exp a
 neg e@(Exp e') = Exp $ UOpE (typeOf e) e' Neg
 
--- | Explicity create an `Exp Int32`
+-- | Explicity create an @Exp Int32@
 int32 :: Int32 -> Exp Int32
 int32 i = Exp $ Lit TInt32 $ LInt32 i
 
--- | Explicity create an `Exp Int64`
+-- | Explicity create an @Exp Int64@
 int64 :: Int64 -> Exp Int64
 int64 i = Exp $ Lit TInt64 $ LInt64 i
 
--- | Explicity create an `Exp Word64`
+-- | Explicity create an @Exp Word64@
 uint64 :: Word64 -> Exp Word64
 uint64 i = Exp $ Lit TUInt64 $ LUInt64 i
 
--- | Explicity create an `Exp Word8`
+-- | Explicity create an @Exp Word8@
 uint8 :: Word8 -> Exp Word8
 uint8 i = Exp $ Lit TUInt8 $ LUInt8 i
 
--- | Boolean literal `True`
+-- | Boolean literal @True@
 true' :: Exp Bool
 true' = Exp $ Lit TBool $ LBool True
 
--- | Boolean literal `False`
+-- | Boolean literal @False@
 false' :: Exp Bool
 false' = Exp $ Lit TBool $ LBool False
 

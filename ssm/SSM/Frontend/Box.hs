@@ -11,7 +11,7 @@ delay t = do
   wait [v]
 @
 
-the `SSM.Language.Syntax` representation of this is
+the "SSM.Frontend.Syntax" representation of this is
 
 @
 [ NewRef (Captured "v") (Lit TBool (LBool True))
@@ -78,9 +78,9 @@ it ends, and where its parameters are bound. When we are transpiling this high l
 representation of a program we can inspect the prefix of this list that specifies the
 procedure name, and check if we've seen this procedure before. If we have not, we will
 generate low level representation of it. If we have, we do nothing. We actually do
-something, however. We will take the prefix of the list (`Procedure` & `Argument`
-constructors), and turn that into a `(String, [Either SSMExp Reference])` that describes
-the call instead.
+something, however. We will take the prefix of the list (`SSM.Frontend.Syntax.Procedure`
+& `SSM.Frontend.Syntax.Argument` constructors), and turn that into a
+@(String, [Either SSMExp Reference])@ that describes the call instead.
 
 Now, while it is quite straight forward to write the `box` stuff, it does clutter the eyes
 a bit. I am thinking that we can write a GHC plugin which annotates definitions with the
@@ -161,7 +161,7 @@ class BoxNullary b where
 
 -- Dummy instances
 
--- | There is a dummy `Arg` instance for `()`, which we can use to piggyback
+-- | There is a dummy `Arg` instance for @()@, which we can use to piggyback
 -- on the box machinery that's already in place.
 instance Res b => BoxNullary (SSM b) where
   boxNullary name b = box name [] (\() -> b) $ ()

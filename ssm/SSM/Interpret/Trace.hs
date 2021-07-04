@@ -1,4 +1,4 @@
-{-| This module declares a @Trace@ datatype that is used to describe output of a SSM
+{-| This module declares a datatype that is used to describe output of a SSM
 program. The interpreter directly outputs elements of this type, while the generated
 C code prints lines to the terminal representing the trace items. For this reason
 there is also a parser for trace items implemented by this module.
