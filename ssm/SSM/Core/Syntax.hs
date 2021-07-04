@@ -7,6 +7,13 @@ module SSM.Core.Syntax
     ( -- * SSM Core Syntax
 
       -- ** Types
+      {- | These are the types that are valid in the SSM language, and some simple
+      functions to manipulate them. The @dereference@ & @mkReference@ functions just
+      unwrap/wrap a type -- it does not actually dereference anything.
+
+      The type class @SSMType@ is there so that we can marshal some Haskell types into
+      their corresponding `Type` representation.
+      -}
       Type(..)
     , dereference
     , mkReference
@@ -14,11 +21,18 @@ module SSM.Core.Syntax
     , SSMType(..)
 
       -- ** References
+      {- | References in the SSM language is simply something with a name and a type. If
+      the reference references something of type @a@, the type will be @Ref a@. When we
+      add IO support some references might need to be allocated globally, in which case
+      we need to add a new variant. -}
     , Reference(..)
     , refType
     , refName
 
       -- ** Expressions
+      {- | Expressions in the language are quite few at the moment. Adding support for
+      new expressions here (especially more numerical operators) should be very simple.
+      -}
     , SSMExp(..)
     , SSMLit(..)
     , UnaryOpE(..)
@@ -31,12 +45,20 @@ module SSM.Core.Syntax
     , getVarName
 
       -- ** Statements
+      {- | Statements that make up an SSM program take any of these forms. A program
+      is made up of a list of these statements.-}
     , Stm(..)
 
       -- ** Procedures
+      {- | A procedure is a piece of code that is named and possibly parameterised over
+      some parameters. When the code is later turned into C code, every procedure is
+      compiled into three components -- an activation record, an initialization function
+      and a step function. -}
     , Procedure(..)
 
       -- ** Programs
+      {- | A program consists of a map of names & procedures, the name of an entry point
+      of a program and any arguments the entry point should be applied to. -}
     , Program(..)
     , SSMProgram(..)
     ) where
