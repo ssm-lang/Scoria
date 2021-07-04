@@ -1,5 +1,5 @@
 {- | This module declares the different types used by the interpreter to interpret a
-SSM program, represented in the `SSM.Core.Syntax` format. While the interpreter is
+SSM program, represented in the "SSM.Core.Syntax" format. While the interpreter is
 meant to evaluate programs the same way the runtime system does, the model used here
 is slightly simpler. Some of the definitions are similar but not identical to the
 corresponding RTS ones. -}
@@ -117,7 +117,7 @@ data St s = St
     {- | The outstanding events. Represented as a map from the time at which the
     event should occur to a list of the variables that should be updated at that time.
     This representation is faithful to the order in which the events are inserted in
-    the event 'queue', while the C heap might shuffle events around when they are
+    the event queue, while the C heap might shuffle events around when they are
     scheduled for the same instant. -}
   , events     :: Map.Map Word64 [Var s]
     {- | Number of outstanding events. Bounded by the number of variables currently
@@ -176,6 +176,6 @@ interpState = St
 -- | Interpretation monad
 type Interp s a = StateT (St s) (WriterT (Hughes T.OutputEntry) (ST s)) a
 
--- | Lift a ST computation to the interpretation monad.
+-- | Lift a @ST@ computation to the interpretation monad.
 lift' :: ST s a -> Interp s a
 lift' = lift . lift

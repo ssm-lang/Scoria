@@ -3,7 +3,7 @@ actual interpreter will use to interpret programs. The file is quite large and c
 a lot of definitions, but I hope it is not unmanagable. -}
 module SSM.Interpret.Internal
     ( -- * Interpretation monad
-      -- | Interpretation monad that is re-exported from `SSM.Interpret.Types`
+      -- | Interpretation monad that is re-exported from "SSM.Interpret.Types".
       Interp
 
       -- ** Functions that help define the `interpret` function
@@ -100,8 +100,8 @@ import Control.Monad.ST.Lazy
 {-********** Main interpret function helpers **********-}
 
 -- | Creates the initial variable storage for a program. Expressions are just
--- allocated in an STRef, while references are given a default value and then
--- allocated in an STRef.
+-- allocated in an @STRef@, while references are given a default value and then
+-- allocated in an @STRef@.
 params :: Program -> ST s (Map.Map String (Var s))
 params p = do
     process <- case Map.lookup (entry p) (funs p) of
@@ -127,7 +127,7 @@ params p = do
       defaultValue (Ref _) = error "default value of reference not allowed here"
 
 {- | Given a program and a map of a variable storage, return a list of
-(name, variable) pairs that make up the references in the variable storage
+@(name, variable)@ pairs that make up the references in the variable storage
 that appear as input parameters to the program. -}
 getReferences :: Program -> Map.Map String (Var s) -> [(String, Var s)]
 getReferences p m = case Map.lookup (entry p) (funs p) of
@@ -228,7 +228,7 @@ nextEventTime = do
         then return maxBound
         else return $ fst $ Map.findMin evs
 
--- | Returns `True` in the Interpretation monad if the event queue is empty.
+-- | Returns @True@ in the Interpretation monad if the event queue is empty.
 eventQueueEmpty :: Interp s Bool
 eventQueueEmpty = do
     evs <- gets events
@@ -412,8 +412,8 @@ readRef r = do
     (vr,_,_,_,_) <- lift' $ readSTRef r
     lift' $ readSTRef vr
 
-{- | This function returns True if variable was written in this instant, and otherwise
-False. -}
+{- | This function returns @True@ if variable was written in this instant, and otherwise
+@False@. -}
 wasWritten :: String -> Interp s SSMExp
 wasWritten r = do
     p <- gets process
@@ -477,7 +477,7 @@ lookupRef r = do
           Just ref -> return ref
           Nothing -> error $ "interpreter error - can not find variable " ++ r
 
--- | Make a procedure wait for writes to the variable identified by the name `v`.
+-- | Make a procedure wait for writes to the variable identified by the name @v@.
 sensitize :: String -> Interp s ()
 sensitize v = do
     p <- gets process
@@ -512,7 +512,7 @@ pds k = do
 {-********** Sensitizing a process **********-}
 
 {- | This function will make sure that the current process will block until any of the
-references in the list `refs` have been written to. -}
+references in the list @refs@ have been written to. -}
 wait :: [Reference] -> Interp s ()
 wait refs = do
     refs' <- mapM (lookupRef . fst) refs
@@ -529,12 +529,12 @@ wait refs = do
 
 {-********** Forking processes **********-}
 
--- | Set the number of running children of the current process to `n`.
+-- | Set the number of running children of the current process to @n@.
 setRunningChildren :: Int -> Interp s ()
 setRunningChildren n =
     modify $ \st -> st { process = (process st) { runningChildren = n } }
 
--- | Get a STRef which points to the current running process's activation record.
+-- | Get a @STRef@ which points to the current running process's activation record.
 addressToSelf :: Interp s (STRef s (Proc s))
 addressToSelf = do
     p <- gets process
@@ -626,7 +626,7 @@ leave = do
 {-********** Expression evaluation **********-}
 
 
--- | Evaluate an SSM expression
+-- | Evaluate an @SSM@ expression
 eval :: SSMExp -> Interp s SSMExp
 eval e = do
     p <- gets process
@@ -705,32 +705,32 @@ multiply (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 
 multiply (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TUInt8  $ LUInt8  $ i1 * i2
 multiply _ _ = error "can only multiply numerical values"
 
-{- | Retrieve a Haskell Int32 from an expression. Will crash if the expression
-is not an Int32. -}
+{- | Retrieve a Haskell @Int32@ from an expression. Will crash if the expression
+is not an @Int32@. -}
 getInt32 :: SSMExp -> Int32
 getInt32 (Lit _ (LInt32 i)) = i
 getInt32 e                = error $ "not an integer: " ++ show e
 
-{- | Retrieve a Haskell Int64 from an expression. Will crash if the expression
-is not an Int64. -}
+{- | Retrieve a Haskell @Int64@ from an expression. Will crash if the expression
+is not an @Int64@. -}
 getInt64 :: SSMExp -> Int64
 getInt64 (Lit _ (LInt64 i)) = i
 getInt64 e                  = error $ "not an integer: " ++ show e
 
-{- | Retrieve a Haskell Word8 from an expression. Will crash if the expression
-is not an Word8. -}
+{- | Retrieve a Haskell @Word8@ from an expression. Will crash if the expression
+is not an @Word8@. -}
 getUInt8 :: SSMExp -> Word8
 getUInt8 (Lit _ (LUInt8  i)) = i
 getUInt8 e                   = error $ "not an integer: " ++ show e
 
-{- | Retrieve a Haskell Word64 from an expression. Will crash if the expression
-is not an Word64. -}
+{- | Retrieve a Haskell @Word64@ from an expression. Will crash if the expression
+is not an @Word64@. -}
 getUInt64 :: SSMExp -> Word64
 getUInt64 (Lit _ (LUInt64 i)) = i
 getUInt64 e                   = error $ "not an integer: " ++ show e
 
-{- | Retrieve a Haskell Bool from an expression. Will crash if the expression
-is not an Bool. -}
+{- | Retrieve a Haskell @Bool@ from an expression. Will crash if the expression
+is not an @Bool@. -}
 getBool :: SSMExp -> Bool
 getBool (Lit _ (LBool b)) = b
 getBool e                 = error $ "not a boolean: " ++ show e

@@ -1,9 +1,9 @@
 {-| This module exports the abstract syntax of the embedded language. The
-syntax is at a higher level than that of SSM.Core.Syntax, and must be
+syntax is at a higher level than that of "SSM.Core.Syntax", and must be
 transpiled to the lower representation before it can be compiled or interpreted.
 
 A lot of the types and functions that are exported are simply re-exported from
-SSM.Core.Syntax. Please refer to that module for more detailed documentation, if
+"SSM.Core.Syntax". Please refer to that module for more detailed documentation, if
 not a lot can be found in this module. The most notable change is that these
 high level statements are mutually recursively defined with a monad that is
 used to construct programs. Another notable change is that fork statements now
@@ -62,7 +62,7 @@ import Control.Monad.State
 
 {- | High level representation of the statements that can be executed in a program
 of the sparse synchronous model-domain. It is very similar to the abstract synatx defined
-in `SSM.Core.Syntax`, but with some changes (Fork, If, While, most notably). -}
+in "SSM.Core.Syntax", but with some changes (@Fork@, @If@, @While@, most notably). -}
 data SSMStm
     -- | Variable/Stream operations
     = NewRef S.Name S.SSMExp       -- ^ Create a new named reference with an initial value
@@ -78,8 +78,8 @@ data SSMStm
             
     -- | SSM specific operations
     | After S.SSMExp S.Reference S.SSMExp  -- ^ Scheduled assignment
-    | Wait [S.Reference]               -- ^ Wait for any of the references to be written to
-    | Fork [SSM ()]                  -- ^ Fork a list of procedures
+    | Wait [S.Reference]                   -- ^ Wait for any of the references to be written to
+    | Fork [SSM ()]                        -- ^ Fork a list of procedures
 
     -- | Procedure construction
     | Procedure String  -- ^ Marks the start of a procedure
@@ -129,7 +129,7 @@ getProcedureName _               = error "not a procedure"
 pass over the high level syntax. A core purpose of this transpilation is to make the fork
 statements more flat (not recursive).
 
-When a fork statement is seen the forked procedures will contain [SSMStm]. What we do is
+When a fork statement is seen the forked procedures will contain @[SSMStm]@. What we do is
 that we inspect the head of this list to see if the name of the procedure is one we have
 already seen (is it in our map of procedures?). If we have seen it, we just refer to it
 by name and move on. If we have not seen it before, we do the same things but we also
@@ -154,7 +154,7 @@ data TranspileState = TranspileState
     }
 
 {- | Transpile a program of the high level syntax to the low level syntax as defined
-in `SSM.Core.Syntax`. -}
+in "SSM.Core.Syntax". -}
 transpile :: SSM () -> S.Program
 transpile program = case mainname st of
 
@@ -247,7 +247,7 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       getArgs (Argument _ x a:xs) = ((x, either S.expType S.refType a), a) : getArgs xs
       getArgs _                     = []
 
-{- | Instance of SSMProgram, so that the compiler knows how to turn the frontend
-representation into something that it can generate code for. -}
+{- | Instance of `SSM.Core.Syntax.SSMProgram`, so that the compiler knows how to turn
+the frontend representation into something that it can generate code for. -}
 instance S.SSMProgram (SSM ()) where
   toProgram = transpile

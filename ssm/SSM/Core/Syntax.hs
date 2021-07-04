@@ -8,10 +8,10 @@ module SSM.Core.Syntax
 
       -- ** Types
       {- | These are the types that are valid in the SSM language, and some simple
-      functions to manipulate them. The @dereference@ & @mkReference@ functions just
+      functions to manipulate them. The `dereference` & `mkReference` functions just
       unwrap/wrap a type -- it does not actually dereference anything.
 
-      The type class @SSMType@ is there so that we can marshal some Haskell types into
+      The type class `SSMType` is there so that we can marshal some Haskell types into
       their corresponding `Type` representation.
       -}
       Type(..)
@@ -62,8 +62,6 @@ module SSM.Core.Syntax
     , Program(..)
     , SSMProgram(..)
     ) where
-
---import qualified SSM.Core.Syntax as S
 
 import Data.Int
 import Data.Word
@@ -217,7 +215,8 @@ data Stm
     | While SSMExp [Stm]     -- ^ Loop construct
     | Skip                   -- ^ No-op
 
-    -- | After d r v - After d units of time the reference r should get the new value v
+    {- | @After d r v@ - After @d@ units of time the reference @r@ should get the new
+    value @v@. -}
     | After SSMExp Reference SSMExp
     | Wait [Reference]  -- ^ Wait for any of the references to be written to
     {-| Fork procedures. The procedures are now identified by their name, and the fork
@@ -248,8 +247,9 @@ data Program = Program
 
 -- | Class of types that can be converted to a `Program`.
 class SSMProgram a where
-  -- | This function takes an `a` and converts it to a `Program`
+  -- | This function takes an @a@ and converts it to a `Program`
   toProgram :: a -> Program
 
+-- | Dummy instance for `Program`. Does nothing -- defined to be the identity function.
 instance SSMProgram Program where
   toProgram = id
