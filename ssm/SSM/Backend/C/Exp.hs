@@ -1,5 +1,10 @@
 {-# LANGUAGE QuasiQuotes #-}
-module SSM.Backend.C.Exp ( genExp ) where
+module SSM.Backend.C.Exp
+    ( {- | @genExp@ generates C expressions that represent a @Exp a@ in the
+      SSM language. Since expressions may refer to variable expressions, an
+      environment containing the variables in scope must be supplied. -}
+      genExp
+    ) where
 
 import SSM.Core.Syntax
 import SSM.Backend.C.Identifiers
