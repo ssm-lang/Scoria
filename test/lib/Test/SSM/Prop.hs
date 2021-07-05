@@ -77,9 +77,9 @@ propCorrect tn program (aQSize, eQSize) = QC.monadicIO $ do
 -- Used to build passing integration tests.
 correctSpec :: String -> Program -> H.Spec
 correctSpec name p = do
-  once $ H.prop "compiles" $ map (propCompiles tn p) queueSizes
-  once $ H.prop "runs without memory errors" $ map (propValgrind tn p) queueSizes
-  once $ H.prop "runs according to interpreter" $ map (propCorrect tn p) queueSizes
+  once $ H.prop "compiles" $ head (map (propCompiles tn p) queueSizes)
+  once $ H.prop "runs without memory errors" $ head (map (propValgrind tn p) queueSizes)
+  once $ H.prop "runs according to interpreter" $ head (map (propCorrect tn p) queueSizes)
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name
