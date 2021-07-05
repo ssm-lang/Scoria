@@ -5,9 +5,13 @@ import SSM.Core.Syntax
 import Test.SSM.QuickCheck.Util
     ( transformProcedures, distributeMutate )
 
+{- | Shrink the expressions in a program. Each program in the output has at most
+and at least one expression shrunk. -}
 expressions :: Program -> [Program]
 expressions = transformProcedures shrinkExpInProcedure
 
+{- | Take a procedure and produce a list of mutated procedures, where each mutation has
+one expression shrunk. -}
 shrinkExpInProcedure :: Procedure -> [Procedure]
 shrinkExpInProcedure p =
     [ p { body = body' }
