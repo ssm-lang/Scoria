@@ -229,12 +229,6 @@ shrinkProcedureBody f n i xs = runReader (shrinkArityStm xs) (St f n i [])
      tag :: Named a => a -> ShrinkM b -> ShrinkM b
      tag a ma = local (\st -> st { badvars = getName a : badvars st }) ma
 
--- | Remove the n:th element from a list, with the first element being indexed as 0.
-removeNth :: Show a => Int -> [a] -> [a]
-removeNth 0 (_:xs) = xs
-removeNth n (x:xs) = x : removeNth (n-1) xs
-removeNth _ []     = error "can not remove from empty list"
-
 -- | Returns a default value for a type. Does not work for reference types.
 defaultVal :: Type -> SSMExp
 defaultVal TInt32  = Lit TInt32  $ LInt32  1
