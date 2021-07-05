@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ec27845f6ef4c4cac94931a2831a0a9c534c8245c398009fafd94a0774ca431d
+-- hash: 10ef162a3a61d462dfad9e425c5873ed34e661c312350d36d0f93625647d7704
 
 name:           ssm
 version:        0.1.0.0
@@ -78,6 +78,13 @@ test-suite 1-regression-high
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
+      Test.SSM.QuickCheck.Shrink.Fork
+      Test.SSM.QuickCheck.Shrink.If
+      Test.SSM.QuickCheck.Shrink.ProcedureArity
+      Test.SSM.QuickCheck.Shrink.Procedures
+      Test.SSM.QuickCheck.Shrink.References
+      Test.SSM.QuickCheck.Shrink.Statements
+      Test.SSM.QuickCheck.Shrink.Wait
       Test.SSM.QuickCheck.Util
       Test.SSM.Report
       Regression.EmptyFunSpec
@@ -95,6 +102,7 @@ test-suite 1-regression-high
       Regression.Test1624511150452Spec
       Regression.Test1625068655962Spec
       Regression.Test1625475651426Spec
+      Regression.Test1625480635361Spec
       Paths_ssm
   hs-source-dirs:
       test/lib
@@ -130,6 +138,13 @@ test-suite 3-arbitrary
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
+      Test.SSM.QuickCheck.Shrink.Fork
+      Test.SSM.QuickCheck.Shrink.If
+      Test.SSM.QuickCheck.Shrink.ProcedureArity
+      Test.SSM.QuickCheck.Shrink.Procedures
+      Test.SSM.QuickCheck.Shrink.References
+      Test.SSM.QuickCheck.Shrink.Statements
+      Test.SSM.QuickCheck.Shrink.Wait
       Test.SSM.QuickCheck.Util
       Test.SSM.Report
       Paths_ssm
