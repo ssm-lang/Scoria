@@ -1,7 +1,12 @@
 {- | This module exposes some helpful utility functions used by the quickcheck
 machinery. -}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Test.SSM.QuickCheck.Util where
+module Test.SSM.QuickCheck.Util
+    ( transformProcedures
+    , distributeMutate
+    , for
+    , removeNth
+    ) where
 
 import SSM.Core.Syntax
 import SSM.Util.HughesList hiding ( (++) )
@@ -38,3 +43,9 @@ distributeMutate xs f = map fromHughes $ go (emptyHughes, xs)
 in the function is more than a few characters big. -}
 for :: [a] -> (a -> b) -> [b]
 for = flip map
+
+-- | Remove the n:th element from a list, with the first element being indexed as 0.
+removeNth :: Show a => Int -> [a] -> [a]
+removeNth 0 (_:xs) = xs
+removeNth n (x:xs) = x : removeNth (n-1) xs
+removeNth _ []     = error "can not remove from empty list"
