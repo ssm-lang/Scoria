@@ -31,36 +31,40 @@ import           Test.SSM.Report                ( Slug(..)
                                                 , reportSlug
                                                 )
 
+-- | List to store event queue sizes for testing
+queueSizes :: [(Int, Int)]
+queueSizes = [(32, 32), (256, 256), (2048, 2048)]
+
 -- | Tests that generated SSM programs compile successfully.
-propCompiles :: TestName -> Program -> QC.Property
-propCompiles tn program = QC.monadicIO $ do
+propCompiles :: TestName -> Program -> (Int, Int) -> QC.Property
+propCompiles tn program (aQSize, eQSize) = QC.monadicIO $ do
   slug <- QC.run $ getSlug tn
   reportSlug slug
   reportProgramOnFail slug program
   cSrc <- doCompile slug program
-  doMake slug cSrc
+  doMake slug cSrc (aQSize, eQSize)
   return ()
 
 -- | Tests an SSM program by evaluating it under valgrind.
-propValgrind :: TestName -> Program -> QC.Property
-propValgrind tn program = QC.monadicIO $ do
+propValgrind :: TestName -> Program -> (Int, Int) -> QC.Property
+propValgrind tn program (aQSize, eQSize) = QC.monadicIO $ do
   slug <- QC.run $ getSlug tn
   reportSlug slug
   reportProgramOnFail slug program
   cSrc <- doCompile slug program
-  fp   <- doMake slug cSrc
+  fp   <- doMake slug cSrc (aQSize, eQSize)
   _    <- doVg slug fp
   return ()
 
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
-propCorrect :: TestName -> Program -> QC.Property
-propCorrect tn program = QC.monadicIO $ do
+propCorrect :: TestName -> Program -> (Int, Int) -> QC.Property
+propCorrect tn program (aQSize, eQSize) = QC.monadicIO $ do
   slug <- QC.run $ getSlug tn
   reportSlug slug
   reportProgramOnFail slug program
   cSrc        <- doCompile slug program
-  fp          <- doMake slug cSrc
+  fp          <- doMake slug cSrc (aQSize, eQSize)
   _           <- doVg slug fp
   (_, out, _) <- doExec slug fp
   cTrace      <- doParseOutput slug out
@@ -73,9 +77,9 @@ propCorrect tn program = QC.monadicIO $ do
 -- Used to build passing integration tests.
 correctSpec :: String -> Program -> H.Spec
 correctSpec name p = do
-  once $ H.prop "compiles" $ propCompiles tn p
-  once $ H.prop "runs without memory errors" $ propValgrind tn p
-  once $ H.prop "runs according to interpreter" $ propCorrect tn p
+  once $ H.prop "compiles" $ map (propCompiles tn p) queueSizes
+  once $ H.prop "runs without memory errors" $ map (propValgrind tn p) queueSizes
+  once $ H.prop "runs according to interpreter" $ map (propCorrect tn p) queueSizes
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name
