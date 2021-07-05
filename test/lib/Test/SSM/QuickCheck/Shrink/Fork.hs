@@ -8,25 +8,22 @@ import Test.SSM.QuickCheck.Util
 
 import Data.List
 
+{- | Shrink fork statements in a program. Each resulting program contains only one
+mutation. -}
 forks :: Program -> [Program]
 forks = transformProcedures shrinkForksProcedure
 
+{- | Shrink all fork statements found in a procedure. Every procedure in the output
+list contains at most and exactly one mutation. -}
 shrinkForksProcedure :: Procedure -> [Procedure]
-shrinkForksProcedure p = let bdys = shrinkForkStm (emptyHughes, body p)
-                         in map (\bdy -> p { body = bdy } ) bdys
+shrinkForksProcedure p =
+  [ p { body = body' } | body' <- distributeMutate (body p) shrinkForkStm ]
 
-shrinkForkStm :: (Hughes Stm, [Stm]) -> [[Stm]]
-shrinkForkStm (_, [])          = []
-shrinkForkStm (front, (x:xs)) = case x of
-  While c bdy  -> let bdys   = shrinkForkStm (emptyHughes, bdy)
-                      front' = fromHughes front
-                      curr   = [ (front' ++ (While c bdy' : xs)) | bdy' <- bdys]
-                  in curr ++ shrinkForkStm (snoc front x, xs)
-
-  Fork procs   ->
-    let procss = filter (not . null) $ map (\f -> delete f procs) procs
-        front' = fromHughes front
-        curr   = [ front' ++ (Fork ps : xs) | ps <- procss]
-    in curr ++ shrinkForkStm (snoc front x, xs)
-
-  _ -> shrinkForkStm (snoc front x, xs)
+{- | Shrink fork statements by replacing the list of forked processes with all
+sublists of length @length procs - 1@. -}
+shrinkForkStm :: Stm -> [Stm]
+shrinkForkStm stm = case stm of
+  Fork procs -> let sublists         = map (\f -> delete f procs) procs
+                    nonemptysublists = filter (not . null) sublists
+                in map Fork nonemptysublists
+  _ -> []
