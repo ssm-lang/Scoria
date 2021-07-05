@@ -1,10 +1,12 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
-module Test.SSM.Shrink where
+module Test.SSM.QuickCheck.Shrink where
 
 
 import SSM.Util.HughesList hiding ( (++) )
 import SSM.Core.Syntax
+
+import Test.SSM.QuickCheck.Util
 
 import qualified Data.Set as Set
 import qualified Data.Map as Map
@@ -24,10 +26,10 @@ shrinkProgram p =
               , shrinkArity p'             -- Shrink procedure arity (writing this right now)
               , shrinkAllStmts p'          -- Shrink by removing statements that effectively
                                            -- have type () (fork, wait etc).
-              , shrinkForks p'             -- Shrink fork statements (fork less things)
-              , shrinkIf p'                -- Flatten if's (every if becomes two new programs)
-              , shrinkRefs p'              -- Shrink number of declared refs
-              , shrinkWait p'              -- Shrink wait statements
+              , transformProcedures shrinkForksProcedure p'             -- Shrink fork statements (fork less things)
+              , transformProcedures shrinkIfProcedure p'
+              , transformProcedures removeAllDeclaredRefs p'              -- Shrink number of declared refs
+              , transformProcedures shrinkWaitProcedure p'              -- Shrink wait statements
               ]
 
 type Variable = (Name, Type)
@@ -67,12 +69,6 @@ toremove' p = let s1 = Set.fromList $ Map.keys (funs p)
               in Set.toList $ s1 `Set.difference` s3
 
 {-****** Removing declared references *****-}
-
-shrinkRefs :: Program -> [Program]
-shrinkRefs p = let procedures = Map.toList $ funs p
-               in concat $ for procedures $ \(n,pr) ->
-                  let ps = removeAllDeclaredRefs pr
-                  in map (\procedure -> p { funs = Map.insert n procedure (funs p)}) ps
 
 -- | Given a procedure will return all successful transformations of the procedure
 -- where a transformation is defined as the act of removing one of the declared
@@ -293,10 +289,6 @@ remove p funs = case newbody (body p, False) of
                     return $ x : xs'
 {-***** Shrinking/flattening if statements *****-}
 
-shrinkIf :: Program -> [Program]
-shrinkIf p = [ p { funs = Map.insert n proc' (funs p) } | (n,fun) <- Map.toList (funs p)
-                                                        , proc' <- shrinkIfProcedure fun]
-
 shrinkIfProcedure :: Procedure -> [Procedure]
 shrinkIfProcedure p = let bodys = shrinkIfStm (emptyHughes, body p)
                       in for bodys $ \bdy -> p { body = bdy }
@@ -314,10 +306,6 @@ shrinkIfStm (front, (x:xs)) = case x of
   _ -> shrinkIfStm (snoc front x, xs)
 
 {-***** Shrinking wait instructions *****-}
-
-shrinkWait :: Program -> [Program]
-shrinkWait p = [ p { funs = Map.insert n proc' (funs p) } | (n,fun) <- Map.toList (funs p)
-                                                          , proc' <- shrinkWaitProcedure fun]
 
 shrinkWaitProcedure :: Procedure -> [Procedure]
 shrinkWaitProcedure p = let bodys = shrinkWaitStm (emptyHughes, body p)
@@ -339,10 +327,6 @@ shrinkWaitStm (front, (x:xs)) = case x of
   _ -> shrinkWaitStm (snoc front x, xs)
 
 {-***** Shrinking fork sizes *****-}
-
-shrinkForks :: Program -> [Program]
-shrinkForks p =  [ p { funs = Map.insert n f' (funs p) }
-                 | (n,f) <- Map.toList (funs p), f' <- shrinkForksProcedure f]
 
 shrinkForksProcedure :: Procedure -> [Procedure]
 shrinkForksProcedure p = let bdys = shrinkForkStm (emptyHughes, body p)

@@ -8,7 +8,7 @@ module Test.SSM.Prop
   ) where
 
 import           SSM.Core.Syntax                ( Program )
-import           Test.SSM.Generator             ( ) -- instance Arbitrary Program
+import           Test.SSM.QuickCheck.Generator  ( ) -- instance Arbitrary Program
 
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
