@@ -17,3 +17,8 @@ transformProcedures tr prg = [ prg { funs = Map.insert n fun' (funs prg) }
                              | (n,fun) <- Map.toList (funs prg)
                              , fun' <- tr fun
                              ]
+
+{- | Flip the arguments to map - in some cases it's a bit nicer on the eyes. Especially
+in the function is more than a few characters big. -}
+for :: [a] -> (a -> b) -> [b]
+for = flip map
