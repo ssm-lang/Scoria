@@ -243,7 +243,7 @@ data Program = Program
     , args :: [Either SSMExp Reference]
       -- | Map that associates procedure names with their definitions.
     , funs :: Map.Map String Procedure
-    } deriving (Show, Read)
+    } deriving (Show, Read, Eq)
 
 -- | Class of types that can be converted to a `Program`.
 class SSMProgram a where
