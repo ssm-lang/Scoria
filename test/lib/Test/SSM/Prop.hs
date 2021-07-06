@@ -90,9 +90,9 @@ correctSpec name p = do
 -- Used to note discrepancies with the interpreter in the regression test suite.
 semanticIncorrectSpec :: String -> Program -> H.Spec
 semanticIncorrectSpec name p = do
-  once $ H.prop "compiles" $ propCompiles tn p
-  once $ H.prop "runs without memory errors" $ propValgrind tn p
-  once $ H.prop "does not match interpreter" $ QC.expectFailure $ propCorrect tn p
+  once $ H.prop "compiles" $ head (map (propCompiles tn p) queueSizes)
+  once $ H.prop "runs without memory errors" $ head (map (propValgrind tn p) queueSizes)
+  once $ H.prop "does not match interpreter" $ QC.expectFailure $ head (map (propCorrect tn p) queueSizes)
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name
