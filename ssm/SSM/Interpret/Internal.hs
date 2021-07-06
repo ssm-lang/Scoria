@@ -4,6 +4,7 @@ the different types in SSM.Interpret.Internal leaks to the interpreter. -}
 module SSM.Interpret.Internal
     ( -- * Interpretation monad
       Interp
+    , InterpretConfig(..)
 
       -- ** Functions that help define the `interpret` function
     , mkProc
@@ -181,12 +182,13 @@ schedule_event r thn val = do
         then do let newevs = insert_event thn e (delete_event (fromJust mt) e (events st))
                 modify $ \st -> st { events = newevs }
     -- otherwise we check if the queue is full before we schedule the new event
-        else if numevents st == eventqueueSize
-            then error "eventqueue full"
-            else do let es' = insert_event thn e (events st)
-                    modify $ \st -> st { events    = es'
-                                       , numevents = numevents st + 1
-                                       }
+        else do meqs <- eventqueueSize
+                if numevents st == meqs
+                   then error "eventqueue full"
+                   else do let es' = insert_event thn e (events st)
+                           modify $ \st -> st { events    = es'
+                                              , numevents = numevents st + 1
+                                              }
   where
       insert_event :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
       insert_event when v m = adjustWithDefault (v :) [v] when m
@@ -226,8 +228,8 @@ eventQueueSize :: Interp s Int
 eventQueueSize = gets numevents
 
 -- | Upper bound on the number of events that may be scheduled at any given time.
-eventqueueSize :: Int
-eventqueueSize = 2056
+eventqueueSize :: Interp s Int
+eventqueueSize = gets maxEventQueueSize
 
 {- | Perform all the events scheduled for this instance, enqueueing those processes that
 are waiting for one of these events to happen. -}
@@ -279,7 +281,8 @@ performEvents = do
 enqueue :: Proc s -> Interp s ()
 enqueue p = do
     nc <- gets numconts
-    if nc >= contqueueSize
+    mcqs <- contqueueSize
+    if nc >= mcqs
         then error "contqueue full"
         else modify $ \st -> st { readyQueue = IntMap.insert (priority p) p (readyQueue st)
                                 , numconts   = numconts st + 1
@@ -300,8 +303,8 @@ dequeue = do
                 return $ snd x
 
 -- | Upper bound on the size of the ready queue
-contqueueSize :: Int
-contqueueSize = 1024
+contqueueSize :: Interp s Int
+contqueueSize = gets maxContQueueSize
 
 -- | Size of the ready queue
 contQueueSize :: Interp s Int
