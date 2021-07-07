@@ -40,22 +40,6 @@ library:
   source-dirs: ssm
 
 tests:
-  # 1-regression-low:
-  #   main:                Spec.hs
-  #   source-dirs:
-  #   - test/lib
-  #   - test/new
-  #   ghc-options:
-  #   - -threaded
-  #   - -rtsopts
-  #   - -with-rtsopts=-N
-  #   dependencies:
-  #   - ssm
-  #   - directory
-  #   - process
-  #   - text
-  #   - QuickCheck
-  #   - hspec
   1-regression-low:
     main:                Spec.hs
     source-dirs:
