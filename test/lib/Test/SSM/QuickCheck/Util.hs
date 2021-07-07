@@ -162,6 +162,7 @@ removeVars = go
                   (rewriteExp e2 invalid validrefs)
                   op
 
+      -- | Default literal of expressions
       defaultExp :: Type -> SSMExp
       defaultExp TInt32  = Lit TInt32 (LInt32 1)
       defaultExp TInt64  = Lit TInt64 (LInt64 1)
