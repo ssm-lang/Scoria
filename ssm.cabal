@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 84afc45362f41b25e6d66e845d2e95b64eacb97fc08a034a119f78a47c7b893f
+-- hash: d9c32b968dbac4fb9139977332b295231237fae76160ee30d8a251e407eefcb5
 
 name:           ssm
 version:        0.1.0.0
@@ -80,6 +80,7 @@ test-suite 1-regression-low
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
       Test.SSM.QuickCheck.Shrink.Fork
+      Test.SSM.QuickCheck.Shrink.GetRefs
       Test.SSM.QuickCheck.Shrink.If
       Test.SSM.QuickCheck.Shrink.ProcedureArity
       Test.SSM.QuickCheck.Shrink.Procedures
@@ -140,6 +141,7 @@ test-suite 2-arbitrary
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
       Test.SSM.QuickCheck.Shrink.Fork
+      Test.SSM.QuickCheck.Shrink.GetRefs
       Test.SSM.QuickCheck.Shrink.If
       Test.SSM.QuickCheck.Shrink.ProcedureArity
       Test.SSM.QuickCheck.Shrink.Procedures
