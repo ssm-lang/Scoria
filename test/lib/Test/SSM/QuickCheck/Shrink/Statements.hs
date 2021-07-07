@@ -12,7 +12,8 @@ statements = transformProcedures shrinkAllStmtsProcedure
 -- | Return a list of new procedures where the procedure is mutated by removing
 -- statements.
 shrinkAllStmtsProcedure :: Procedure -> [Procedure]
-shrinkAllStmtsProcedure p = [ p { body = body' } | body' <- distributeMutate (body p) shrinkStmts ]
+shrinkAllStmtsProcedure p =
+  [ p { body = body' } | body' <- distributeMutate (body p) shrinkStmts ]
 
 -- | Replace any of the below statements with a skip instruction
 shrinkStmts :: Stm -> [Stm]

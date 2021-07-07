@@ -8,6 +8,8 @@ import Test.SSM.QuickCheck.Util
 
 import Data.List
 
+import Debug.Trace
+
 waits :: Program -> [Program]
 waits = transformProcedures shrinkWaitProcedure
 
