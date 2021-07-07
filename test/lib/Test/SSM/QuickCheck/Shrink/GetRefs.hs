@@ -30,6 +30,8 @@ getrefs p = concat
     | (n,procedure) <- Map.toList (funs p)
     ]
 
+{- | Need to write this explicitly rather than using distributeMutate, as the
+mutation is not local to just the GetRef statement itself. -}
 shrinkProcedureBody :: [(String, Type)] -> [Stm] -> [[Stm]]
 shrinkProcedureBody validrefs xs = go (emptyHughes, xs, validrefs)
   where

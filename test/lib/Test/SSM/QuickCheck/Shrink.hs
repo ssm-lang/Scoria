@@ -15,7 +15,9 @@ import Test.SSM.QuickCheck.Shrink.Statements ( statements )
 import Test.SSM.QuickCheck.Shrink.GetRefs ( getrefs )
 import Test.SSM.QuickCheck.Shrink.Expressions ( expressions )
 
-
+{- | Shrink a program into several sub-programs. Please refer to the separate modules
+implementing the shrinking strategies for more documentation of what each strategy
+actually does. -}
 shrinkProgram :: Program -> [Program]
 shrinkProgram p =
     let p' = removeUnusedProcedures p
