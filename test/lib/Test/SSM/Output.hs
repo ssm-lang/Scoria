@@ -48,6 +48,10 @@ diffColumnWidth = 60
 diffNumWidth :: Int
 diffNumWidth = 8
 
+-- | List to store event queue sizes for testing
+queueSizes :: [(Int, Int)]
+queueSizes = [(32, 32), (256, 256), (2048, 2048)]
+
 -- | Parse the output line by line. If parsing fails, report the line at which
 -- failure takes place.
 doParseOutput :: Monad m => Slug -> String -> QC.PropertyM m Tr.Output
@@ -79,7 +83,7 @@ doInterpret slug program limit = do
   timeoutEval :: IO Tr.Output
   timeoutEval = do
     ref <- newIORef []
-    xs' <- timeout testTimeout $ try $ eval (interpret program) limit ref
+    xs' <- timeout testTimeout $ try $ eval (interpret (withQueueSizes 20 20 program)) limit ref
     case xs' of
       Just (Left (e :: SomeException)) -> case show e of
         v
