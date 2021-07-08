@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Test.SSM.Output
   ( doParseOutput
-  , doInterpret
+  , doInterpretWithSize
   , doCompareTraces
   ) where
 
