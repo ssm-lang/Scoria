@@ -76,8 +76,8 @@ doParseOutput slug outs = do
 --
 -- The evaluation is functionally limited to the number of steps specified by
 -- limit, but also time-limited using the timeout function.
-doInterpret :: Slug -> Program -> Int -> QC.PropertyM IO Tr.Output
-doInterpret slug program limit = do
+doInterpretWithSize :: Slug -> Program -> Int -> QC.PropertyM IO Tr.Output
+doInterpretWithSize slug program limit = do
   iTrace <- QC.run timeoutEval
   reportOnFail slug "interpreted.out" $ unlines $ map show iTrace
   return iTrace
