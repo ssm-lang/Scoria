@@ -31,9 +31,15 @@ import           Test.SSM.Report                ( Slug(..)
                                                 , reportSlug
                                                 )
 
+-- USE forM_
+
 -- | List to store event queue sizes for testing
 queueSizes :: [(Int, Int)]
 queueSizes = [(32, 32), (256, 256), (2048, 2048)]
+
+propCompilesAll :: TestName -> Program -> QC.Property
+propCompilesAll tn program = 
+  mapM propCompiles queueSizes
 
 -- | Tests that generated SSM programs compile successfully.
 propCompiles :: TestName -> Program -> (Int, Int) -> QC.Property
@@ -77,9 +83,9 @@ propCorrect tn program (aQSize, eQSize) = QC.monadicIO $ do
 -- Used to build passing integration tests.
 correctSpec :: String -> Program -> H.Spec
 correctSpec name p = do
-  once $ H.prop "compiles" $ head (map (propCompiles tn p) queueSizes)
-  once $ H.prop "runs without memory errors" $ head (map (propValgrind tn p) queueSizes)
-  once $ H.prop "runs according to interpreter" $ head (map (propCorrect tn p) queueSizes)
+  once $ H.prop "compiles" $ propCompiles tn p
+  once $ H.prop "runs without memory errors" $ propValgrind tn p
+  once $ H.prop "runs according to interpreter" $ propCorrect tn p
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name
@@ -90,9 +96,9 @@ correctSpec name p = do
 -- Used to note discrepancies with the interpreter in the regression test suite.
 semanticIncorrectSpec :: String -> Program -> H.Spec
 semanticIncorrectSpec name p = do
-  once $ H.prop "compiles" $ head (map (propCompiles tn p) queueSizes)
-  once $ H.prop "runs without memory errors" $ head (map (propValgrind tn p) queueSizes)
-  once $ H.prop "does not match interpreter" $ QC.expectFailure $ head (map (propCorrect tn p) queueSizes)
+  once $ H.prop "compiles" $ propCompiles tn p
+  once $ H.prop "runs without memory errors" $ propValgrind tn p
+  once $ H.prop "does not match interpreter" $ QC.expectFailure $ propCorrect tn p
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name
