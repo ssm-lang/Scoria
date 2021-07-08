@@ -55,7 +55,7 @@ propValgrind tn program =
   QC.monadicIO $ mapM_ (propValgrindWithSize tn program) queueSizes
 
 -- | Tests an SSM program by evaluating it under valgrind.
-propValgrindWithSize :: TestName -> Program -> (Int, Int) -> QC.Property
+propValgrindWithSize :: TestName -> Program -> (Int, Int) -> QC.PropertyM IO ()
 propValgrindWithSize tn program (aQSize, eQSize) = do
   slug <- QC.run $ getSlug tn
   reportSlug slug
@@ -71,7 +71,7 @@ propCorrect tn program =
 
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
-propCorrectWithSize :: TestName -> Program -> (Int, Int) -> QC.Property
+propCorrectWithSize :: TestName -> Program -> (Int, Int) -> QC.PropertyM IO ()
 propCorrectWithSize tn program (aQSize, eQSize) = do
   slug <- QC.run $ getSlug tn
   reportSlug slug
