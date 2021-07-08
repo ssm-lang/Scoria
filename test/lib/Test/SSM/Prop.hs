@@ -31,19 +31,18 @@ import           Test.SSM.Report                ( Slug(..)
                                                 , reportSlug
                                                 )
 
--- USE forM_
-
 -- | List to store event queue sizes for testing
 queueSizes :: [(Int, Int)]
 queueSizes = [(32, 32), (256, 256), (2048, 2048)]
 
-propCompilesAll :: TestName -> Program -> QC.Property
-propCompilesAll tn program = 
-  mapM propCompiles queueSizes
-
 -- | Tests that generated SSM programs compile successfully.
-propCompiles :: TestName -> Program -> (Int, Int) -> QC.Property
-propCompiles tn program (aQSize, eQSize) = QC.monadicIO $ do
+propCompiles :: TestName -> Program -> QC.Property
+propCompiles tn program =
+  QC.monadicIO $ mapM_ (propCompilesWithSize tn program) queueSizes
+
+-- | Tests that generated SSM programs compile successfully, given some size.
+propCompilesWithSize :: TestName -> Program -> (Int, Int) -> QC.PropertyM IO ()
+propCompilesWithSize tn program (aQSize, eQSize) = do
   slug <- QC.run $ getSlug tn
   reportSlug slug
   reportProgramOnFail slug program
@@ -98,7 +97,9 @@ semanticIncorrectSpec :: String -> Program -> H.Spec
 semanticIncorrectSpec name p = do
   once $ H.prop "compiles" $ propCompiles tn p
   once $ H.prop "runs without memory errors" $ propValgrind tn p
-  once $ H.prop "does not match interpreter" $ QC.expectFailure $ propCorrect tn p
+  once $ H.prop "does not match interpreter" $ QC.expectFailure $ propCorrect
+    tn
+    p
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name
