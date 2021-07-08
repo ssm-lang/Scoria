@@ -83,7 +83,7 @@ doInterpret slug program limit = do
   timeoutEval :: IO Tr.Output
   timeoutEval = do
     ref <- newIORef []
-    xs' <- timeout testTimeout $ try $ eval (interpret (withQueueSizes 20 20 program)) limit ref
+    xs' <- timeout testTimeout $ try $ eval (interpret (customQueueSizes 20 20 program)) limit ref
     case xs' of
       Just (Left (e :: SomeException)) -> case show e of
         v
