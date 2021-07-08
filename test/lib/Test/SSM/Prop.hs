@@ -50,9 +50,13 @@ propCompilesWithSize tn program (aQSize, eQSize) = do
   doMake slug cSrc (aQSize, eQSize)
   return ()
 
+propValgrind :: TestName -> Program -> QC.Property
+propValgrind tn program = 
+  QC.monadicIO $ mapM_ (propValgrindWithSize tn program) queueSizes
+
 -- | Tests an SSM program by evaluating it under valgrind.
-propValgrind :: TestName -> Program -> (Int, Int) -> QC.Property
-propValgrind tn program (aQSize, eQSize) = QC.monadicIO $ do
+propValgrindWithSize :: TestName -> Program -> (Int, Int) -> QC.Property
+propValgrindWithSize tn program (aQSize, eQSize) = QC.monadicIO $ do
   slug <- QC.run $ getSlug tn
   reportSlug slug
   reportProgramOnFail slug program
@@ -61,10 +65,14 @@ propValgrind tn program (aQSize, eQSize) = QC.monadicIO $ do
   _    <- doVg slug fp
   return ()
 
+propCorrect :: TestName -> Program -> QC.Property
+propCorrect tn program = 
+  QC.monadicIO $ mapM_ (propCorrectWithSize tn program) queueSizes
+
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
-propCorrect :: TestName -> Program -> (Int, Int) -> QC.Property
-propCorrect tn program (aQSize, eQSize) = QC.monadicIO $ do
+propCorrectWithSize :: TestName -> Program -> (Int, Int) -> QC.Property
+propCorrectWithSize tn program (aQSize, eQSize) = QC.monadicIO $ do
   slug <- QC.run $ getSlug tn
   reportSlug slug
   reportProgramOnFail slug program
