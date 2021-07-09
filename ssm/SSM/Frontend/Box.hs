@@ -1,4 +1,111 @@
--- | This module provides a machinery that helps with creating and applying procedures.
+{- | This module provides a machinery that helps with creating and applying procedures.
+
+If we write a procedure like this:
+
+@
+-- wait for t units of time
+delay :: Exp Word64 -> SSM ()
+delay t = do
+  v <- var true'
+  after t v false'
+  wait [v]
+@
+
+the "SSM.Frontend.Syntax" representation of this is
+
+@
+[ NewRef (Captured "v") (Lit TBool (LBool True))
+, After (Var TUInt64 "t") ("v", Ref TBool) (Lit TBool (LBool False))
+, Wait [("v", Ref TBool)]
+]
+@
+
+There are a few issues with this representation. First of all, in this expression
+@t@ appears as a magic variable. It is not clear where @t@ is bound. Secondly, if we
+now imagine that another process forks this procedure
+
+@
+fork [ delay 50 ]
+@
+
+this would become
+
+@
+[ Fork ssm ]
+@
+
+where if you evaluate the @ssm@ computation you would get back
+
+@
+[ NewRef (Captured "v") (Lit TBool (LBool True))
+, After (Var TUInt64 "t") ("v", Ref TBool) (Lit TBool (LBool False))
+, Wait [("v", Ref TBool)]
+]
+@
+
+What are we actually forking here? Are we forking a procedure or are we forking
+a list of statements? If it's a procedure, nothing at all in this definition tells us
+what name that procedure has so that we can generate code for it. If it's a list of
+statements, that's an issue because the runtime system does not support forking code
+like this. It only supports forking procedures.
+
+If @delay@ was instead declared like this
+
+@
+-- wait for t units of time
+delay :: Exp Word64 -> SSM ()
+delay = box "delay" ["t"] $ \t -> do
+  v <- var true'
+  after t v false'
+  wait [v]
+@
+
+applying delay to an argument and evaluating the resulting expression now yields
+the statements
+
+@
+[ Procedure "delay"
+, Argument "delay" "t" -value that delay was applied to-
+, NewRef (Captured "v") (Lit TBool (LBool True))
+, After (Var TUInt64 "t") ("v", Ref TBool) (Lit TBool (LBool False))
+, Wait [("v", Ref TBool)]
+, Result "delay"
+]
+@
+
+In this sequence of statements it becomes clear where the procedure @delay@ begins, where
+it ends, and where its parameters are bound. When we are transpiling this high level
+representation of a program we can inspect the prefix of this list that specifies the
+procedure name, and check if we've seen this procedure before. If we have not, we will
+generate low level representation of it. If we have, we do nothing. We actually do
+something, however. We will take the prefix of the list (`SSM.Frontend.Syntax.Procedure`
+& `SSM.Frontend.Syntax.Argument` constructors), and turn that into a
+@(String, [Either SSMExp Reference])@ that describes the call instead.
+
+Now, while it is quite straight forward to write the `box` stuff, it does clutter the eyes
+a bit. I am thinking that we can write a GHC plugin which annotates definitions with the
+source information. The definition
+
+@
+-- wait for t units of time
+delay :: Exp Word64 -> SSM ()
+delay t = do
+  v <- var true'
+  after t v false'
+  wait [v]
+@
+
+Would be annotated by the plugin with
+
+@
+-- wait for t units of time
+delay :: Exp Word64 -> SSM ()
+delay t = (do
+  v <- var true'
+  after t v false'
+  wait [v]) \`annotateDef\` ("delay", ["t"], -source location-)
+@
+-}
 module SSM.Frontend.Box
     ( -- * Box machinery
 
@@ -54,7 +161,7 @@ class BoxNullary b where
 
 -- Dummy instances
 
--- | There is a dummy `Arg` instance for `()`, which we can use to piggyback
+-- | There is a dummy `Arg` instance for @()@, which we can use to piggyback
 -- on the box machinery that's already in place.
 instance Res b => BoxNullary (SSM b) where
   boxNullary name b = box name [] (\() -> b) $ ()

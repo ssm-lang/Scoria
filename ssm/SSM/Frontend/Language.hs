@@ -1,3 +1,10 @@
+{-| This module exposes the interface a programmer is meant to use when writing
+SSM programs. This is probably subject to extensive change as we move forward.
+
+Right now there is no way to write polymorphic SSM procedures, if that procedure
+needs to do anything other than waiting on its input references. There's an open
+issue on GitHub where we are discussing monomorphisation strategies.
+-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -6,18 +13,33 @@ module SSM.Frontend.Language
     ( -- * The SSM Embedded language
 
       -- ** References
+      {- | References in the language are parameterised over the type they reference.
+      
+      References can be aquired in 2 different ways. Either your SSM procedure
+      receives a reference as an argument, in which case the reference is guaranteed
+      to be alive for at least as long as your procedure, or you can create a new
+      reference by using `var`. References created using `var` will be deallocated
+      once the current process terminates. -}
       Ref
     , inputref
     , var
     , deref
 
       -- ** Expressions
+      {- | Expressions are parameterised over the type they have.
+      
+      If the type variable @a@ has a `Num` instance and a `SSMType` instance, @Exp a@
+      also has a `Num` instance. Expressions are also subjected to less than comparisons
+      and equality checks. -}
     , Exp
     , (<.)
     , (==.)
     , neg
 
       -- *** Literals
+      {- | The `Num` instance will in many cases figure out what type your literal should
+      have, but if that is not the case, these functions can be used to explicitly create
+      a literal of a concrete type.-}
     , int32
     , int64
     , uint8
@@ -26,6 +48,9 @@ module SSM.Frontend.Language
     , false'
 
       -- ** Primitive statements
+      {- | These are the primitive statements of the SSM language. Your procedure
+      body is constructed by using these functions. The language is sequential, so the
+      order in which you call these functions matters, naturally. -}
     , (<~)
     , wait
     , after
@@ -36,6 +61,7 @@ module SSM.Frontend.Language
     , while'
 
       -- ** Derived statements
+      -- | These are statements that are derived from the language primitives.
     , waitAll
 
     ) where
@@ -164,27 +190,27 @@ but this should be remedied down the road) -}
 neg :: (Num a, SSMType a) => Exp a -> Exp a
 neg e@(Exp e') = Exp $ UOpE (typeOf e) e' Neg
 
--- | Explicity create an `Exp Int32`
+-- | Explicity create an @Exp Int32@
 int32 :: Int32 -> Exp Int32
 int32 i = Exp $ Lit TInt32 $ LInt32 i
 
--- | Explicity create an `Exp Int64`
+-- | Explicity create an @Exp Int64@
 int64 :: Int64 -> Exp Int64
 int64 i = Exp $ Lit TInt64 $ LInt64 i
 
--- | Explicity create an `Exp Word64`
+-- | Explicity create an @Exp Word64@
 uint64 :: Word64 -> Exp Word64
 uint64 i = Exp $ Lit TUInt64 $ LUInt64 i
 
--- | Explicity create an `Exp Word8`
+-- | Explicity create an @Exp Word8@
 uint8 :: Word8 -> Exp Word8
 uint8 i = Exp $ Lit TUInt8 $ LUInt8 i
 
--- | Boolean literal `True`
+-- | Boolean literal @True@
 true' :: Exp Bool
 true' = Exp $ Lit TBool $ LBool True
 
--- | Boolean literal `False`
+-- | Boolean literal @False@
 false' :: Exp Bool
 false' = Exp $ Lit TBool $ LBool False
 
