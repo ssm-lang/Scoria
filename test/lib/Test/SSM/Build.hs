@@ -64,8 +64,8 @@ doCompile slug program = do
 --
 -- TODO: It's probably possible to just inspect the returncode here
 -- TODO: pass in DEBUG flag here
-doMake :: Slug -> String -> QC.PropertyM IO FilePath
-doMake slug cSrc = do
+doMake :: Slug -> String -> (Int, Int) -> QC.PropertyM IO FilePath
+doMake slug cSrc (aQSize, eQSize) = do
   _   <- make "clean"
   out <- make "make_builddir"
 
@@ -78,7 +78,7 @@ doMake slug cSrc = do
   return execPath
  where
   target = slugTarget slug
-  mkArgs t = ["PLATFORM=" ++ buildPlatform, "ACT_QUEUE_SIZE=" ++ show actQueueSize, "EVENT_QUEUE_SIZE=" ++ show eventQueueSize, t]
+  mkArgs t = ["PLATFORM=" ++ buildPlatform, "ACT_QUEUE_SIZE=" ++ show aQSize, "EVENT_QUEUE_SIZE=" ++ show eQSize, t]
   make t = do
     (code, out, err) <- QC.run $ readProcessWithExitCode "make" (mkArgs t) ""
     case code of

@@ -26,6 +26,9 @@ module SSM.Interpret.Types
       immediate condidates. -}
     , St(..)
 
+      -- ** Configuration object used to interpret programs
+    , InterpretConfig(..)
+
       -- * Utility functions
     , mkProc
     , variableStorage
@@ -139,6 +142,8 @@ data St s = St
   , inputargs  :: [(String, Var s)]
     -- | The process that is currently being evaluated
   , process    :: Proc s
+  , maxContQueueSize :: Int
+  , maxEventQueueSize :: Int
   }
   deriving Eq
 
@@ -170,6 +175,8 @@ interpState :: Word64                    -- ^ Now
             -> Map.Map String Procedure  -- ^ Procedures
             -> [(String, Var s)]         -- ^ Input references
             -> Proc s                    -- ^ Current process
+            -> Int                       -- ^ Max continuation queue size
+            -> Int                       -- ^ Max event queue size
             -> St s
 interpState = St
 
@@ -179,3 +186,16 @@ type Interp s a = StateT (St s) (WriterT (Hughes T.OutputEntry) (ST s)) a
 -- | Lift a @ST@ computation to the interpretation monad.
 lift' :: ST s a -> Interp s a
 lift' = lift . lift
+
+{- | Data type of interpreter configuration. Need to modify the interpreter to
+interpret a program after loading this information into the interpretation state.
+I can hack this together on monday. -}
+data InterpretConfig
+    = InterpretConfig
+    { -- | Size of continuation queue
+      boundContQueueSize  :: Int
+      -- | Size of event queue
+    , boundEventQueueSize :: Int
+      -- | Program to interpret
+    , program        :: Program
+    }
