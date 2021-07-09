@@ -1,7 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Test.SSM.Output
   ( doParseOutput
-  , doInterpretWithSize
+  , doInterpret
   , doCompareTraces
   ) where
 
@@ -50,10 +50,6 @@ diffColumnWidth = 60
 diffNumWidth :: Int
 diffNumWidth = 8
 
--- | List to store event queue sizes for testing
-queueSizes :: [(Int, Int)]
-queueSizes = [(32, 32), (256, 256), (2048, 2048)]
-
 -- | Parse the output line by line. If parsing fails, report the line at which
 -- failure takes place.
 doParseOutput :: Monad m => Slug -> String -> QC.PropertyM m Tr.Output
@@ -72,16 +68,12 @@ doParseOutput slug outs = do
       QC.monitor $ QC.counterexample x
       fail $ "Parse error: line " ++ show l
 
-doInterpret :: Slug -> Program -> Int -> QC.PropertyM IO Tr.Output
-doInterpret slug program limit =
-  mapM (doInterpretWithSize slug program limit) queueSizes
-
 -- | Interpret a program and produce a (potentially trucated) output trace.
 --
 -- The evaluation is functionally limited to the number of steps specified by
 -- limit, but also time-limited using the timeout function.
-doInterpretWithSize :: Slug -> Program -> Int -> (Int, Int) -> QC.PropertyM IO Tr.Output
-doInterpretWithSize slug program limit (actQueueSize, eventQueueSize) = do
+doInterpret :: Slug -> Program -> Int -> (Int, Int) -> QC.PropertyM IO Tr.Output
+doInterpret slug program limit (actQueueSize, eventQueueSize) = do
   iTrace <- QC.run timeoutEval
   reportOnFail slug "interpreted.out" $ unlines $ map show iTrace
   return iTrace
