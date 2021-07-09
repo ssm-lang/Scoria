@@ -58,20 +58,6 @@ shrinkManyProcedures p = concat $ for [ removeCallsFromProgram h1 p
         go i (sx,y:ys) = go (i-1) (y : sx, ys)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 {- | Take a list of names of procedures to remove and a program and return the same
 program but where now no procedure every forks any of the deleted procedures.
 Returns @Nothing@ if the program was unchanged (in which case no shrinking could
