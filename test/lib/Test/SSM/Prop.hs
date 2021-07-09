@@ -81,7 +81,7 @@ propCorrectWithSize tn program (aQSize, eQSize) = do
   _           <- doVg slug fp
   (_, out, _) <- doExec slug fp
   cTrace      <- doParseOutput slug out
-  iTrace      <- doInterpret slug program (length $ lines out)
+  iTrace      <- doInterpret slug program (length $ lines out) (aQSize, eQSize)
   doCompareTraces slug iTrace cTrace
 
 -- | Spec that ensures an SSM program compiles to valid C that compiles and runs
