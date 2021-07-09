@@ -74,7 +74,7 @@ doParseOutput slug outs = do
 
 doInterpret :: Slug -> Program -> Int -> QC.PropertyM IO Tr.Output
 doInterpret slug program limit =
-  mapM_ (doInterpretWithSize slug program limit) queueSizes
+  mapM (doInterpretWithSize slug program limit) queueSizes
 
 -- | Interpret a program and produce a (potentially trucated) output trace.
 --
