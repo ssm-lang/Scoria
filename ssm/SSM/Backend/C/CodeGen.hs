@@ -206,13 +206,11 @@ genStep = do
           case 0:;
             $stms:cases
 
-          case $int:final:;
-            $stms:(map dequeue refs)
-            $id:act_leave(actg, sizeof($ty:act));
-            return;
+          default:
+            break;
           }
-          printf("Error: Unreachable\n");
-          assert(0);
+          $stms:(map dequeue refs)
+          $id:act_leave(actg, sizeof($ty:act));
         }
       |]
     )
