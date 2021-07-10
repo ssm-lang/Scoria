@@ -112,6 +112,7 @@ doVg slug fp = do
 doExec :: Slug -> FilePath -> QC.PropertyM IO (ExitCode, String, String)
 doExec slug fp = do
   res@(_, out, err) <- QC.run $ readProcessWithExitCode fp [] ""
+  QC.assert $ null err
   reportOnFail slug "exec.out" out
   reportOnFail slug "exec.err" err
   return res
