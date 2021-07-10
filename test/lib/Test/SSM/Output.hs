@@ -21,7 +21,9 @@ import           Data.List                      ( isPrefixOf
 import           System.Timeout                 ( timeout )
 
 import           SSM.Core.Syntax                ( Program )
-import           SSM.Interpret.Interpreter      ( interpret )
+import           SSM.Interpret                  ( interpret
+                                                , customQueueSizes
+                                                )
 import qualified SSM.Interpret.Trace           as Tr
 
 import qualified Test.QuickCheck               as QC
@@ -70,8 +72,8 @@ doParseOutput slug outs = do
 --
 -- The evaluation is functionally limited to the number of steps specified by
 -- limit, but also time-limited using the timeout function.
-doInterpret :: Slug -> Program -> Int -> QC.PropertyM IO Tr.Output
-doInterpret slug program limit = do
+doInterpret :: Slug -> Program -> Int -> (Int, Int) -> QC.PropertyM IO Tr.Output
+doInterpret slug program limit (actQueueSize, eventQueueSize) = do
   iTrace <- QC.run timeoutEval
   reportOnFail slug "interpreted.out" $ unlines $ map show iTrace
   return iTrace
@@ -79,7 +81,7 @@ doInterpret slug program limit = do
   timeoutEval :: IO Tr.Output
   timeoutEval = do
     ref <- newIORef []
-    xs' <- timeout testTimeout $ try $ eval (interpret program) limit ref
+    xs' <- timeout testTimeout $ try $ eval (interpret (customQueueSizes actQueueSize eventQueueSize program)) limit ref
     case xs' of
       Just (Left (e :: SomeException)) -> case show e of
         v

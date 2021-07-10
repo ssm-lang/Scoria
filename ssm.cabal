@@ -1,10 +1,8 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.2.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: 91f6b43cf9fa2d323a1e64bbd23ed2af3c26dd673b32352ae1216f38c5e53699
 
 name:           ssm
 version:        0.1.0.0
@@ -74,11 +72,21 @@ test-suite 1-regression-low
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Generator
       Test.SSM.Output
       Test.SSM.Prop
+      Test.SSM.QuickCheck.Generator
+      Test.SSM.QuickCheck.Shrink
+      Test.SSM.QuickCheck.Shrink.Expressions
+      Test.SSM.QuickCheck.Shrink.Fork
+      Test.SSM.QuickCheck.Shrink.GetRefs
+      Test.SSM.QuickCheck.Shrink.If
+      Test.SSM.QuickCheck.Shrink.ProcedureArity
+      Test.SSM.QuickCheck.Shrink.Procedures
+      Test.SSM.QuickCheck.Shrink.References
+      Test.SSM.QuickCheck.Shrink.Statements
+      Test.SSM.QuickCheck.Shrink.Wait
+      Test.SSM.QuickCheck.Util
       Test.SSM.Report
-      Test.SSM.Shrink
       Regression.EmptyFunSpec
       Regression.FiveForkerSpec
       Regression.FlipFlopLoopSpec
@@ -92,6 +100,8 @@ test-suite 1-regression-low
       Regression.Test1624507133117Spec
       Regression.Test1624511150452Spec
       Regression.Test1625068655962Spec
+      Regression.Test1625475651426Spec
+      Regression.Test1625480635361Spec
       Paths_ssm
   hs-source-dirs:
       test/lib
@@ -124,11 +134,21 @@ test-suite 2-arbitrary
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Generator
       Test.SSM.Output
       Test.SSM.Prop
+      Test.SSM.QuickCheck.Generator
+      Test.SSM.QuickCheck.Shrink
+      Test.SSM.QuickCheck.Shrink.Expressions
+      Test.SSM.QuickCheck.Shrink.Fork
+      Test.SSM.QuickCheck.Shrink.GetRefs
+      Test.SSM.QuickCheck.Shrink.If
+      Test.SSM.QuickCheck.Shrink.ProcedureArity
+      Test.SSM.QuickCheck.Shrink.Procedures
+      Test.SSM.QuickCheck.Shrink.References
+      Test.SSM.QuickCheck.Shrink.Statements
+      Test.SSM.QuickCheck.Shrink.Wait
+      Test.SSM.QuickCheck.Util
       Test.SSM.Report
-      Test.SSM.Shrink
       Paths_ssm
   hs-source-dirs:
       test/lib

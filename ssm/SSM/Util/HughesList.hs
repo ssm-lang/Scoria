@@ -57,6 +57,8 @@ module SSM.Util.HughesList
       -- ** Operations
     , (SSM.Util.HughesList.++)
     , snoc
+    , cons
+    , cons_
     ) where
 
 -- | Hughes lists
@@ -73,6 +75,13 @@ fromHughes = ($[])
 -- | Append an element to the end of a Hughes List.
 snoc :: Hughes a -> a -> Hughes a
 snoc hl a = hl <> toHughes [a]
+
+-- | Prepend an element to the start of a Hughes List.
+cons :: a -> Hughes a -> Hughes a
+cons x xs = toHughes [x] <> xs
+
+cons_ :: a -> [a] -> Hughes a
+cons_ x xs = cons x (toHughes xs)
 
 -- | Appending two hughes list is done by using the monoid instance for functions.
 (++) :: Hughes a -> Hughes a -> Hughes a
