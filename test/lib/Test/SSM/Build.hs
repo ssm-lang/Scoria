@@ -78,7 +78,7 @@ doMake slug cSrc (aQSize, eQSize) = do
   return execPath
  where
   target = slugTarget slug
-  mkArgs t = ["PLATFORM=" ++ buildPlatform, "ACT_QUEUE_SIZE=" ++ show aQSize, "EVENT_QUEUE_SIZE=" ++ show eQSize, t]
+  mkArgs t = ["PLATFORM=" ++ buildPlatform, "SSM_ACT_QUEUE_SIZE=" ++ show aQSize, "SSM_EVENT_QUEUE_SIZE=" ++ show eQSize, t]
   make t = do
     (code, out, err) <- QC.run $ readProcessWithExitCode "make" (mkArgs t) ""
     case code of
