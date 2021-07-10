@@ -8,16 +8,16 @@
 #include <ssm-runtime.h>
 #include <ssm-sv.h>
 
-#ifndef EVENT_QUEUE_SIZE
-#define EVENT_QUEUE_SIZE 2048
-#elif EVENT_QUEUE_SIZE < 2
-#error EVENT_QUEUE_SIZE < 2, use larger size
+#ifndef SSM_EVENT_QUEUE_SIZE
+#define SSM_EVENT_QUEUE_SIZE 2048
+#elif SSM_EVENT_QUEUE_SIZE < 2
+#error SSM_EVENT_QUEUE_SIZE < 2, use larger size
 #endif
 
-#ifndef ACT_QUEUE_SIZE
-#define ACT_QUEUE_SIZE 1024
-#elif ACT_QUEUE_SIZE < 2
-#error ACT_QUEUE_SIZE < 2, use larger size
+#ifndef SSM_ACT_QUEUE_SIZE
+#define SSM_ACT_QUEUE_SIZE 1024
+#elif SSM_ACT_QUEUE_SIZE < 2
+#error SSM_ACT_QUEUE_SIZE < 2, use larger size
 #endif
 
 /**
@@ -25,7 +25,7 @@
  *
  * Managed as a binary heap sorted by e->later_time, implemented in ssm-queue.c.
  */
-struct sv *event_queue[EVENT_QUEUE_SIZE + QUEUE_HEAD];
+struct sv *event_queue[SSM_EVENT_QUEUE_SIZE + QUEUE_HEAD];
 size_t event_queue_len = 0;
 
 /**
@@ -34,7 +34,7 @@ size_t event_queue_len = 0;
  *
  * Managed as a binary heap sorted by a->priority, implemented in ssm-queue.c.
  */
-struct act *act_queue[ACT_QUEUE_SIZE + QUEUE_HEAD];
+struct act *act_queue[SSM_ACT_QUEUE_SIZE + QUEUE_HEAD];
 size_t act_queue_len = 0;
 
 /**
@@ -48,7 +48,7 @@ ssm_time_t now;
 static void schedule_act(struct act *act) {
   DEBUG_ASSERT(((int8_t)act->depth) >= 0, "negative depth\n");
   if (!act->scheduled) {
-    DEBUG_ASSERT(act_queue_len + 1 <= ACT_QUEUE_SIZE, "contqueue full\n");
+    DEBUG_ASSERT(act_queue_len + 1 <= SSM_ACT_QUEUE_SIZE, "contqueue full\n");
     enqueue_act(act_queue, &act_queue_len, act);
   }
   act->scheduled = true;
@@ -142,7 +142,7 @@ void later_event(struct sv *sv, ssm_time_t then) {
 
   if (sv->later_time == NO_EVENT_SCHEDULED) {
     /* This event isn't already scheduled, so add it to the event queue. */
-    DEBUG_ASSERT(event_queue_len + 1 <= EVENT_QUEUE_SIZE, "eventqueue full\n");
+    DEBUG_ASSERT(event_queue_len + 1 <= SSM_EVENT_QUEUE_SIZE, "eventqueue full\n");
     sv->later_time = then;
     enqueue_event(event_queue, &event_queue_len, sv);
   } else {
