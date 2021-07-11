@@ -22,10 +22,6 @@ p = Program
             (Lit TUInt64 (LUInt64 2))
             ("ref2", Ref TUInt64)
             (Lit TUInt64 (LUInt64 2))
-          , After
-            (Lit TUInt64 (LUInt64 3))
-            ("ref2", Ref TInt64)
-            (Lit TUInt64 (LUInt64 3))
           , Wait [("ref2", Ref TUInt64)]
           , Fork
             [ ( "fun1"

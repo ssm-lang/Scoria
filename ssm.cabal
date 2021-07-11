@@ -1,10 +1,8 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.2.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: d9c32b968dbac4fb9139977332b295231237fae76160ee30d8a251e407eefcb5
 
 name:           ssm
 version:        0.1.0.0
@@ -91,6 +89,7 @@ test-suite 1-regression-low
       Test.SSM.Report
       Regression.EmptyFunSpec
       Regression.FiveForkerSpec
+      Regression.FlipFlopLoopSpec
       Regression.LaterAssignOverwriteSpec
       Regression.ManyContsSpec
       Regression.MultOverflowIndirectSpec
