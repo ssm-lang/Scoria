@@ -29,12 +29,9 @@ genMain program tickLimit =
 
         /* Enter main SSM procedure */
         $id:fork($id:enter($args:enterArgs));
-        $ty:time_t next;
         do {
-          tick();
-          next = next_event_time();
-          set_now(next);
-        } while (next != NO_EVENT_SCHEDULED);
+          ssm_tick();
+        } while (ssm_next_event_time() != SSM_NEVER);
 
         /* Print the final values of the arguments declared earlier */
         $items:refPrints
@@ -46,7 +43,7 @@ genMain program tickLimit =
 
   enter = enter_ $ entry program
   enterArgs =
-      [[cexp|&top|], [cexp|PRIORITY_AT_ROOT|], [cexp|DEPTH_AT_ROOT|]]
+      [[cexp|&top|], [cexp|SSM_ROOT_PRIORITY|], [cexp|SSM_ROOT_DEPTH|]]
       ++ map enterArg (args program)
   enterArg (Left  ssmExp  ) = genExp [] ssmExp
   -- ^ TODO: this is buggy if ssmExp contains a var?? Maybe double check what's

@@ -88,7 +88,7 @@ static int _add(int a, int b) {
 
 includes :: [C.Definition]
 includes = [cunit|
-$esc:("#include \"ssm-program.h\"")
+$esc:("#include \"ssm.h\"")
 |]
 
 -- | Generate definitions for an SSM 'Procedure'.
@@ -112,7 +112,7 @@ genStruct = do
   ls <- gets locals
   return [cedecl|
     typedef struct {
-      struct act act;
+      struct ssm_act act;
 
       $sdecls:(map param (arguments p))
       $sdecls:(map local ls)
@@ -272,7 +272,7 @@ genCase (After d (lvar, t) v) = do
         else [cexp|acts->$id:lvar|]
       rhs = genExp locs v
       -- | NOTE: we add `now` to the delay here.
-  return [[cstm| $id:(later_ t)($exp:lhs, now + $exp:del, $exp:rhs);|]]
+  return [[cstm| $id:(later_ t)($exp:lhs, ssm_now() + $exp:del, $exp:rhs);|]]
 genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts

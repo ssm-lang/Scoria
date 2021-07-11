@@ -23,8 +23,8 @@ genExp _  (Lit _ (LBool   True )) = [cexp|true|]
 genExp _  (Lit _ (LBool   False)) = [cexp|false|]
 genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
 genExp ls (UOpR _ (n, _) Changed)
-  | n `elem` ls = [cexp|event_on(&acts->$id:n.sv)|]
-  | otherwise   = [cexp|event_on(&acts->$id:n->sv)|]
+  | n `elem` ls = [cexp|$id:event_on(&acts->$id:n.sv)|]
+  | otherwise   = [cexp|$id:event_on(&acts->$id:n->sv)|]
 -- | Circumvent optimizations that take advantage of C's undefined signed
 -- integer wraparound behavior. FIXME: remove this hack, which is probably not
 -- robust anyway if C is aggressive about inlining.

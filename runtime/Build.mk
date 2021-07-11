@@ -17,8 +17,11 @@ endif
 vpath %.c $(RUNTIMEDIR)/src
 vpath %.c $(RUNTIMEDIR)/test
 
-RUNTIMESRC := ssm-queue.c ssm-sched.c ssm-types.c
-TESTSRC := test-ssm-queue.c
+#RUNTIMESRC := ssm-queue.c ssm-sched.c ssm-types.c
+RUNTIMESRC := ssm-bool.c ssm-event.c ssm-i16.c ssm-i32.c ssm-i64.c \
+	ssm-i8.c ssm-scheduler.c ssm-top-act.c ssm-u16.c ssm-u32.c ssm-u64.c ssm-u8.c
+
+#TESTSRC := test-ssm-queue.c
 
 SRCS += $(RUNTIMESRC) $(TESTSRC)
 LIBS += libssm.a

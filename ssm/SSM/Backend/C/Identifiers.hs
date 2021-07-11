@@ -63,31 +63,31 @@ top_return = "top_return"
 
 -- | Name of routine that forks procedures
 fork :: CIdent
-fork = "act_fork"
+fork = "ssm_activate"
 
 -- | Name of routine that initialized an activation record
 act_enter :: CIdent
-act_enter = "act_enter"
+act_enter = "ssm_enter"
 
 -- | Name of routine that deallocates an activation record
 act_leave :: CIdent
-act_leave = "act_leave"
+act_leave = "ssm_leave"
 
 -- | Name of routine that checks if a reference has been written to
 event_on :: CIdent
-event_on = "event_on"
+event_on = "ssm_event_on"
 
 -- | Name of routine that sensitizes a procedure
 sensitize :: CIdent
-sensitize = "sensitize"
+sensitize = "ssm_sensitize"
 
 -- | Name of routine that desensitizes a procedure
 desensitize :: CIdent
-desensitize = "desensitize"
+desensitize = "ssm_desensitize"
 
 -- | Name of routine that dequeues an event from the event queue
 unsched_event :: CIdent
-unsched_event = "unsched_event"
+unsched_event = "ssm_unschedule"
 
 -- | C type that represents model time
 time_t :: C.Type
@@ -95,19 +95,19 @@ time_t = [cty|typename ssm_time_t |]
 
 -- | C type that represents process priorities
 priority_t :: C.Type
-priority_t = [cty|typename priority_t|]
+priority_t = [cty|typename ssm_priority_t|]
 
 -- | C type that represents process depths
 depth_t :: C.Type
-depth_t = [cty|typename depth_t|]
+depth_t = [cty|typename ssm_depth_t|]
 
 -- | C type that represents triggers, aka processes that are sensitized on variables
 trigger_t :: C.Type
-trigger_t = [cty| struct trigger |]
+trigger_t = [cty| struct ssm_trigger |]
 
 -- | C type that represents the step function of a process
 stepf_t :: C.Type
-stepf_t = [cty|typename stepf_t|]
+stepf_t = [cty|typename ssm_stepf_t|]
 
 -- | C type that represents 16 bit unsigned integers
 uint16_t :: C.Type
@@ -121,7 +121,7 @@ bool_t = [cty|typename bool|]
 
 -- | The type of the activation record base class.
 act_t :: C.Type
-act_t = [cty|struct act|]
+act_t = [cty|struct ssm_act|]
 
 -- | Obtain the name of the activation record struct for a routine.
 act_ :: String -> CIdent
@@ -158,16 +158,16 @@ typeId (Ref t) = typeId t
 
 -- | Obtain the name of the scheduled variable type for an SSM `Type`.
 svt_ :: Type -> C.Type
-svt_ ty = [cty|typename $id:(typeId ty ++ "_svt")|]
+svt_ ty = [cty|typename $id:("ssm_" ++ typeId ty ++ "_t")|]
 
 -- | Obtain the name of the initialize method for an SSM `Type`.
 initialize_ :: Type -> CIdent
-initialize_ ty = "initialize_" ++ typeId ty
+initialize_ ty = "ssm_initialize_" ++ typeId ty
 
 -- | Obtain the name of the assign method for an SSM `Type`.
 assign_ :: Type -> CIdent
-assign_ ty = "assign_" ++ typeId ty
+assign_ ty = "ssm_assign_" ++ typeId ty
 
 -- | Obtain the name of the later method for an SSM `Type`.
 later_ :: Type -> CIdent
-later_ ty = "later_" ++ typeId ty
+later_ ty = "ssm_later_" ++ typeId ty
