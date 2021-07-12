@@ -19,7 +19,7 @@ p = Program
                     [ NewRef (Fresh "v0")
                              (Ref TInt32)
                              (Lit TInt32 (LInt32 999999))
-                    , GetRef (Fresh "v1") TInt32 ("v0", Ref TInt32)
+                    , GetRef (Fresh "v1") TInt32 (Dynamic ("v0", Ref TInt32))
                     , If
                       (BOp
                         TBool
@@ -28,12 +28,12 @@ p = Program
                         OLT
                       )
                       [ After (Lit TUInt64 (LUInt64 2))
-                              ("v0", Ref TInt32)
+                              (Dynamic ("v0", Ref TInt32))
                               (Lit TInt32 (LInt32 0))
                       ]
                       []
                     , NewRef (Fresh "v3") (Ref TInt32) (Lit TInt32 (LInt32 0))
-                    , Wait [("v3", Ref TInt32)]
+                    , Wait [Dynamic ("v3", Ref TInt32)]
                     ]
                   }
                 )

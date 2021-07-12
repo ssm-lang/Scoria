@@ -24,6 +24,8 @@ module SSM.Frontend.Syntax
     , S.Reference(..)
     , S.refType
     , S.refName
+    , S.renameRef
+    , S.makeDynamicRef
 
       -- * Expressions
     , S.SSMExp(..)
@@ -201,7 +203,7 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       return []
     Argument n x a -> do 
       let arginfo = (x, either S.expType S.refType a)
-      let a'      = either (Left) (Right . (,) x . snd) a
+      let a'      = either Left (Right . flip S.renameRef x) a
       modify $ \st -> st { mainargs    = mainargs st ++ [arginfo]
                          , mainargvals = mainargvals st ++ [a']
                          }

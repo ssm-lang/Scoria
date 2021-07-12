@@ -34,7 +34,7 @@ p = Program
                                 , NewRef (Fresh "v3")
                                          (Ref TInt32)
                                          (Lit TInt32 (LInt32 0))
-                                , Wait [("v3", Ref TInt32)]
+                                , Wait [Dynamic ("v3", Ref TInt32)]
                                 ]
                   }
                 )

@@ -128,7 +128,7 @@ step = do
                 newVar n v
                 next
             SetRef r e      -> do
-                writeRef (fst r) e
+                writeRef (refName r) e
                 next
             SetLocal n t e2 -> do
                 writeRef (getVarName n) e2

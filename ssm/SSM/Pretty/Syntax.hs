@@ -13,6 +13,7 @@ import SSM.Core.Syntax
     ( getVarName,
       BinOp(..),
       Reference,
+      refName,
       SSMExp(..),
       SSMLit(..),
       Type(..),
@@ -82,9 +83,9 @@ prettyStm stm = case stm of
                                     , " "
                                     , getVarName n
                                     , " = *"
-                                    , fst r
+                                    , refName r
                                     ]
-    SetRef r e     -> emit $ concat [ fst r
+    SetRef r e     -> emit $ concat [ refName r
                                     , " = "
                                     , prettySSMExp e
                                     ]
@@ -106,12 +107,12 @@ prettyStm stm = case stm of
     After d r v    -> emit $ concat [ "after "
                                     , prettySSMExp d
                                     , " then "
-                                    , fst r
+                                    , refName r
                                     , " = "
                                     , prettySSMExp v
                                     ]
     Wait refs      -> emit $ concat [ "wait ["
-                                    , intercalate ", " (map fst refs)
+                                    , intercalate ", " (map refName refs)
                                     , "]"
                                     ]
     Fork procs     -> do
@@ -133,7 +134,7 @@ prettyApp (n, args) = concat [ n
                              ]
   where
       printarg :: Either SSMExp Reference -> String
-      printarg = either prettySSMExp fst
+      printarg = either prettySSMExp refName
 
 prettyType :: Type -> String
 prettyType t = case t of
@@ -173,7 +174,7 @@ prettyUnaryOpE op e = case op of
 
 prettyUnaryOpR :: UnaryOpR -> Reference -> String
 prettyUnaryOpR op r = case op of
-    Changed -> '@' : fst r
+    Changed -> '@' : refName r
 
 prettyBinop :: BinOp -> String
 prettyBinop op = case op of

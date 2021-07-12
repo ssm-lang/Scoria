@@ -93,7 +93,7 @@ instance AnnotatedM SSM (Ref a) where
         let stmt = last stmts
         let stmt' = renameStmt stmt info
         modify $ \st -> st { statements = init stmts ++ [stmt']}
-        return $ renameRef v info
+        return $ SSM.Frontend.Language.renameRef v info
 
 renameStmt :: SSMStm -> SrcInfo -> SSMStm
 renameStmt s (Info Nothing _)               = s
@@ -115,7 +115,7 @@ renameExp e (Info (Just n) _) = case e of
 renameRef :: Ref a -> SrcInfo -> Ref a
 renameRef e (Info Nothing _) = e
 renameRef e (Info _ Nothing) = e
-renameRef (Ptr (_,t)) (Info (Just n) _) = Ptr $ (n, t)
+renameRef (Ptr r) (Info (Just n) _) = Ptr $ SSM.Frontend.Syntax.renameRef r n
 
 newtype Ref a = Ptr Reference -- references that are shared, (variable name, ref to value)
   deriving Show
@@ -156,15 +156,15 @@ instance Arg (Exp a) where
         return $ (Exp (Var (expType b) x), xs)
 
 instance Arg (Ref a) where
-    arg _ [] _                  = error "No more parameter names"
-    arg name (x:xs) (Ptr (e,t)) = do
-        emit $ Argument name x (Right (e,t))
-        return (Ptr (x, t), xs)
+    arg _ [] _              = error "No more parameter names"
+    arg name (x:xs) (Ptr r) = do
+        emit $ Argument name x $ Right r
+        return (Ptr $ SSM.Frontend.Syntax.renameRef r x, xs)
 
 -- | When interpreting or compiling a SSM program that requires input references,
 -- supply this value instead.
 inputref :: forall a. SSMType a => Ref a
-inputref = Ptr ("dummy", Ref (typeOf (Proxy @a)))
+inputref = Ptr $ Dynamic $ ("dummy", Ref (typeOf (Proxy @a)))
 
 class Assignable a b where
     -- | Immediate assignment
@@ -219,7 +219,7 @@ deref :: Ref a -> SSM (Exp a)
 deref (Ptr r) = do
     n <- fresh
     emit $ GetRef (Fresh n) r
-    return $ Exp $ Var (dereference (snd r)) n
+    return $ Exp $ Var (dereference (refType r)) n
 
 {- | Create a new, local reference. This reference is deallocated when the procedure
 it was created in terminates. -}
@@ -227,7 +227,7 @@ var :: Exp a -> SSM (Ref a)
 var (Exp e) = do
     n <- fresh
     emit $ NewRef (Fresh n) e
-    return $ Ptr $ (n, mkReference (expType e))
+    return $ Ptr $ makeDynamicRef n (mkReference $ expType e)
 
 -- | Block until any of the references in the input list are be written to.
 wait :: [Ref a] -> SSM ()

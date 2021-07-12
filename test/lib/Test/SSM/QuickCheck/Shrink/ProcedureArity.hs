@@ -46,7 +46,7 @@ shrinkProcedureBody :: String     -- ^ Name of parameter to remove
                     -> Procedure
 shrinkProcedureBody n p = p { body = removeVars [n] refs (body p) }
   where
-    refs = filter (isReference . snd) (arguments p)
+    refs = map (\(n,t) -> makeDynamicRef n t) $ filter (isReference . snd) (arguments p)
 
 {- | If a procedure @n@ has had its @i@th parameter removed, this function will remove
 the @i@th arguments from calls to @n@ from any other procedure @m@, and @m@ might

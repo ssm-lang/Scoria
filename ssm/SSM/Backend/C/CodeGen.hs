@@ -231,18 +231,21 @@ genCase (NewRef n t v) = do
       rhs  = genExp locs v
   addLocal lvar t
   return [[cstm|$id:(assign_ t)($exp:lhs, actg->priority, $exp:rhs);|]]
-genCase (GetRef n t (rvar, _)) = do
+genCase (GetRef n t r) = do
   locs <- map fst <$> gets locals
-  let lvar = getVarName n
+  let rvar = refName r
+      lvar = getVarName n
       lhs  = [cexp|&acts->$id:lvar|]
       rhs  = if rvar `elem` locs
         then [cexp|acts->$id:rvar.value|]
         else [cexp|acts->$id:rvar->value|]
   addLocal lvar t
   return [[cstm|$id:(assign_ t)($exp:lhs, actg->priority, $exp:rhs);|]]
-genCase (SetRef (lvar, t) e) = do
+genCase (SetRef r e) = do
   locs <- map fst <$> gets locals
-  let lhs = if lvar `elem` locs
+  let lvar = refName r
+      t    = refType r
+      lhs  = if lvar `elem` locs
         then [cexp|&acts->$id:lvar|]
         else [cexp|acts->$id:lvar|]
       rhs = genExp locs e
@@ -264,10 +267,12 @@ genCase (While c b) = do
   let cnd = genExp locs c
   bod <- concat <$> mapM genCase b
   return [[cstm| while ($exp:cnd) { $stms:bod } |]]
-genCase (After d (lvar, t) v) = do
+genCase (After d r v) = do
   locs <- map fst <$> gets locals
-  let del = genExp locs d
-      lhs = if lvar `elem` locs
+  let lvar = refName r
+      t    = refType r
+      del  = genExp locs d
+      lhs  = if lvar `elem` locs
         then [cexp|&acts->$id:lvar|]
         else [cexp|acts->$id:lvar|]
       rhs = genExp locs v
@@ -289,9 +294,9 @@ genCase (Wait ts) = do
   sensitizeTrig (i, trig) =
     [cstm|$id:sensitize($exp:trig, &acts->$id:(trig_ i));|]
   desensitizeTrig (i, _) = [cstm|$id:desensitize(&acts->$id:(trig_ i));|]
-  genTrig locs (trig, _) = if trig `elem` locs
-    then [cexp|&acts->$id:trig.sv|]
-    else [cexp|&acts->$id:trig->sv|]
+  genTrig locs ref = if refName ref `elem` locs
+    then [cexp|&acts->$id:(refName ref).sv|]
+    else [cexp|&acts->$id:(refName ref)->sv|]
 genCase (Fork cs) = do
   locs    <- map fst <$> gets locals
   caseNum <- nextCase
@@ -304,9 +309,12 @@ genCase (Fork cs) = do
           , newDepth
           ]
           ++ map genArg as
+      genArg :: Either SSMExp Reference -> C.Exp
       genArg (Left e) = genExp locs e
-      genArg (Right (r, _)) =
-        if r `elem` locs then [cexp|&acts->$id:r|] else [cexp|acts->$id:r|]
+      genArg (Right r) =
+        if refName r `elem` locs
+          then [cexp|&acts->$id:(refName r)|]
+          else [cexp|acts->$id:(refName r)|]
 
       newDepth = [cexp|actg->depth - $int:depthSub|]
       depthSub =

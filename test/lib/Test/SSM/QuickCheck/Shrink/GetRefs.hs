@@ -22,7 +22,7 @@ mutation has only 2 `GetRef` statements. -}
 getrefs :: Program -> [Program]
 getrefs p = concat
     [ 
-      let validrefs = filter (isReference . snd) (arguments procedure)
+      let validrefs = map (uncurry makeDynamicRef) $ filter (isReference . snd) (arguments procedure)
       in [ p { funs = Map.insert n (procedure { body = body' }) (funs p) }
          | body' <- shrinkProcedureBody validrefs (body procedure)
          ] 
@@ -32,13 +32,14 @@ getrefs p = concat
 
 {- | Need to write this explicitly rather than using distributeMutate, as the
 mutation is not local to just the GetRef statement itself. -}
-shrinkProcedureBody :: [(String, Type)] -> [Stm] -> [[Stm]]
+shrinkProcedureBody :: [Reference] -> [Stm] -> [[Stm]]
 shrinkProcedureBody validrefs xs = go (emptyHughes, xs, validrefs)
   where
-      go :: (Hughes Stm, [Stm], [(String, Type)]) -> [[Stm]]
+      go :: (Hughes Stm, [Stm], [Reference]) -> [[Stm]]
       go (_, [], _)                   = []
       go (current, (x:xs), validrefs) = case x of
-          NewRef n t e -> go (snoc current x, xs, (getVarName n, t):validrefs)
+          NewRef n t e ->
+              go (snoc current x, xs, makeDynamicRef (getVarName n) t:validrefs)
           GetRef n t r ->
               let rest = removeVars [getVarName n] validrefs (x:xs)
               in (fromHughes current <> rest) :

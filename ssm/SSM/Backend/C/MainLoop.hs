@@ -51,20 +51,25 @@ genMain program tickLimit =
   enterArg (Left  ssmExp  ) = genExp [] ssmExp
   -- ^ TODO: this is buggy if ssmExp contains a var?? Maybe double check what's
   -- going on with that.
-  enterArg (Right (ref, _)) = [cexp|&$id:ref|]
+  enterArg (Right r) = [cexp|&$id:(refName r)|]
 
   argInits = concatMap argInit $ rights $ args program
-  argInit (ref, typ) =
+  argInit r =
     [ [citem|$ty:(svt_ typ) $id:ref;|]
     , [citem|$id:(initialize_ typ)(&$id:ref);|]
     , [citem|$id:ref.value = 0;|]
     , [citem|DEBUG_SV_SET_VAR_NAME($id:ref.sv.debug, $string:ref);|]
       -- Args to the main SSM procedure are always given default values of 0.
     ]
+    where
+      ref = refName r
+      typ = refType r
 
   refPrints = map refPrint $ rights $ args program
-  refPrint (ref, typ) = [citem|
+  refPrint r = [citem|
     DEBUG_PRINT("result %s %s %s\n", DEBUG_SV_GET_VAR_NAME($id:ref.sv.debug),
                                      DEBUG_SV_GET_TYPE_NAME($id:ref.sv.debug),
                                      DEBUG_SV_GET_VALUE_REPR($id:ref.sv.debug,
                                      &$id:ref.sv));|]
+    where
+      ref = refName r

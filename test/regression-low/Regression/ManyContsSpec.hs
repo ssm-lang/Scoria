@@ -9,7 +9,7 @@ import qualified Test.SSM.Prop                 as T
 p :: Program
 p = Program
   { entry = "fun1"
-  , args  = [ Right ("ref2", Ref TUInt64)
+  , args  = [ Right $ Dynamic ("ref2", Ref TUInt64)
             ]
   , funs  = fromList
     [ ( "fun1"
@@ -20,20 +20,20 @@ p = Program
         , body      =
           [ After
             (Lit TUInt64 (LUInt64 2))
-            ("ref2", Ref TUInt64)
+            (Dynamic ("ref2", Ref TUInt64))
             (Lit TUInt64 (LUInt64 2))
-          , Wait [("ref2", Ref TUInt64)]
+          , Wait [Dynamic ("ref2", Ref TUInt64)]
           , Fork
             [ ( "fun1"
-              , [ Right ("ref2", Ref TUInt64)
+              , [ Right $ Dynamic ("ref2", Ref TUInt64)
                 ]
               )
             , ( "fun1"
-              , [ Right ("ref2", Ref TUInt64)
+              , [ Right $ Dynamic ("ref2", Ref TUInt64)
                 ]
               )
             , ( "fun1"
-              , [ Right ("ref2", Ref TUInt64)
+              , [ Right $ Dynamic ("ref2", Ref TUInt64)
                 ]
               )
             ]

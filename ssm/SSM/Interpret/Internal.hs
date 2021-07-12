@@ -518,9 +518,9 @@ pds k = do
 references in the list @refs@ have been written to. -}
 wait :: [Reference] -> Interp s ()
 wait refs = do
-    refs' <- mapM (lookupRef . fst) refs
+    refs' <- mapM (lookupRef . refName) refs
     modify $ \st -> st { process = (process st) { waitingOn = Just refs' } }
-    mapM_ (sensitize . fst) refs
+    mapM_ (sensitize . refName) refs
 
 
 
@@ -565,7 +565,7 @@ fork (n,args) prio dep par = do
                   Left e  -> do v <- eval e
                                 v' <- lift' (newVar' v currenttime)
                                 return (n, v')
-                  Right r -> do ref <- lookupRef (fst r)
+                  Right r -> do ref <- lookupRef (refName r)
                                 return (n, ref)
           return $ Map.fromList m
 
@@ -641,7 +641,7 @@ eval e = do
             Nothing -> error $ "interpreter error - variable " ++ n ++ " not found in current process"
         Lit _ l -> return e
         UOpR _ r op -> case op of
-            Changed -> wasWritten $ fst r
+            Changed -> wasWritten $ refName r
         UOpE _ e Neg -> do
             e' <- eval e
             return $ neg e'
