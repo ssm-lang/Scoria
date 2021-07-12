@@ -24,7 +24,6 @@
 #
 #   SSMDIR := absolute path of the directory where this Makefile lives
 #   PLATFORMDIR := platform-specific directory
-#   RUNTIMEDIR := directory where platform-generic runtime is located
 #
 # ---
 #
@@ -123,11 +122,6 @@ distclean:
 else # make was invoked from inside build directory
 ################################################################################
 
-# These variables are used by runtime and platform Build.mk to orient themselves
-RUNTIMEDIR := $(SSMDIR)/runtime
-PLATFORMDIR := $(SSMDIR)/platform/$(PLATFORM)
-
-
 ########
 # Compiler frontend (.hs => .c)
 ##
@@ -147,11 +141,43 @@ $(SSM_SRCS:%.hs=%.c): %.c: %.hs
 	stack --stack-yaml $(SSMDIR)/stack.yaml runghc $< -- -o $@
 
 ########
-# Compiler backend/C compilation (.c => .o)
+# Runtime library compilation (.c => .a)
 ##
 
-include $(RUNTIMEDIR)/Build.mk
+# These variables are used by runtime and platform Build.mk to orient themselves
+RUNTIMEDIR := $(SSMDIR)/runtime
+PLATFORMDIR := $(SSMDIR)/platform/$(PLATFORM)
+
 include $(PLATFORMDIR)/Build.mk
+
+####
+# Build platform-generic runtime library
+##
+
+CPPFLAGS += -I $(RUNTIMEDIR)/include
+LDLIBS += -lssm
+
+ifdef SSM_ACT_QUEUE_SIZE
+CPPFLAGS += -DSSM_ACT_QUEUE_SIZE=$(SSM_ACT_QUEUE_SIZE)
+endif
+
+ifdef SSM_EVENT_QUEUE_SIZE
+CPPFLAGS += -DSSM_EVENT_QUEUE_SIZE=$(SSM_EVENT_QUEUE_SIZE)
+endif
+
+vpath %.c $(RUNTIMEDIR)/src
+
+RUNTIMESRC := $(notdir $(wildcard $(RUNTIMEDIR)/src/*.c))
+
+libssm.a : libssm.a($(RUNTIMESRC:%.c=%.o))
+
+SRCS += $(RUNTIMESRC)
+LIBS += libssm.a
+
+
+########
+# Compiler backend/C compilation (.c => .o)
+##
 
 # The generated code uses the pattern x << y - z without unnecessary
 # parentheses, which GCC goes out of its way to warn about without this flag.
