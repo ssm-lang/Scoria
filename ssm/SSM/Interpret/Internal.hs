@@ -166,7 +166,7 @@ The reference @r@ will get the value @val@ in @thn@ units of time.
 scheduleEvent :: Reference -> Word64 -> SSMExp -> Interp s ()
 scheduleEvent r thn val = do
   st <- get
-  e  <- lookupRef (fst r)
+  e  <- lookupRef (refIdent r)
 
   when (SSM.Interpret.Types.now st > thn) $ terminate T.CrashInvalidTime
 
@@ -360,7 +360,7 @@ writeRef r e = do
 -- | Read the value of a reference
 readRef :: Reference -> Interp s SSMExp
 readRef r = do
-    r <- lookupRef (fst r)
+    r <- lookupRef (refIdent r)
     (vr,_,_,_,_) <- lift' $ readSTRef r
     lift' $ readSTRef vr
 
@@ -463,9 +463,9 @@ of the references in the list @refs@ have been written to.
 -}
 wait :: [Reference] -> Interp s ()
 wait refs = do
-  refs' <- mapM (lookupRef . fst) refs
+  refs' <- mapM (lookupRef . refIdent) refs
   modify $ \st -> st { process = (process st) { waitingOn = Just refs' } }
-  mapM_ (sensitize . fst) refs
+  mapM_ (sensitize . refIdent) refs
 
 {-********** Forking processes **********-}
 
@@ -502,7 +502,7 @@ fork (n,args) prio dep par = do
                   Left e  -> do v <- eval e
                                 v' <- lift' (newVar' v currenttime)
                                 return (n, v')
-                  Right r -> do ref <- lookupRef (fst r)
+                  Right r -> do ref <- lookupRef (refIdent r)
                                 return (n, ref)
           return $ Map.fromList m
 
@@ -581,7 +581,7 @@ eval e = do
             ++ identName n
     Lit _ l     -> return e
     UOpR _ r op -> case op of
-      Changed -> wasWritten $ fst r
+      Changed -> wasWritten $ refIdent r
     UOpE _ e Neg -> do
       e' <- eval e
       return $ neg e'

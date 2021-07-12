@@ -61,7 +61,7 @@ data TRState = TRState
   { procedure :: Procedure        -- ^ Procedure we are compiling
   , ncase     :: Int              -- ^ Which number has the next case?
   , numwaits  :: Int              -- ^ The size of the widest wait
-  , locals    :: [(Ident, Type)]  -- ^ Local references declared with var
+  , locals    :: [Reference]  -- ^ Local references declared with var
   }
 
 -- | Translation monad.
@@ -79,8 +79,8 @@ nextCase = do
   return n
 
 -- | Register a local variable for which an sv should be allocated.
-addLocal :: Ident -> Type -> TR ()
-addLocal n t = modify $ \st -> st { locals = (n, t) : locals st }
+addLocal :: Reference -> TR ()
+addLocal r = modify $ \st -> st { locals = r : locals st }
 
 -- | Maintain the maximum number of variables a 'Procedure' waits on.
 maxWaits :: Int -> TR ()
@@ -167,11 +167,11 @@ genStruct = do
     } $id:(act_ $ identName $ name p);
   |]
  where
-  param r
-    | isReference (refType r) = [csdecl|$ty:(svt_ (refType r)) *$id:(refName r);|]
-    | otherwise               = [csdecl|$ty:(svt_ (refType r)) $id:(refName r);|]
+  param (n,t)
+    | isReference t = [csdecl|$ty:(svt_ t) *$id:(identName n);|]
+    | otherwise     = [csdecl|$ty:(svt_ t) $id:(identName n);|]
 
-  local (id, t) = [csdecl|$ty:(svt_ t) $id:(identName id);|]
+  local ref = [csdecl|$ty:(svt_ (refType ref)) $id:(refName ref);|]
 
   trig i = [csdecl|$ty:trigger_t $id:t;|] where t = "trig" ++ show i
 
@@ -215,22 +215,22 @@ genEnter = do
     )
  where
   -- | TODO: This only works because we don't have nested Refs (yet)
-  param r
-    | isReference (refType r) = [cparam|$ty:(svt_ (refType r)) *$id:(refName r)|]
-    | otherwise = [cparam|$ty:(basetype (refType r)) $id:(refName r)|]
+  param (n,t)
+    | isReference t = [cparam|$ty:(svt_ t) *$id:(identName n)|]
+    | otherwise     = [cparam|$ty:(basetype t) $id:(identName n)|]
 
-  initParam r
-    | isReference (refType r) = [[cstm|acts->$id:(refName r) = $id:(refName r);|]]
-    | baseType (refType r) == TEvent =
-      [ [cstm|$id:(initialize_ (refType r))(&$id:acts->$id:(refName r));|],
-        [cstm|$id:(assign_ (refType r))(&$id:acts->$id:(refName r), $id:actg->priority);|]]
+  initParam (n,t)
+    | isReference t = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
+    | baseType t == TEvent =
+      [ [cstm|$id:(initialize_ t)(&$id:acts->$id:(identName n));|],
+        [cstm|$id:(assign_ t)(&$id:acts->$id:(identName n), $id:actg->priority);|]]
     | otherwise               =
-      [ [cstm|$id:(initialize_ (refType r))(&acts->$id:(refName r));|]
-      , [cstm|acts->$id:(refName r).value = $id:(refName r);|]
+      [ [cstm|$id:(initialize_ t)(&acts->$id:(identName n));|]
+      , [cstm|acts->$id:(identName n).value = $id:(identName n);|]
       ]
 
-  initLocal (n, t) =
-    [ [cstm| $id:(initialize_ t)(&acts->$id:(identName n));|] ]
+  initLocal ref =
+    [ [cstm| $id:(initialize_ (refType ref))(&acts->$id:(refName ref));|] ]
 
   initTrig i = [cstm| $id:acts->$id:trig.act = $id:actg;|]
     where trig = "trig" ++ show i
@@ -264,16 +264,16 @@ genStep = do
       = [cstm|if ($exp:initialized) $id:debug_trace($exp:fmt, $exp:val);|]
      where
       initialized = [cexp|$id:acts->$id:(refName r).sv.last_updated != $id:never|]
-      fmt         = [cexp|$string:(actLocalVarS (refName r, refType r))|]
+      fmt         = [cexp|$string:(actLocalVarS (refIdent r, refType r))|]
       val         = [cexp|$id:acts->$id:(refName r).value|]
 
-    debugArg r | baseType (refType r) == TEvent = [cstm|$id:debug_trace($exp:fmt);|]
-               | otherwise = [cstm|$id:debug_trace($exp:fmt, $exp:val);|]
+    debugArg (n,t) | baseType t == TEvent = [cstm|$id:debug_trace($exp:fmt);|]
+                   | otherwise            = [cstm|$id:debug_trace($exp:fmt, $exp:val);|]
      where
-      fmt = [cexp|$string:(actLocalVarS (refName r, refType r))|]
-      val = case refType r of
-        Ref _ -> [cexp|$id:acts->$id:(refName r)->value|]
-        _     -> [cexp|$id:acts->$id:(refName r).value|]
+      fmt = [cexp|$string:(actLocalVarS (n, t))|]
+      val = case t of
+        Ref _ -> [cexp|$id:acts->$id:(identName n)->value|]
+        _     -> [cexp|$id:acts->$id:(identName n).value|]
 
     dequeue r = [cstm|$id:unsched_event(&$id:acts->$id:(refName r).sv);|]
   return
@@ -284,7 +284,7 @@ genStep = do
 
           $id:debug_trace($string:actStepBeginS);
           $stms:(map debugArg $ sortOn fst $ arguments p)
-          $stms:(map debugLocal $ sortOn fst locs)
+          $stms:(map debugLocal $ sortOn refIdent locs)
           $id:debug_microtick();
 
           switch ($id:actg->pc) {
@@ -308,29 +308,32 @@ moving the leave call to outside of the switch statement in 'genStep'.
 -}
 genCase :: Stm -> TR [C.Stm]
 genCase (NewRef n t v) = do
-  locs <- map fst <$> gets locals
+  locs <- map refIdent <$> gets locals
   let lvar = identName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
       rhs  = genExp locs v
-  addLocal n t
+  addLocal $ makeDynamicRef n t
   case baseType t of
     TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
     _ ->
       return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
-genCase (GetRef n t (rvar, _)) = do
-  locs <- map fst <$> gets locals
-  let lvar = identName n
+genCase (GetRef n t r) = do
+  locs <- map refIdent <$> gets locals
+  let rvar = refIdent r
+      lvar = identName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
       rhs | rvar `elem` locs = [cexp|$id:acts->$id:(identName rvar).value|]
           | otherwise        = [cexp|$id:acts->$id:(identName rvar)->value|]
-  addLocal n t
+  addLocal $ makeDynamicRef n t
   case baseType t of
     TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
     _ ->
       return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
-genCase (SetRef (lvar, t) e) = do
-  locs <- map fst <$> gets locals
-  let lhs | lvar `elem` locs = [cexp|&$id:acts->$id:(identName lvar)|]
+genCase (SetRef r e) = do
+  locs <- map refIdent <$> gets locals
+  let lvar = refIdent r
+      t    = refType r
+      lhs | lvar `elem` locs = [cexp|&$id:acts->$id:(identName lvar)|]
           | otherwise        = [cexp|$id:acts->$id:(identName lvar)|]
       rhs = genExp locs e
   case baseType t of
@@ -338,7 +341,7 @@ genCase (SetRef (lvar, t) e) = do
     _ ->
       return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (SetLocal n t e) = do
-  locs <- map fst <$> gets locals
+  locs <- map refIdent <$> gets locals
   let lvar = identName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
       rhs  = genExp locs e
@@ -347,21 +350,24 @@ genCase (SetLocal n t e) = do
     _ ->
       return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (If c t e) = do
-  locs <- map fst <$> gets locals
+  locs <- map refIdent <$> gets locals
   let cnd = genExp locs c
   thn <- concat <$> mapM genCase t
   els <- concat <$> mapM genCase e
   return [[cstm| if ($exp:cnd) { $stms:thn } else { $stms:els }|]]
 genCase (While c b) = do
-  locs <- map fst <$> gets locals
+  locs <- map refIdent <$> gets locals
   let cnd = genExp locs c
   bod <- concat <$> mapM genCase b
-  return [[cstm| while ($exp:cnd) { $id:debug_microtick(); $stms:bod }|]]
-genCase (After d (lvar, t) v) = do
-  locs <- map fst <$> gets locals
-  let del = genExp locs d
-      lhs | lvar `elem` locs = [cexp|&$id:acts->$id:(identName lvar)|]
-          | otherwise        = [cexp|$id:acts->$id:(identName lvar)|]
+  return [[cstm| while ($exp:cnd) { $id:debug_microtick(); $stms:bod } |]]
+genCase (After d r v) = do
+  locs <- map refIdent <$> gets locals
+  let lvar = refIdent r
+      t    = refType r
+      del  = genExp locs d
+      lhs  = if lvar `elem` locs
+        then [cexp|&acts->$id:(identName lvar)|]
+        else [cexp|acts->$id:(identName lvar)|]
       rhs = genExp locs v
   -- Note that the semantics of 'After' and 'later_' differ---the former
   -- expects a relative time, whereas the latter takes an absolute time.
@@ -373,7 +379,7 @@ genCase (After d (lvar, t) v) = do
 genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts
-  locs <- map fst <$> gets locals
+  locs <- map refIdent <$> gets locals
   let trigs = zip [1 ..] $ map (genTrig locs) ts
   return
     $ map getTrace ts
@@ -386,12 +392,12 @@ genCase (Wait ts) = do
  where
   sensitizeTrig (i, trig) = [cstm|$id:sensitize($exp:trig, &$id:acts->$id:(trig_ i));|]
   desensitizeTrig (i,_) = [cstm|$id:desensitize(&$id:acts->$id:(trig_ i));|]
-  genTrig locs (trig, _) | trig `elem` locs = [cexp|&$id:acts->$id:(identName trig).sv|]
-                         | otherwise        = [cexp|&$id:acts->$id:(identName trig)->sv|]
-  getTrace (trig, _) = [cstm|$id:debug_trace($string:event);|]
-    where event = show $ T.ActSensitize (identName trig)
+  genTrig locs r | refIdent r `elem` locs = [cexp|&$id:acts->$id:(refName r).sv|]
+                 | otherwise              = [cexp|&$id:acts->$id:(refName r)->sv|]
+  getTrace r = [cstm|$id:debug_trace($string:event);|]
+    where event = show $ T.ActSensitize $ refName r
 genCase (Fork cs) = do
-  locs    <- map fst <$> gets locals
+  locs    <- map refIdent <$> gets locals
   caseNum <- nextCase
   let
     genCall i (r, as) = [cstm|$id:fork($id:(enter_ (identName r))($args:enterArgs));|]
@@ -402,11 +408,12 @@ genCase (Fork cs) = do
           , newDepth
           ]
           ++ map genArg as
+      genArg :: Either SSMExp Reference -> C.Exp
       genArg (Left e) = genExp locs e
-      genArg (Right (r, _)) =
-        if r `elem` locs
-          then [cexp|&acts->$id:(identName r)|]
-          else [cexp|acts->$id:(identName r)|]
+      genArg (Right r) =
+        if refIdent r `elem` locs
+          then [cexp|&acts->$id:(refName r)|]
+          else [cexp|acts->$id:(refName r)|]
 
     newDepth = [cexp|actg->depth - $int:depthSub|]
     depthSub =

@@ -94,7 +94,7 @@ instance AnnotatedM SSM (Ref a) where
         let stmt = last stmts
         let stmt' = renameStmt stmt info
         modify $ \st -> st { statements = init stmts ++ [stmt']}
-        return $ renameRef v info
+        return $ SSM.Frontend.Language.renameRef v info
 
 renameStmt :: SSMStm -> SrcInfo -> SSMStm
 renameStmt s (Info Nothing _)               = s
@@ -116,11 +116,11 @@ renameExp e (Info (Just n) info) = case e of
 renameRef :: Ref a -> SrcInfo -> Ref a
 renameRef e (Info Nothing _) = e
 renameRef e (Info _ Nothing) = e
-renameRef (Ptr (_,t)) (Info (Just n) info) = Ptr $ (Ident n info, t)
+renameRef (Ptr r) (Info (Just n) l) = Ptr $ SSM.Frontend.Syntax.renameRef r (Ident n l)
 
-newtype Ref a = Ptr Reference -- references that are shared, (variable name, ref to value)
+newtype Ref a = Ptr Reference
   deriving Show
-newtype Exp a = Exp SSMExp                 -- expressions
+newtype Exp a = Exp SSMExp
   deriving Show
 newtype Lit a = FLit SSMLit
   deriving Show
@@ -157,15 +157,15 @@ instance Arg (Exp a) where
         return $ (Exp (Var (expType b) (Ident x Nothing)), xs)
 
 instance Arg (Ref a) where
-    arg _ [] _                  = error "No more parameter names"
-    arg name (x:xs) (Ptr (e,t)) = do
-        emit $ Argument (Ident name Nothing) (Ident x Nothing) (Right (e,t))
-        return (Ptr ((Ident x Nothing), t), xs)
+    arg _ [] _              = error "No more parameter names"
+    arg name (x:xs) (Ptr r) = do
+        emit $ Argument (Ident name Nothing) (Ident x Nothing) $ Right r
+        return (Ptr $ SSM.Frontend.Syntax.renameRef r (Ident x Nothing), xs)
 
 -- | When interpreting or compiling a SSM program that requires input references,
 -- supply this value instead.
 inputref :: forall a. SSMType a => Ref a
-inputref = Ptr (Ident "dummy" Nothing, Ref (typeOf (Proxy @a)))
+inputref = Ptr $ Dynamic $ (Ident "dummy" Nothing, Ref (typeOf (Proxy @a)))
 
 class Assignable a b where
     -- | Immediate assignment
@@ -225,7 +225,7 @@ deref (Ptr r) = do
     n <- fresh
     let id = Ident n Nothing
     emit $ GetRef id r
-    return $ Exp $ Var (dereference (snd r)) id
+    return $ Exp $ Var (dereference (refType r)) id
 
 {- | Create a new, local reference. This reference is deallocated when the procedure
 it was created in terminates. -}
@@ -234,7 +234,7 @@ var (Exp e) = do
     n <- fresh
     let id = Ident n Nothing
     emit $ NewRef id e
-    return $ Ptr $ (id, mkReference (expType e))
+    return $ Ptr $ makeDynamicRef id (mkReference $ expType e)
 
 -- | Block until any of the references in the input list are be written to.
 wait :: [Ref a] -> SSM ()

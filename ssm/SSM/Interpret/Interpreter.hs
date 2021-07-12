@@ -111,7 +111,7 @@ step = do
         continue
 
       SetRef r e -> do
-        writeRef (fst r) e
+        writeRef (refIdent r) e
         continue
 
       SetLocal n _ e2 -> do
@@ -139,7 +139,7 @@ step = do
         continue
 
       Wait refs -> do
-        forM_ refs $ \(r, _) -> tellEvent $ T.ActSensitize $ identName r
+        forM_ refs $ \r -> tellEvent $ T.ActSensitize $ refName r
         wait refs
         yield
 

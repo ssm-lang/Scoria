@@ -61,6 +61,9 @@ genMain program tickLimit =
     , [citem|DEBUG_SV_SET_VAR_NAME($id:(refName r).sv.debug, $string:(refName r));|]
       -- Args to the main SSM procedure are always given default values of 0.
     ]
+    where
+      ref = refName r
+      typ = refType r
 
   refPrints = map refPrint $ rights $ args program
   refPrint r = [citem|

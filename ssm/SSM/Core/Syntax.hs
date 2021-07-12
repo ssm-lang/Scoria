@@ -35,6 +35,9 @@ module SSM.Core.Syntax
     , Reference(..)
     , refType
     , refName
+    , refIdent
+    , renameRef
+    , makeDynamicRef
 
       -- ** Expressions
       {- | Expressions in the language are quite few at the moment. Adding support for
@@ -114,6 +117,10 @@ isReference :: Type -> Bool
 isReference (Ref _) = True
 isReference _       = False
 
+-- | Create a dynamic reference
+makeDynamicRef :: Ident -> Type -> Reference
+makeDynamicRef name typ = Dynamic (name, typ)
+
 {-| The class of Haskell types that can be marshalled to a representation
 in the SSM language. -}
 class SSMType a where
@@ -141,18 +148,28 @@ instance SSMType () where
 
 -- References
 
--- | References in our language have a name and a type
-type Reference
-    = (Ident, Type)
+-- | References in our language
+data Reference 
+      {- | A Dynamic reference will be dynamically allocated and deallocated as a program
+      is running. It will reside in an activation record in the generated C-code. -}
+    = Dynamic (Ident, Type)
+    deriving (Eq, Show, Read)
 
 -- | Type of a reference
 refType :: Reference -> Type
-refType (_,t) = t
+refType (Dynamic (_,t)) = t
 
 -- | Name of a reference
--- FIXME: make this return `Ident`
 refName :: Reference -> String
-refName (n,_) = identName n
+refName = identName . refIdent
+
+-- | Return the `Ident` of a `Reference`
+refIdent :: Reference -> Ident
+refIdent (Dynamic (n,_)) = n
+
+-- | Rename a reference
+renameRef :: Reference -> Ident -> Reference
+renameRef (Dynamic (_,t)) n = Dynamic (n, t)
 
 -- Expressions
 

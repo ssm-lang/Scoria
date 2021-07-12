@@ -42,7 +42,6 @@ instance Arbitrary Type where
 
 type Procedures = [(Ident, [(Ident, Type)], [Stm])]
 type Variable   = (Ident, Type)
-type Ref        = (Ident, Type)
 
 genListOfLength :: Gen a -> Int -> Gen [a]
 genListOfLength ga 0 = return []
@@ -65,8 +64,8 @@ instance Arbitrary Program where
     -- Generate type, args, and body for each procedure signature.
     tab <- mfix $ \tab -> sequence
         [ do let (refs, vars) = partition (isReference . fst) $ zip as [1..]
-             let inprefs      = [ (Ident ("ref" ++ show i) Nothing, t) | (t,i) <- refs]
-             let inpvars      = [ (Ident ("var" ++ show i) Nothing, t) | (t,i) <- vars]
+             let inprefs      = [ makeDynamicRef (Ident ("ref" ++ show i) Nothing) t | (t,i) <- refs]
+             let inpvars      = [(Ident ("var" ++ show i) Nothing, t) | (t,i) <- vars]
 
              (body,_)        <- arbProc tab inpvars inprefs 0 =<< choose (0, 15)
 
@@ -84,7 +83,7 @@ instance Arbitrary Program where
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program
         -> [Variable]     -- ^ Variables in scope
-        -> [Ref]          -- ^ References in scope
+        -> [Reference]          -- ^ References in scope
         -> Int            -- ^ Fresh name generator
         -> Int            -- ^ Size parameter
         -> Gen ([Stm], Int)
@@ -95,7 +94,7 @@ arbProc funs vars refs c n = frequency $
                (name,c1) <- fresh c
                let rt     = mkReference t
                let stm    = NewRef name rt e
-               let ref    = (name, rt)
+               let ref    = makeDynamicRef name rt
                (rest, c2) <- arbProc funs vars (ref:refs) c1 (n-1)
                return (stm:rest, c2)
         )
@@ -129,23 +128,23 @@ arbProc funs vars refs c n = frequency $
         )]) ++
 
       (if null refs then [] else
-      [ (1, do r@(_,t)   <- elements refs
+      [ (1, do r         <- elements refs
                (name,c1) <- fresh c
-               let t'    = dereference t
+               let t'    = dereference $ refType r
                (rest,c2) <- arbProc funs ((name, t'):vars) refs c1 (n-1)
                let stm   = GetRef name t' r
                return (stm:rest, c2)
         )
       
-      , (1, do r@(_,t) <- elements refs
-               e       <- choose (0,3) >>= arbExp (dereference t) vars refs
+      , (1, do r       <- elements refs
+               e       <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm = SetRef r e
                return (stm:rest, c')
         )
       
-      , (1, do r@(_,t)  <- elements refs
-               v        <- choose (0,3) >>= arbExp (dereference t) vars refs
+      , (1, do r        <- elements refs
+               v        <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
                delay    <- Lit TUInt64 . LUInt64 <$> choose (1, 5000)
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm   = After delay r v
@@ -165,13 +164,13 @@ arbProc funs vars refs c n = frequency $
       -- | Take a procedure that should be forked and return the application of
       -- that procedure to randomly generated arguments.
       applyFork :: [Variable]
-                -> [Ref]
+                -> [Reference]
                 -> (Ident, [(Ident, Type)], [Stm])
                 -> Gen (Ident, [Either SSMExp Reference])
       applyFork vars refs (n, types, _) = do
           args <- forM types $ \(_,t) ->
             if isReference t
-              then do let okrefs = filter ((==) t . snd) refs
+              then do let okrefs = filter ((==) t . refType) refs
                       Right <$> elements okrefs
               else Left <$> (choose (0,3) >>= arbExp t vars refs)
           return (n, args)
@@ -179,9 +178,9 @@ arbProc funs vars refs c n = frequency $
       -- | Predicate that returns True if the given procedure can be forked.
       -- What determines this is what references we have in scope. If the procedure
       -- requires a reference parameter that we do not have, we can not fork it.
-      canBeCalled :: [Ref] -> (Ident, [(Ident, Type)], [Stm]) -> Bool
+      canBeCalled :: [Reference] -> (Ident, [(Ident, Type)], [Stm]) -> Bool
       canBeCalled inscope (_, types, _) =
-          let distinct = nub $ filter isReference $ map snd inscope
+          let distinct = nub $ filter isReference $ map refType inscope
           in all (`elem` distinct) $ filter isReference $ map snd types
 
 -- | Generate a SSMExp.
