@@ -30,12 +30,16 @@ import           Debug.Trace
 compile_ :: Program -> ([C.Definition], [C.Definition])
 compile_ program = (compUnit, includes)
  where
-  compUnit = preamble ++ decls ++ defns
+  compUnit = preamble ++ decls ++ defns ++ entryPointSymbol
 
   preamble = genPreamble
   (decls, defns) =
     concat2 $ unzip $ map genProcedure $ Map.elems (funs program)
   concat2 (x, y) = (concat x, concat y)
+  entryPointSymbol = [cunit|
+    $ty:act_t *(*$id:entry_point)($ty:act_t *, $ty:priority_t, $ty:depth_t) =
+      $id:(enter_ $ entry program);
+  |]
 
 {- | State maintained while compiling a 'Procedure'.
 
@@ -103,6 +107,7 @@ static int _add(int a, int b) {
 includes :: [C.Definition]
 includes = [cunit|
 $esc:("#include \"ssm.h\"")
+$esc:("#include \"ssm-platform.h\"")
 |]
 
 {- | Generate definitions for an SSM 'Procedure'.
@@ -193,9 +198,7 @@ genEnter = do
     , [cstm|$id:acts->$id:n.value = $id:n;|]
     ]
 
-  initLocal (n, t) =
-    [ [cstm| $id:(initialize_ t)(&$id:acts->$id:n);|]
-    ]
+  initLocal (n, t) = [[cstm| $id:(initialize_ t)(&$id:acts->$id:n);|]]
 
   initTrig i = [cstm| $id:acts->$id:trig.act = $id:actg;|]
     where trig = "trig" ++ show i
@@ -322,9 +325,10 @@ genCase (Fork cs) = do
           , newDepth
           ]
           ++ map genArg as
-      genArg (Left e) = genExp locs e
-      genArg (Right (r, _)) =
-        if r `elem` locs then [cexp|&$id:acts->$id:r|] else [cexp|$id:acts->$id:r|]
+      genArg (Left  e     ) = genExp locs e
+      genArg (Right (r, _)) = if r `elem` locs
+        then [cexp|&$id:acts->$id:r|]
+        else [cexp|$id:acts->$id:r|]
 
       newDepth = [cexp|$id:actg->depth - $int:depthSub|]
       depthSub =
@@ -332,7 +336,7 @@ genCase (Fork cs) = do
 
     genDebug (r, _) = r
   return
-    $ [cstm| DEBUG_PRINT($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |]
+    $ [cstm| SSM_DEBUG_TRACE($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |]
     : zipWith genCall [0 :: Int ..] cs
     ++ [ [cstm| $id:actg->pc = $int:caseNum; |]
        , [cstm| return; |]

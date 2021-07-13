@@ -241,6 +241,9 @@ LDFLAGS += -L.
 $(GEN_SRCS:%.c=%): %: %.o $(LIBS)
 $(SSM_SRCS:%.hs=%): %: %.o $(LIBS)
 
+# $(CC) $(LDFLAGS) $< $(LDLIBS) -o $@
+# $(CC) $(LDFLAGS) $< $(LDLIBS) -o $@
+
 # .elf and hex file generation rules.
 %.elf :
 	$(CC) $(LDFLAGS) -o $@ $^

@@ -15,6 +15,7 @@ module SSM.Backend.C.Identifiers
     , sensitize
     , desensitize
     , unsched_event
+    , entry_point
 
       -- * Type names recognized by the the C runtime system.
     , time_t
@@ -62,6 +63,10 @@ type CIdent = String
 -- | Name of top level return step-function
 top_return :: CIdent
 top_return = "top_return"
+
+-- | Name of top level return step-function
+entry_point :: CIdent
+entry_point = "ssm_entry_point"
 
 -- | Name of routine that forks procedures
 fork :: CIdent

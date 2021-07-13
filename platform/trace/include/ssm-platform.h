@@ -1,8 +1,10 @@
-#ifndef _PENG_PLATFORM_H
-#define _PENG_PLATFORM_H
+#ifndef _SSM_PLATFORM_H
+#define _SSM_PLATFORM_H
 
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "ssm.h"
 
 #define NANOSECOND_TICKS(x) (x)
 #define MICROSECOND_TICKS(x) ((x)*1000L)
@@ -15,25 +17,25 @@
 #define TOSTRING(x) STRINGIFY(x)
 #define AT __FILE__ ":" TOSTRING(__LINE__)
 
-#define DEBUG_LIMIT 10000
+#define SSM_DEBUG_LIMIT 10000
 
 extern unsigned long debug_count;
 
-#define DEBUG_PRINT(...)                                                       \
-  {                                                                            \
-    if (debug_count >= DEBUG_LIMIT) {                                          \
-      exit(1);                                                                 \
-    }                                                                          \
-    debug_count++;                                                             \
-    printf(__VA_ARGS__);                                                       \
-  }
+#define SSM_DEBUG_MICROTICK()                                                  \
+  if (debug_count++ >= SSM_DEBUG_LIMIT)                                        \
+  exit(1)
 
-#define DEBUG_ASSERT(assertion, ...)                                           \
+#define SSM_DEBUG_TRACE(...) printf(__VA_ARGS__)
+
+#define SSM_DEBUG_ASSERT(assertion, ...)                                       \
   do {                                                                         \
     if (!(assertion)) {                                                        \
       printf(__VA_ARGS__);                                                     \
       exit(1);                                                                 \
     }                                                                          \
   } while (0)
+
+extern struct ssm_act *(*ssm_entry_point)(struct ssm_act *, ssm_priority_t,
+                                          ssm_depth_t);
 
 #endif

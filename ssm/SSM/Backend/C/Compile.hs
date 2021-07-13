@@ -28,7 +28,6 @@ the generated program to output. -}
 compile :: Program -> Bool -> Maybe Int -> String
 compile p b mi = pretty 120 $ pprList compilationUnit
   where
-      compilationUnit = nub includes ++ prg ++ m
+      compilationUnit = nub includes ++ prg
 
       (prg, includes) = compile_ p
-      m               = if b then genMain p mi else []

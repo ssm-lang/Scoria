@@ -11,13 +11,13 @@
 CC = gcc
 AR = ar
 
-CPPFLAGS += -I $(PLATFORMDIR)/include -DDEBUG
+CPPFLAGS += -I $(PLATFORMDIR)/include -DSSM_DEBUG
 vpath %.c $(PLATFORMDIR)/src
 
 LDLIBS += -lplatform
 LIBS += libplatform.a
 
-PLATFORMSRC = ssm-trace.c
+PLATFORMSRC = ssm-trace.c ssm-main.c
 
 SRCS += $(PLATFORMSRC)
 
