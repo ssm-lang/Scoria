@@ -50,9 +50,17 @@ instance Arbitrary Program where
   shrink = shrinkProgram
 
   arbitrary = do
+    -- Generate arbitrary list of arbitrary procedures signatures.
     let typesiggen = genListOfLength arbitrary =<< choose (0,10)
-    types <- genListOfLength typesiggen =<< choose (1,5)
-    let funs = [ ("fun" ++ show i, as) | (as,i) <- zip types [1..]]
+    funTypes <- genListOfLength typesiggen =<< choose (0,5)
+
+    -- Designate entrypoint procedure, with no arguments.
+    let entry@(entryPoint, entryArgs) = ("fun0", [])
+
+    -- List of all functions.
+    let funs = entry:[("fun" ++ show i, as) | (as,i) <- zip funTypes [1..]]
+
+    -- Generate type, args, and body for each procedure signature.
     tab <- mfix $ \tab -> sequence
         [ do let (refs, vars) = partition (isReference . fst) $ zip as [1..]
              let inprefs      = [ ("ref" ++ show i        , t) | (t,i) <- refs]
@@ -67,17 +75,9 @@ instance Arbitrary Program where
                           | (a,i) <- zip as [1..]]
              return (f, params, body)
         | (f,as) <- funs]
-    
-    (entrypoint, argtypes) <- elements $ map (\(name,t,_) -> (name, t)) tab
-    args <- flip mapM argtypes $ \(n,t) -> if isReference t
-      then return $ Right (n,t)
-      else do e <- arbExp t [] [] 1
-              return $ Left e
-    
-    let funs = Map.fromList $ [ (fun, Procedure fun params bdy)
-                              | (fun, params, bdy) <- tab]
-    
-    return $ Program entrypoint args funs
+
+    return $ Program entryPoint entryArgs $ Map.fromList
+      [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program
