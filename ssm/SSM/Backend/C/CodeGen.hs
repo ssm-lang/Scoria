@@ -21,9 +21,6 @@ import SSM.Backend.C.Exp
 
 import           Debug.Trace
 
--- | Use snake_case for c literals
-{-# ANN module "HLint: ignore Use camelCase" #-}
-
 -- | This function takes a `Program` and returns a pair where the first component is
 -- the compiled program and the second is a list of all include statements.
 compile_ :: Program -> ([C.Definition], [C.Definition])

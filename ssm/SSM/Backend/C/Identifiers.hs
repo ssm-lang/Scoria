@@ -1,12 +1,12 @@
-{-| This module exports some identifiers that are commonly reoccuring in the
-generated C code. They are declared here to avoid repetition in the files
-where they are referenced.-}
+{-| This module exports some global identifiers that the generated C code uses,
+as well as some functions used to construct identifiers.
+-}
 {-# LANGUAGE QuasiQuotes #-}
 module SSM.Backend.C.Identifiers
-    ( -- * Identifiers
-      {- | These are identifiers that are recognized by the C runtime system, and can be
-      used while generating code which targets the runtime system. -}
-      CIdent
+    ( -- * Type aliases
+      CIdent(..)
+
+      -- * Identifiers recognized by the C runtime system.
     , top_return
     , fork
     , act_enter
@@ -16,8 +16,7 @@ module SSM.Backend.C.Identifiers
     , desensitize
     , unsched_event
 
-      -- * C Types
-      -- | These are types that the runtime system declares.
+      -- * Type names recognized by the the C runtime system.
     , time_t
     , trigger_t
     , priority_t
@@ -53,6 +52,9 @@ import SSM.Core.Syntax
 
 import Language.C.Quote.GCC ( cty )
 import qualified Language.C.Syntax             as C
+
+-- | Use snake_case for c literals
+{-# ANN module "HLint: ignore Use camelCase" #-}
 
 -- | Type alias for C identifiers.
 type CIdent = String
@@ -91,7 +93,7 @@ unsched_event = "ssm_unschedule"
 
 -- | C type that represents model time
 time_t :: C.Type
-time_t = [cty|typename ssm_time_t |]
+time_t = [cty|typename ssm_time_t|]
 
 -- | C type that represents process priorities
 priority_t :: C.Type
@@ -103,7 +105,7 @@ depth_t = [cty|typename ssm_depth_t|]
 
 -- | C type that represents triggers, aka processes that are sensitized on variables
 trigger_t :: C.Type
-trigger_t = [cty| struct ssm_trigger |]
+trigger_t = [cty|struct ssm_trigger|]
 
 -- | C type that represents the step function of a process
 stepf_t :: C.Type
