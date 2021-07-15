@@ -110,8 +110,8 @@ params :: Program -> ST s (Map.Map String (Var s))
 params p = do
     process <- case Map.lookup (entry p) (funs p) of
         Just p' -> return p'
-        Nothing -> error $ concat ["interpreter error - can not find function ", entry p]
-    m <- flip mapM (zip (arguments process) (args p)) $ \((n,t), a) ->
+        Nothing -> error $ "interpreter error - can not find function " ++ entry p
+    m <- forM (zip (arguments process) (args p)) $ \((n,t), a) ->
         case a of
             Left e  -> do
                 v <- newVar' e 0
@@ -128,7 +128,7 @@ params p = do
       defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
       defaultValue TUInt8  = Lit TUInt8 $ LUInt8 0
       defaultValue TBool   = Lit TBool $ LBool False
-      defaultValue (Ref _) = error "default value of reference not allowed here"
+      defaultValue (Ref _) = error "default value of reference not allowed"
 
 {- | Given a program and a map of a variable storage, return a list of
 @(name, variable)@ pairs that make up the references in the variable storage
@@ -136,7 +136,7 @@ that appear as input parameters to the program. -}
 getReferences :: Program -> Map.Map String (Var s) -> [(String, Var s)]
 getReferences p m = case Map.lookup (entry p) (funs p) of
     Just pr -> let refparams   = filter (\(_,t) -> isReference t) $ arguments pr
-                   paramnames = fst $ unzip refparams
+                   paramnames = map fst refparams
                    vars       = map (\n -> (n, Map.lookup n m)) paramnames
                    vars'      = filter (\(_,may) -> isJust may) vars
                 in map (second fromJust) vars'
@@ -290,7 +290,7 @@ dequeue = do
     st <- get
     let conts = readyQueue st
     if IntMap.null conts
-        then error "interpreter error - dequeue called on empty readyqueue"
+        then crash "Interpreter error: dequeue called on empty readyqueue"
         else do let x = IntMap.findMin conts
                 let conts' = IntMap.deleteMin conts
                 put $ st { readyQueue = conts'
@@ -389,7 +389,7 @@ writeRef r e = do
         Nothing  -> case Map.lookup r (localrefs p) of
             Just ref -> do v <- eval e
                            writeVar ref v
-            Nothing -> error $ "interpreter error - can not find variable " ++ r
+            Nothing -> error $ "Interpreter: cannot find variable: " ++ r
 
 -- | Read the value of a reference
 readRef :: Reference -> Interp s SSMExp
@@ -410,7 +410,7 @@ wasWritten r = do
         Nothing -> case Map.lookup r (localrefs p) of
             Just v  -> do (_,_,t,_,_) <- lift' $ readSTRef v
                           return $ Lit TBool $ LBool $ t == n
-            Nothing -> error $ "interpreter error - can not find variable " ++ r
+            Nothing -> error $ "Interpreter: can not find variable: " ++ r
 
 -- | Creates a new `Var s` with an initial value.
 newVar' :: SSMExp -> Word64 -> ST s (Var s)
@@ -461,7 +461,7 @@ lookupRef r = do
       Just ref -> return ref
       Nothing  -> case Map.lookup r (localrefs p) of
           Just ref -> return ref
-          Nothing -> error $ "interpreter error - can not find variable " ++ r
+          Nothing -> crash $ "Interpreter: can not find variable: " ++ r
 
 -- | Make a procedure wait for writes to the variable identified by the name @v@.
 sensitize :: String -> Interp s ()
@@ -558,7 +558,7 @@ fork (n,args) prio dep par = do
           st <- get
           case Map.lookup n (procedures st) of
               Just p -> return p
-              Nothing -> error $ "interpreter error - trying to fork non-existant procedure"
+              Nothing -> crash $ "Interpreter: cannot fork non-existent procedure: " ++ n
 
 
 
@@ -620,7 +620,8 @@ eval e = do
             Just r -> do 
                 v <- lift $ lift $ (readSTRef . \(x,_,_,_,_) -> x) =<< readSTRef r
                 eval v
-            Nothing -> error $ "interpreter error - variable " ++ n ++ " not found in current process"
+            Nothing -> crash $ "Interpreter: variable not found: " ++ n
+            -- TODO: report name of process here
         Lit _ l -> return e
         UOpR _ r op -> case op of
             Changed -> wasWritten $ fst r
@@ -633,7 +634,7 @@ eval e = do
             case op of
                 OLT -> return $ lessthan l1 l2
                 OEQ -> return $ equals l1 l2
-                _   -> error "only < and == produce booleans"
+                _   -> crash $ "Type error: binary operator does not return TBool: " ++ show op
         BOp _ e1 e2 op -> do
             i1 <- eval e1
             i2 <- eval e2
@@ -641,7 +642,19 @@ eval e = do
                 OPlus  -> return $ addition i1 i2
                 OMinus -> return $ SSM.Interpret.Internal.subtract i1 i2
                 OTimes -> return $ multiply i1 i2
-                _      -> error "unrecognized operator"
+                _      -> crash $ "Type error: binary operator does not return int type: " ++ show op
+
+expOpTypeError :: String -> SSMExp -> SSMExp -> a
+expOpTypeError op le re = error
+           $ "Type error: cannot "
+           ++ op
+           ++ " terms of different types: "
+           ++ show le
+           ++ " v.s. "
+           ++ show re
+
+expTypeError :: String -> SSMExp -> a
+expTypeError t e = error $ "Type error: not a " ++ t ++ ": " ++ show e
 
 -- | Negate an expression
 neg :: SSMExp -> SSMExp
@@ -655,7 +668,7 @@ lessthan (Lit _ (LInt32 i1))   (Lit _ (LInt32 i2)) = Lit TBool $ LBool $ i1 < i2
 lessthan (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TBool $ LBool $ i1 < i2
 lessthan (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TBool $ LBool $ i1 < i2
 lessthan (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TBool $ LBool $ i1 < i2
-lessthan _ _ = error "can only order numerical values"
+lessthan le re = expOpTypeError "compare" le re
 
 -- | Check if two expressions are equal
 equals :: SSMExp -> SSMExp -> SSMExp
@@ -664,7 +677,7 @@ equals (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TBool $ LBool $ i1 == i2
 equals (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TBool $ LBool $ i1 == i2
 equals (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TBool $ LBool $ i1 == i2
 equals (Lit _ (LBool b1))  (Lit _ (LBool b2))    = Lit TBool $ LBool $ b1 == b2
-equals _ _ = error "types error - checking equality of different types"
+equals le re = expOpTypeError "compare" le re
 
 -- | Add two expressions
 addition :: SSMExp -> SSMExp -> SSMExp
@@ -672,7 +685,7 @@ addition (Lit _ (LInt32 i1))   (Lit _ (LInt32 i2)) = Lit TInt32  $ LInt32  $ i1 
 addition (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TInt64  $ LInt64  $ i1 + i2
 addition (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 + i2
 addition (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TUInt8  $ LUInt8  $ i1 + i2
-addition _ _ = error "can only add numerical values"
+addition le re = expOpTypeError "add" le re
 
 -- | Subtract two expressions
 subtract :: SSMExp -> SSMExp -> SSMExp
@@ -680,7 +693,7 @@ subtract (Lit _ (LInt32 i1))   (Lit _ (LInt32 i2)) = Lit TInt32  $ LInt32  $ i1 
 subtract (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TInt64  $ LInt64  $ i1 - i2
 subtract (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 - i2
 subtract (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TUInt8  $ LUInt8  $ i1 - i2
-subtract _ _ = error "can only subtract numerical values"
+subtract le re = expOpTypeError "subtract" le re
 
 -- | Multiply two expressions
 multiply :: SSMExp -> SSMExp -> SSMExp
@@ -688,34 +701,34 @@ multiply (Lit _ (LInt32 i1))   (Lit _ (LInt32 i2)) = Lit TInt32  $ LInt32  $ i1 
 multiply (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TInt64  $ LInt64  $ i1 * i2
 multiply (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 * i2
 multiply (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TUInt8  $ LUInt8  $ i1 * i2
-multiply _ _ = error "can only multiply numerical values"
+multiply le re = expOpTypeError "multiply" le re
 
 {- | Retrieve a Haskell @Int32@ from an expression. Will crash if the expression
 is not an @Int32@. -}
 getInt32 :: SSMExp -> Int32
 getInt32 (Lit _ (LInt32 i)) = i
-getInt32 e                = error $ "not an integer: " ++ show e
+getInt32 e                = expTypeError "Int32" e
 
 {- | Retrieve a Haskell @Int64@ from an expression. Will crash if the expression
 is not an @Int64@. -}
 getInt64 :: SSMExp -> Int64
 getInt64 (Lit _ (LInt64 i)) = i
-getInt64 e                  = error $ "not an integer: " ++ show e
+getInt64 e                  = expTypeError "Int64" e
 
 {- | Retrieve a Haskell @Word8@ from an expression. Will crash if the expression
 is not an @Word8@. -}
 getUInt8 :: SSMExp -> Word8
 getUInt8 (Lit _ (LUInt8  i)) = i
-getUInt8 e                   = error $ "not an integer: " ++ show e
+getUInt8 e                   = expTypeError "Word8" e
 
 {- | Retrieve a Haskell @Word64@ from an expression. Will crash if the expression
 is not an @Word64@. -}
 getUInt64 :: SSMExp -> Word64
 getUInt64 (Lit _ (LUInt64 i)) = i
-getUInt64 e                   = error $ "not an integer: " ++ show e
+getUInt64 e                   = expTypeError "Word64" e
 
 {- | Retrieve a Haskell @Bool@ from an expression. Will crash if the expression
 is not an @Bool@. -}
 getBool :: SSMExp -> Bool
 getBool (Lit _ (LBool b)) = b
-getBool e                 = error $ "not a boolean: " ++ show e
+getBool e                 = expTypeError "Bool" e
