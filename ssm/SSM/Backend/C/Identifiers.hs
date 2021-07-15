@@ -3,55 +3,61 @@ as well as some functions used to construct identifiers.
 -}
 {-# LANGUAGE QuasiQuotes #-}
 module SSM.Backend.C.Identifiers
-    ( -- * Type aliases
-      CIdent(..)
+  ( -- * Type aliases
+    CIdent(..)
 
       -- * Identifiers recognized by the C runtime system.
-    , top_return
-    , fork
-    , act_enter
-    , act_leave
-    , event_on
-    , sensitize
-    , desensitize
-    , unsched_event
-    , entry_point
+  , top_return
+  , fork
+  , act_enter
+  , act_leave
+  , event_on
+  , sensitize
+  , desensitize
+  , unsched_event
+  , entry_point
 
       -- * Type names recognized by the the C runtime system.
-    , time_t
-    , trigger_t
-    , priority_t
-    , depth_t
-    , stepf_t
-    , act_t
-    , sv_t
+  , time_t
+  , trigger_t
+  , priority_t
+  , depth_t
+  , stepf_t
+  , act_t
+  , sv_t
       {- | These are (a subset of the) types that the runtime system includes and uses
       internally. These are just the ones that the code generator needs to talk about. -}
-    , uint16_t
-    , bool_t
+  , uint16_t
+  , bool_t
 
       -- * Constructing Identifiers from strings
       -- | These functions create identifiers from some known [pre|suf]fix.
-    , act_
-    , step_
-    , enter_
-    , trig_
+  , act_
+  , step_
+  , enter_
+  , trig_
 
       -- * Constructing Identifiers from types
       {- | Some identifiers need to be prefixed or suffixed with some type information,
       such as @later_int@, @later_bool@ etc. We create identifiers like these and others
       by using these functions. -}
-    , typeId
-    , svt_
-    , initialize_
-    , assign_
-    , later_
+  , typeId
+  , svt_
+  , initialize_
+  , assign_
+  , later_
 
-    ) where
+    -- * Debug-/trace-specific macros
+  , debug_microtick
+  , debug_trace
+  ) where
 
-import SSM.Core.Syntax
+import           SSM.Core.Syntax
 
-import Language.C.Quote.GCC ( cty )
+import           Language.C.Quote.GCC           ( cstm
+                                                , cexp
+                                                , cty
+                                                )
 import qualified Language.C.Syntax             as C
 
 -- | Use snake_case for c literals
@@ -178,3 +184,9 @@ assign_ ty = "ssm_assign_" ++ typeId ty
 -- | Obtain the name of the later method for an SSM `Type`.
 later_ :: Type -> CIdent
 later_ ty = "ssm_later_" ++ typeId ty
+
+debug_microtick :: CIdent
+debug_microtick = "SSM_DEBUG_MICROTICK"
+
+debug_trace :: CIdent
+debug_trace = "SSM_DEBUG_TRACE"

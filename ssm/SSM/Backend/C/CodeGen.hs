@@ -20,8 +20,7 @@ import qualified Language.C.Syntax             as C
 import           SSM.Backend.C.Exp
 import           SSM.Backend.C.Identifiers
 import           SSM.Core.Syntax
-
-import           Debug.Trace
+import qualified SSM.Interpret.Trace           as T
 
 -- TODOs: remove hard-coded identifiers.
 
@@ -216,13 +215,19 @@ genStep = do
   cases <- concat <$> mapM genCase (body p)
   refs  <- gets locals
   final <- nextCase
-  let act  = [cty|typename $id:actt|]
-      actt = act_ $ name p -- hack to use this typename as expr in macros
-      step = step_ $ name p
+  let act           = [cty|typename $id:actt|]
+      actt          = act_ $ name p -- hack to use this typename as expr in macros
+      step          = step_ $ name p
+      actStepBeginS = show $ T.ActStepBegin $ name p
+      dequeue (var, _) = [cstm|$id:unsched_event(&$id:acts->$id:var.sv);|]
   return
     ( [cedecl|void $id:step($ty:act_t *$id:actg);|]
     , [cedecl|
         void $id:step($ty:act_t *$id:actg) {
+
+          $id:debug_microtick();
+          $id:debug_trace($string:actStepBeginS);
+
           $ty:act *$id:acts = container_of($id:actg, $id:actt, act);
           switch ($id:actg->pc) {
           case 0:;
@@ -236,7 +241,6 @@ genStep = do
         }
       |]
     )
-  where dequeue (var, _) = [cstm|$id:unsched_event(&$id:acts->$id:var.sv);|]
 
 {- | Generate the list of statements from each 'Stm' in an SSM 'Procedure'.
 
@@ -284,7 +288,7 @@ genCase (While c b) = do
   locs <- map fst <$> gets locals
   let cnd = genExp locs c
   bod <- concat <$> mapM genCase b
-  return [[cstm| while ($exp:cnd) { $stms:bod } |]]
+  return [[cstm| while ($exp:cnd) { $id:debug_microtick(); $stms:bod }|]]
 genCase (After d (lvar, t) v) = do
   locs <- map fst <$> gets locals
   let del = genExp locs d
@@ -335,9 +339,9 @@ genCase (Fork cs) = do
         (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Int
 
     genDebug (r, _) = r
+    -- [cstm| $id:debug_trace($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |] :
   return
-    $ [cstm| SSM_DEBUG_TRACE($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |]
-    : zipWith genCall [0 :: Int ..] cs
+    $  zipWith genCall [0 :: Int ..] cs
     ++ [ [cstm| $id:actg->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]
