@@ -10,12 +10,11 @@ module SSM.Interpret
 
 import SSM.Core.Syntax
 import qualified SSM.Interpret.Interpreter as I
-import SSM.Interpret.Trace
+import SSM.Interpret.Trace (Trace)
 
 -- | Interpret an SSM program
-interpret :: Interpretable a => a -> Output
+interpret :: Interpretable a => a -> Trace
 interpret = I.interpret . toConfiguration
-
 
 -- instead of just having interpret :: SSMProgram a => a -> Output` like we do now,
 -- we can do this

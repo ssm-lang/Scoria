@@ -34,6 +34,9 @@ module SSM.Interpret.Types
     , variableStorage
     , interpState
     , lift'
+    , crash
+    , terminate
+    , tellEvent
     ) where
 
 import Data.STRef.Lazy
@@ -181,11 +184,23 @@ interpState :: Word64                    -- ^ Now
 interpState = St
 
 -- | Interpretation monad
-type Interp s a = StateT (St s) (WriterT (Hughes T.OutputEntry) (ST s)) a
+type Interp s a = StateT (St s) (WriterT (Hughes T.Event) (ST s)) a
 
 -- | Lift a @ST@ computation to the interpretation monad.
 lift' :: ST s a -> Interp s a
 lift' = lift . lift
+
+-- | Emit event to event log in the interpretation monad.
+tellEvent :: [T.Event] -> Interp s ()
+tellEvent = tell . toHughes
+
+-- | Halt interpretation monad, and report terminal condition.
+terminate :: T.Terminal -> Interp s a
+terminate t = error $ show t
+
+-- | Crash upon unforeseen failure mode (as reported by string).
+crash :: String -> Interp s a
+crash = terminate . T.CrashUnforeseen
 
 {- | Data type of interpreter configuration. Need to modify the interpreter to
 interpret a program after loading this information into the interpretation state.

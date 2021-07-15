@@ -6,6 +6,9 @@ module SSM.Interpret.Internal
       -- | Interpretation monad that is re-exported from "SSM.Interpret.Types".
       Interp
     , InterpretConfig(..)
+    , terminate
+    , crash
+    , tellEvent
 
       -- ** Functions that help define the `interpret` function
       {- | While interpreting statements is quite straight forward, there is some
@@ -16,7 +19,6 @@ module SSM.Interpret.Internal
     , interpState
     , params
     , getReferences
-    , emitResult
 
       -- * Talking about time
       {- | These two functions can be used to interact with the model time. Setting the
@@ -30,7 +32,7 @@ module SSM.Interpret.Internal
     , eventQueueEmpty
     , nextEventTime
     , performEvents
-    , schedule_event
+    , scheduleEvent
 
       -- * Interacting with the ready queue
       {- | The ready queue is managed by these functions. Processes can be scheduled and
@@ -93,6 +95,7 @@ import Data.Int
 import Data.Word
 import Data.Maybe
 import Data.List
+import Data.Bifunctor (second)
 
 import Control.Monad.State.Lazy
 import Control.Monad.Writer.Lazy
@@ -136,25 +139,8 @@ getReferences p m = case Map.lookup (entry p) (funs p) of
                    paramnames = fst $ unzip refparams
                    vars       = map (\n -> (n, Map.lookup n m)) paramnames
                    vars'      = filter (\(_,may) -> isJust may) vars
-                in map (\(n,t) -> (n, fromJust t)) vars'
-    Nothing -> error $ "interpreter error - robert did something very wrong"
-
--- | Emits the result of the input reference variables at the end of the program.
-emitResult :: Interp s ()
-emitResult = do
-    refs <- gets inputargs
-    forM_ refs $ \(n,v) -> do
-        (ref,_,_,_,_) <- lift' $ readSTRef v
-        val <- lift' $ readSTRef ref
-        tell $ toHughes [T.Result n val]
-
-
-
-
-
-
-
-
+                in map (second fromJust) vars'
+    Nothing -> error "interpreter error - robert did something very wrong"
 
 {-********** Time management **********-}
 
@@ -176,28 +162,28 @@ setNow w = modify $ \st -> st { SSM.Interpret.Types.now = w }
 {-********** Interacting with the event queue **********-}
 
 {- | Schedule a delayed update of a reference. The reference @r@ will get the value @val@
-in @thn@ units of time. -} 
-schedule_event :: Reference -> Word64 -> SSMExp -> Interp s ()
-schedule_event r thn val = do
+in @thn@ units of time. -}
+scheduleEvent :: Reference -> Word64 -> SSMExp -> Interp s ()
+scheduleEvent r thn val = do
     st <- get
 
     e <- lookupRef (refName r)
-    
-    when (SSM.Interpret.Types.now st > thn) $ error "bad after"
+
+    when (SSM.Interpret.Types.now st > thn) $ terminate T.CrashInvalidLater
 
     -- fetch ref so we can update the scheduled information
     (ref,pr,b,mt,_) <- lift' $ readSTRef e
     lift' $ writeSTRef e (ref,pr,b,Just thn, Just val)
-    
+
     -- if it was scheduled before we remove the old one from the eventqueue
     -- and just insert it again.
     if isJust mt
-        then do let newevs = insert_event thn e (delete_event (fromJust mt) e (events st))
+        then do let newevs = insert_event thn e (deleteEvent (fromJust mt) e (events st))
                 modify $ \st -> st { events = newevs }
     -- otherwise we check if the queue is full before we schedule the new event
         else do meqs <- eventqueueSize
                 if numevents st == meqs
-                   then error "eventqueue full"
+                   then terminate T.ExhaustedEventQueue
                    else do let es' = insert_event thn e (events st)
                            modify $ \st -> st { events    = es'
                                               , numevents = numevents st + 1
@@ -212,15 +198,15 @@ schedule_event r thn val = do
                     then Map.adjust f k m
                     else Map.insert k v m
 
-delete_event :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
-delete_event when v m = case Map.lookup when m of
+deleteEvent :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
+deleteEvent when v m = case Map.lookup when m of
     Just [x] -> if x == v then Map.delete when m else m
     Just x   -> Map.adjust (delete v) when m
     Nothing  -> m
 
-delete_events :: [(Word64, Var s)] -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
-delete_events [] m         = m
-delete_events ((t,v):xs) m = delete_events xs $ delete_event t v m
+deleteEvents :: [(Word64, Var s)] -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
+deleteEvents [] m         = m
+deleteEvents ((t,v):xs) m = deleteEvents xs $ deleteEvent t v m
 
 -- | Inspects the eventqueue and returns the next event time.
 nextEventTime :: Interp s Word64
@@ -273,10 +259,7 @@ performEvents = do
           -- fetch the variable information and reset the event fields
           (r,procs,b,me,mv) <- lift' $ readSTRef e
           lift' $ writeSTRef e (r,procs,b,Nothing,Nothing)
-          
-          -- output event information to trace
-          tell $ toHughes [T.Event (SSM.Interpret.Types.now st) (fromJust mv)]
-          
+
           -- perform the actual update, eventually scheduling processes
           writeVar_ e (fromJust mv) (-1)
 
@@ -296,7 +279,7 @@ enqueue p = do
     nc <- gets numconts
     mcqs <- contqueueSize
     if nc >= mcqs
-        then error "contqueue full"
+        then terminate T.ExhaustedActQueue
         else modify $ \st -> st { readyQueue = IntMap.insert (priority p) p (readyQueue st)
                                 , numconts   = numconts st + 1
                                 }
@@ -499,10 +482,9 @@ pds k = do
     let prio  = priority p                                  -- old prio
     let dep   = depth p                                     -- old dep
     let d'    = dep - ceiling (logBase 2 (fromIntegral k))  -- new dep
-    if d' < 0
-        then error "negative depth"
-    else do let prios = [ prio + i * (2^d') | i <- [0..k-1]]        -- new prios
-            return $ zip prios (repeat d')
+    when (d' < 0) $ terminate T.ExhaustedDepth
+    let prios = [ prio + i * (2^d') | i <- [0..k-1]]        -- new prios
+    return $ zip prios (repeat d')
 
 
 
@@ -605,10 +587,10 @@ leave = do
         (_,_,_,mt,_) <- lift' $ readSTRef r
         return (fromJust mt, r)
 
-    modify $ \st -> st { events = delete_events todeqpairs (events st)
+    modify $ \st -> st { events = deleteEvents todeqpairs (events st)
                        , numevents = numevents st - length todeq
                        }
-    
+
     -- if we have a parent and we are the only running child, schedule the parent
     case parent p of
         Nothing  -> return ()
