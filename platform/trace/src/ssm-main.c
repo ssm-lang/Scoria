@@ -10,7 +10,7 @@ int main(void) {
     ssm_tick();
     if (ssm_next_event_time() == SSM_NEVER)
       break;
-    SSM_DEBUG_TRACE("now %ld\n", ssm_next_event_time());
-    SSM_DEBUG_TRACE("eventqueuesize %d\n", event_queue_len);
+    SSM_DEBUG_TRACE("DriverEventQueueStatus %u %lu\n", event_queue_len, ssm_next_event_time());
   }
+  SSM_DEBUG_TRACE("TerminatedOk");
 }
