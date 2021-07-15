@@ -41,7 +41,11 @@ interpret config = runST interpret'
 
     -- Set up initial activation record
     process <-
-      mkProc (entry p) 0 32 0 Nothing <$> params p <#> Map.empty <#> Nothing <#> body fun
+      mkProc (entry p) 0 32 0 Nothing
+      <$> params p
+      <#> Map.empty
+      <#> Nothing
+      <#> body fun
 
     -- Input references that were given to the program. We fetch them here and put
     -- them in the main state record so that we can print their state afterwards.
@@ -61,23 +65,19 @@ interpret config = runST interpret'
                    (boundContQueueSize config)   -- bound on continuation queue
                    (boundEventQueueSize config)
       ) -- bound on event queue
-    return $ T.Trace (fromHughes events, term)
+    return $ T.Trace (fromHughes events)
 
 -- | Run the interpreter, serving the role of the @main@ function.
-run :: Interp s T.Terminal
+run :: Interp s ()
 run = tick >> runInstant
  where
   -- | Advance model time to the next event time, and calls 'tick'.
-  runInstant :: Interp s T.Terminal
+  runInstant :: Interp s ()
   runInstant = do
     b <- eventQueueEmpty
     if b
-      then return T.TerminatedOk
-      else do
-        n' <- nextEventTime
-        setNow n'
-        tick
-        runInstant
+      then tellEvent T.TerminatedOk
+      else nextEventTime >>= setNow >> tick >> runInstant
 
   -- | Applies all scheduled updates for the current instant, then 'runConts'.
   tick :: Interp s ()
@@ -87,17 +87,17 @@ run = tick >> runInstant
     runConts
     es <- fromIntegral <$> eventQueueSize
     n  <- getNow
-    tellEvent [T.DriverEventQueueStatus es n]
+    tellEvent $ T.DriverEventQueueStatus es n
 
   -- | Pop and run processes from the ready queue until the queue is empty.
   runConts :: Interp s ()
   runConts = do
     cs <- contQueueSize
     unless (cs == 1) $ do
-        p <- dequeue
-        setCurrentProcess p
-        step
-        runConts
+      p <- dequeue
+      setCurrentProcess p
+      step
+      runConts
 
 {- | Run instructions of a process for the current instant.
 
@@ -142,8 +142,8 @@ step = do
       Skip        -> continue
 
       After d r v -> do
-        d'   <- getUInt64 <$> eval d
-        v'   <- eval v
+        d' <- getUInt64 <$> eval d
+        v' <- eval v
         n' <- getNow
         scheduleEvent r (n' + d') v'
         continue

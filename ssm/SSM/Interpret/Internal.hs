@@ -178,17 +178,17 @@ scheduleEvent r thn val = do
   case mt of
     Just t ->
       modify $ \st ->
-        st { events = insert_event thn e (deleteEvent t e (events st)) }
+        st { events = insertEvent thn e (deleteEvent t e (events st)) }
     Nothing -> do
       meqs <- eventqueueSize
       when (numevents st == meqs) $ terminate T.ExhaustedEventQueue
-      modify $ \st -> st { events    = insert_event thn e (events st)
+      modify $ \st -> st { events    = insertEvent thn e (events st)
                          , numevents = numevents st + 1
                          }
  where
-  insert_event
+  insertEvent
     :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
-  insert_event when v m = adjustWithDefault (v :) [v] when m
+  insertEvent when v m = adjustWithDefault (v :) [v] when m
    where
     adjustWithDefault
       :: Ord k => (a -> a) -> a -> k -> Map.Map k a -> Map.Map k a

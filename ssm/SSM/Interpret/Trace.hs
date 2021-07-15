@@ -14,7 +14,8 @@ between instants, so that it increases monotonically throughout the execution.
 module SSM.Interpret.Trace
   ( Trace(..)
   , Event(..)
-  , Terminal(..)
+  , isTerminal
+  , isWellFormed
   ) where
 
 import           Data.Word
@@ -29,7 +30,7 @@ import           Data.Word
 type ActIdent = String
 
 -- | What transpired during the execution of an SSM program.
-newtype Trace = Trace ([Event], Terminal)
+newtype Trace = Trace [Event]
   deriving (Show, Eq)
 
 -- | The events that characterize an execution of an SSM program.
@@ -55,12 +56,8 @@ data Event =
   | ActSensitize VarIdent
 
 -}
-  deriving (Show, Eq, Read)
-
--- | How an execution ends.
-data Terminal =
   -- | Terminated gracefully.
-    TerminatedOk
+  | TerminatedOk
   -- | Did not terminate within microtick limit.
   | ExhaustedMicrotick
   -- | Tried to queue too many activation records in an instant.
@@ -78,3 +75,20 @@ data Terminal =
   -- | Interpreter crashed for an unforeseen reason (should be unreachable).
   | CrashUnforeseen String
   deriving (Show, Eq, Read)
+
+isTerminal :: Event -> Bool
+isTerminal TerminatedOk         = True
+isTerminal ExhaustedMicrotick   = True
+isTerminal ExhaustedActQueue    = True
+isTerminal ExhaustedEventQueue  = True
+isTerminal ExhaustedMemory      = True
+isTerminal ExhaustedDepth       = True
+isTerminal CrashInvalidLater    = True
+isTerminal CrashArithmeticError = True
+isTerminal (CrashUnforeseen _)  = True
+isTerminal _                    = False
+
+isWellFormed :: Trace -> Bool
+isWellFormed (Trace []) = False
+isWellFormed (Trace es) =
+  isTerminal (last es) && not (any isTerminal (init es))

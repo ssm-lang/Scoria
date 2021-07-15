@@ -195,11 +195,11 @@ lift' :: ST s a -> Interp s a
 lift' = lift . lift
 
 -- | Emit event to event log in the interpretation monad.
-tellEvent :: [T.Event] -> Interp s ()
-tellEvent = tell . toHughes
+tellEvent :: T.Event -> Interp s ()
+tellEvent e = tell $ toHughes [e]
 
 -- | Halt interpretation monad, and report terminal condition.
-terminate :: T.Terminal -> Interp s a
+terminate :: T.Event -> Interp s a
 terminate t = error $ show t
 
 -- | Crash upon unforeseen failure mode (as reported by string).
