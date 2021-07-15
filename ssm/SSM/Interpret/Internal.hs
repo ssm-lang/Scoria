@@ -1,226 +1,223 @@
-{-| This module exposes a lot of helper functions and auxiliary definitions that the
-actual interpreter will use to interpret programs. The file is quite large and contains
-a lot of definitions, but I hope it is not unmanagable. -}
+-- | Helper functions and auxiliary definitions the interpreter uses.
 module SSM.Interpret.Internal
-    ( -- * Interpretation monad
-      -- | Interpretation monad that is re-exported from "SSM.Interpret.Types".
-      Interp
-    , InterpretConfig(..)
-    , terminate
-    , crash
-    , tellEvent
+  ( -- * Interpretation monad, re-exported from "SSM.Interpret.Types".
+    Interp
+  , InterpretConfig(..)
+  , terminate
+  , crash
+  , tellEvent
 
-      -- ** Functions that help define the `interpret` function
-      {- | While interpreting statements is quite straight forward, there is some
-      initial work required with setting up the interpretation state. These functions
-      are meant to aid in that process. -}
-    , mkProc
-    , variableStorage
-    , interpState
-    , params
-    , getReferences
+  -- * Interpreter state helpers
+  , mkProc
+  , variableStorage
+  , interpState
+  , params
+  , getReferences
 
-      -- * Talking about time
-      {- | These two functions can be used to interact with the model time. Setting the
-      model time is supposed to be done only by the scheduler. -}
-    , SSM.Interpret.Internal.now
-    , setNow
+  -- * Model time helpers
+  , getNow
+  , setNow
 
-      -- * Interacting with the event queue
-      -- | Managing the event queue is done by interacting with these functions.
-    , eventQueueSize
-    , eventQueueEmpty
-    , nextEventTime
-    , performEvents
-    , scheduleEvent
+  -- * Event queue management helpers
+  , eventQueueSize
+  , eventQueueEmpty
+  , nextEventTime
+  , performEvents
+  , scheduleEvent
 
-      -- * Interacting with the ready queue
-      {- | The ready queue is managed by these functions. Processes can be scheduled and
-      descheduled, and the size of the queue can be quieried. As a bonus, functions for
-      setting and getting the current process is also exposed here. -}
-    , enqueue
-    , dequeue
-    , contQueueSize
-    , currentProcess
-    , setCurrentProcess
+  -- * Activation queue helpers
+  , enqueue
+  , dequeue
+  , contQueueSize
+  , currentProcess
+  , setCurrentProcess
 
-      -- * Instruction management
-      {- | Functions for talking about the instructions a process still has to execute
-      before it can terminate. -}
-    , nextInstruction
-    , pushInstructions
+  -- * Instruction management helpers
+  , nextInstruction
+  , pushInstructions
 
-      -- * Interacting with references
-      -- | Writing to and reading from references are done using these functions.
-    , newRef
-    , writeRef
-    , readRef
-    , newVar
+  -- * Reference helpers
+  , newRef
+  , writeRef
+  , readRef
+  , newVar
 
-      -- * Sensitizing a process
-    , wait
+  -- * Wait, fork, and leave + helpers
+  , wait
+  , fork
+  , setRunningChildren
+  , addressToSelf
+  , pds
+  , leave
 
-      -- * Forking processes
-    , fork
-    , setRunningChildren
-    , addressToSelf
-    , pds
+  -- * Evaluation expressions
+  , eval
+  , getInt32
+  , getInt64
+  , getUInt8
+  , getUInt64
+  , getBool
+  ) where
 
-      -- * Leaving a process
-    , leave
 
-      -- * Evaluation expressions
-      -- ** Evaluating a single expression
-    , eval
 
-      -- ** Escape hatch to go from the embedded expressions to Haskell expressions
-    , getInt32
-    , getInt64
-    , getUInt8
-    , getUInt64
-    , getBool
-    ) where
+import           Control.Monad.ST.Lazy          ( ST )
+import           Control.Monad.State.Lazy       ( MonadState(..)
+                                                , MonadTrans(..)
+                                                , filterM
+                                                , forM
+                                                , forM_
+                                                , gets
+                                                , modify
+                                                , when
+                                                )
+import           Data.Bifunctor                 ( second )
+import           Data.Int                       ( Int32
+                                                , Int64
+                                                )
+import qualified Data.IntMap                   as IntMap
+import           Data.List                      ( delete )
+import qualified Data.Map                      as Map
+import           Data.Maybe                     ( fromJust
+                                                , fromMaybe
+                                                , isJust
+                                                )
+import           Data.STRef.Lazy                ( STRef
+                                                , newSTRef
+                                                , readSTRef
+                                                , writeSTRef
+                                                )
+import           Data.Word                      ( Word64
+                                                , Word8
+                                                )
+import           SSM.Util.HughesList            ( toHughes )
+import           SSM.Util.Operators             ( (<#>) )
 
-import SSM.Util.HughesList (toHughes)
-import SSM.Util.Operators  ((<#>))
-import SSM.Interpret.Types
---import SSM.Interpret.Exp
-import qualified SSM.Interpret.Trace as T
-import SSM.Core.Syntax
-
-import qualified Data.Map as Map
-import qualified Data.IntMap as IntMap
-import Data.STRef.Lazy
-import Data.Int
-import Data.Word
-import Data.Maybe
-import Data.List
-import Data.Bifunctor (second)
-
-import Control.Monad.State.Lazy
-import Control.Monad.Writer.Lazy
-import Control.Monad.ST.Lazy
+import           SSM.Core.Syntax
+import qualified SSM.Interpret.Trace           as T
+import           SSM.Interpret.Types
 
 {-********** Main interpret function helpers **********-}
 
--- | Creates the initial variable storage for a program. Expressions are just
--- allocated in an @STRef@, while references are given a default value and then
--- allocated in an @STRef@.
+{- | Creates the initial variable storage for a program.
+
+Expressions are just allocated in an @STRef@, while references are given
+a default value and then allocated in an @STRef@.
+-}
 params :: Program -> ST s (Map.Map String (Var s))
 params p = do
-    process <- case Map.lookup (entry p) (funs p) of
-        Just p' -> return p'
-        Nothing -> error $ "interpreter error - can not find function " ++ entry p
-    m <- forM (zip (arguments process) (args p)) $ \((n,t), a) ->
-        case a of
-            Left e  -> do
-                v <- newVar' e 0
-                return (n,v)
-            Right r -> do
-                v <- newVar' (defaultValue (dereference t)) 0
-                return (n,v)
-    return $ Map.fromList m
-  where
-      -- | Default values for SSM types.
-      defaultValue :: Type -> SSMExp
-      defaultValue TInt32  = Lit TInt32 $ LInt32 0
-      defaultValue TInt64  = Lit TInt64 $ LInt64 0
-      defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
-      defaultValue TUInt8  = Lit TUInt8 $ LUInt8 0
-      defaultValue TBool   = Lit TBool $ LBool False
-      defaultValue (Ref _) = error "default value of reference not allowed"
+  let process =
+        fromMaybe (error $ "Intepreter: cannot find function: " ++ entry p)
+          $ Map.lookup (entry p) (funs p)
+
+  m <- mapM createParam $ zip (arguments process) (args p)
+
+  return $ Map.fromList m
+ where
+  -- | Default values for SSM types.
+  defaultValue :: Type -> SSMExp
+  defaultValue TInt32  = Lit TInt32 $ LInt32 0
+  defaultValue TInt64  = Lit TInt64 $ LInt64 0
+  defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
+  defaultValue TUInt8  = Lit TUInt8 $ LUInt8 0
+  defaultValue TBool   = Lit TBool $ LBool False
+  defaultValue (Ref _) = error "default value of reference not allowed"
+
+  createParam :: ((a, Type), Either SSMExp b) -> ST s (a, Var s)
+  createParam ((n, t), Left e) = do
+    v <- newVar' e 0
+    return (n, v)
+  createParam ((n, t), Right e) = do
+    v <- newVar' (defaultValue $ dereference t) 0
+    return (n, v)
 
 {- | Given a program and a map of a variable storage, return a list of
 @(name, variable)@ pairs that make up the references in the variable storage
-that appear as input parameters to the program. -}
+that appear as input parameters to the program.
+-}
 getReferences :: Program -> Map.Map String (Var s) -> [(String, Var s)]
 getReferences p m = case Map.lookup (entry p) (funs p) of
-    Just pr -> let refparams   = filter (\(_,t) -> isReference t) $ arguments pr
-                   paramnames = map fst refparams
-                   vars       = map (\n -> (n, Map.lookup n m)) paramnames
-                   vars'      = filter (\(_,may) -> isJust may) vars
-                in map (second fromJust) vars'
-    Nothing -> error "interpreter error - robert did something very wrong"
+  Just pr ->
+    let refparams  = filter (isReference . snd) $ arguments pr
+        paramnames = map fst refparams
+        vars       = map (\n -> (n, Map.lookup n m)) paramnames
+        vars'      = filter (isJust . snd) vars
+    in  map (second fromJust) vars'
+  Nothing -> error "interpreter error - robert did something very wrong"
 
 {-********** Time management **********-}
 
--- | Get the current time
-now :: Interp s Word64
-now = gets SSM.Interpret.Types.now
+-- | Get the current time.
+getNow :: Interp s Word64
+getNow = gets SSM.Interpret.Types.now
 
--- | Set the current time
+-- | Set the current time.
 setNow :: Word64 -> Interp s ()
 setNow w = modify $ \st -> st { SSM.Interpret.Types.now = w }
 
 
-
-
-
-
-
-
 {-********** Interacting with the event queue **********-}
 
-{- | Schedule a delayed update of a reference. The reference @r@ will get the value @val@
-in @thn@ units of time. -}
+{- | Schedule a delayed update of a reference.
+
+The reference @r@ will get the value @val@ in @thn@ units of time.
+-}
 scheduleEvent :: Reference -> Word64 -> SSMExp -> Interp s ()
 scheduleEvent r thn val = do
-    st <- get
+  st <- get
+  e  <- lookupRef (refName r)
 
-    e <- lookupRef (refName r)
+  when (SSM.Interpret.Types.now st > thn) $ terminate T.CrashInvalidLater
 
-    when (SSM.Interpret.Types.now st > thn) $ terminate T.CrashInvalidLater
+  -- Fetch ref so we can update the scheduled information
+  (ref, pr, b, mt, _) <- lift' $ readSTRef e
+  lift' $ writeSTRef e (ref, pr, b, Just thn, Just val)
 
-    -- fetch ref so we can update the scheduled information
-    (ref,pr,b,mt,_) <- lift' $ readSTRef e
-    lift' $ writeSTRef e (ref,pr,b,Just thn, Just val)
+  -- If it was scheduled before we remove the old one from the eventqueue
+  -- and just insert it again.
+  case mt of
+    Just t ->
+      modify $ \st ->
+        st { events = insert_event thn e (deleteEvent t e (events st)) }
+    Nothing -> do
+      meqs <- eventqueueSize
+      when (numevents st == meqs) $ terminate T.ExhaustedEventQueue
+      modify $ \st -> st { events    = insert_event thn e (events st)
+                         , numevents = numevents st + 1
+                         }
+ where
+  insert_event
+    :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
+  insert_event when v m = adjustWithDefault (v :) [v] when m
+   where
+    adjustWithDefault
+      :: Ord k => (a -> a) -> a -> k -> Map.Map k a -> Map.Map k a
+    adjustWithDefault f v k m =
+      if Map.member k m then Map.adjust f k m else Map.insert k v m
 
-    -- if it was scheduled before we remove the old one from the eventqueue
-    -- and just insert it again.
-    if isJust mt
-        then do let newevs = insert_event thn e (deleteEvent (fromJust mt) e (events st))
-                modify $ \st -> st { events = newevs }
-    -- otherwise we check if the queue is full before we schedule the new event
-        else do meqs <- eventqueueSize
-                if numevents st == meqs
-                   then terminate T.ExhaustedEventQueue
-                   else do let es' = insert_event thn e (events st)
-                           modify $ \st -> st { events    = es'
-                                              , numevents = numevents st + 1
-                                              }
-  where
-      insert_event :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
-      insert_event when v m = adjustWithDefault (v :) [v] when m
-        where
-            adjustWithDefault :: Ord k => (a -> a) -> a -> k -> Map.Map k a -> Map.Map k a
-            adjustWithDefault f v k m =
-                if Map.member k m
-                    then Map.adjust f k m
-                    else Map.insert k v m
-
-deleteEvent :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
+deleteEvent
+  :: Word64 -> Var s -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
 deleteEvent when v m = case Map.lookup when m of
-    Just [x] -> if x == v then Map.delete when m else m
-    Just x   -> Map.adjust (delete v) when m
-    Nothing  -> m
+  Just [x] -> if x == v then Map.delete when m else m
+  Just x   -> Map.adjust (delete v) when m
+  Nothing  -> m
 
-deleteEvents :: [(Word64, Var s)] -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
-deleteEvents [] m         = m
-deleteEvents ((t,v):xs) m = deleteEvents xs $ deleteEvent t v m
+deleteEvents
+  :: [(Word64, Var s)] -> Map.Map Word64 [Var s] -> Map.Map Word64 [Var s]
+deleteEvents []            m = m
+deleteEvents ((t, v) : xs) m = deleteEvents xs $ deleteEvent t v m
 
 -- | Inspects the eventqueue and returns the next event time.
 nextEventTime :: Interp s Word64
 nextEventTime = do
-    evs <- gets events
-    if Map.null evs
-        then return maxBound
-        else return $ fst $ Map.findMin evs
+  evs <- gets events
+  if Map.null evs then return maxBound else return $ fst $ Map.findMin evs
 
 -- | Returns @True@ in the Interpretation monad if the event queue is empty.
 eventQueueEmpty :: Interp s Bool
 eventQueueEmpty = do
-    evs <- gets events
-    return $ Map.null evs
+  evs <- gets events
+  return $ Map.null evs
 
 -- | Returns the size of the event queue.
 eventQueueSize :: Interp s Int
@@ -234,339 +231,303 @@ eventqueueSize = gets maxEventQueueSize
 are waiting for one of these events to happen. -}
 performEvents :: Interp s ()
 performEvents = do
-    es <- currentEvents
-    mapM_ performEvent es
-  where
-      -- | Fetch the events at this instant in time, if any
-      currentEvents :: Interp s [Var s]
-      currentEvents = do
-          st <- get
-          n <- SSM.Interpret.Internal.now
-          let current = Map.lookup n (events st)
-          let future  = Map.delete n (events st)
+  es <- currentEvents
+  mapM_ performEvent es
+ where
+  -- | Fetch the events at this instant in time, if any
+  currentEvents :: Interp s [Var s]
+  currentEvents = do
+    st <- get
+    n  <- getNow
+    let current = Map.lookup n (events st)
+    let future  = Map.delete n (events st)
 
-          put $ st { events    = future
-                   , numevents = numevents st - maybe 0 length current
-                   }
-          return $ maybe [] reverse current
+    put $ st { events    = future
+             , numevents = numevents st - maybe 0 length current
+             }
+    return $ maybe [] reverse current
 
-      {- | Perform the update of a scheduled event and enqueue processes that were waiting for
-      this event to happen. -}
-      performEvent :: Var s -> Interp s ()
-      performEvent e = do
-          st <- get
+  -- | Perform the update of a scheduled event and enqueue waiting processes.
+  performEvent :: Var s -> Interp s ()
+  performEvent e = do
+    -- Fetch the variable information and reset the event fields
+    (r, procs, b, me, mv) <- lift' $ readSTRef e
+    lift' $ writeSTRef e (r, procs, b, Nothing, Nothing)
 
-          -- fetch the variable information and reset the event fields
-          (r,procs,b,me,mv) <- lift' $ readSTRef e
-          lift' $ writeSTRef e (r,procs,b,Nothing,Nothing)
-
-          -- perform the actual update, eventually scheduling processes
-          writeVar_ e (fromJust mv) (-1)
-
-
-
-
-
-
-
-
+    -- Perform the actual update, eventually scheduling processes
+    writeVar_ e (fromJust mv) (-1)
 
 {-********** Interacting with the ready queue **********-}
 
 -- | Enqueue a process in the ready queue, ordered by its priority
 enqueue :: Proc s -> Interp s ()
 enqueue p = do
-    nc <- gets numconts
-    mcqs <- contqueueSize
-    if nc >= mcqs
-        then terminate T.ExhaustedActQueue
-        else modify $ \st -> st { readyQueue = IntMap.insert (priority p) p (readyQueue st)
-                                , numconts   = numconts st + 1
-                                }
+  nc   <- gets numconts
+  mcqs <- contqueueSize
+  if nc >= mcqs
+    then terminate T.ExhaustedActQueue
+    else modify $ \st -> st
+      { readyQueue = IntMap.insert (priority p) p (readyQueue st)
+      , numconts   = numconts st + 1
+      }
 
--- | Fetch the process with the lowest priority from the ready queue
+-- | Fetch the process with the lowest priority from the ready queue.
 dequeue :: Interp s (Proc s)
 dequeue = do
-    st <- get
-    let conts = readyQueue st
-    if IntMap.null conts
-        then crash "Interpreter error: dequeue called on empty readyqueue"
-        else do let x = IntMap.findMin conts
-                let conts' = IntMap.deleteMin conts
-                put $ st { readyQueue = conts'
-                         , numconts = numconts st - 1
-                         }
-                return $ snd x
+  st <- get
+  let conts = readyQueue st
+  when (IntMap.null conts)
+    $ crash "Interpreter error: dequeue called on empty readyqueue"
+  put $ st { readyQueue = IntMap.deleteMin conts, numconts = numconts st - 1 }
+  return $ snd $ IntMap.findMin conts
 
--- | Upper bound on the size of the ready queue
+-- | Upper bound on the size of the ready queue.
 contqueueSize :: Interp s Int
 contqueueSize = gets maxContQueueSize
 
--- | Size of the ready queue
+-- | Size of the ready queue.
 contQueueSize :: Interp s Int
 contQueueSize = gets numconts
 
--- | Set the current process
+-- | Set the current process.
 setCurrentProcess :: Proc s -> Interp s ()
 setCurrentProcess p = modify $ \st -> st { process = p }
 
--- | Get the current process
+-- | Get the current process.
 currentProcess :: Interp s (Proc s)
 currentProcess = gets process
 
-
-
-
-
-
-
-
-
 {-********** Instruction management **********-}
 
-{- | Return the next instruction of the current process, if one exists.
-Nothing will be returned if the process has no more work to do. -}
+{- | Return the next instruction of the current process, if one exists
+
+Nothing will be returned if the process has no more work to do.
+-}
 nextInstruction :: Interp s (Maybe Stm)
 nextInstruction = do
-    p <- gets process
-    case continuation p of
-        [] -> return Nothing
-        (x:xs) -> do modify $ \st -> st { process = p { continuation = xs } }
-                     return $ Just x
+  p <- gets process
+  case continuation p of
+    []       -> return Nothing
+    (x : xs) -> do
+      modify $ \st -> st { process = p { continuation = xs } }
+      return $ Just x
 
 -- | Push additional instructions onto a process. Used e.g when evaluating
 -- an if statement, where one of the branches should be evaluated.
 pushInstructions :: [Stm] -> Interp s ()
 pushInstructions stmts = do
-    p <- gets process
-    modify $ \st -> st { process = p { continuation = stmts ++ continuation p } }
-
-
-
-
-
-
-
-
+  p <- gets process
+  modify $ \st -> st { process = p { continuation = stmts ++ continuation p } }
 
 {-********** Variable management **********-}
 
 -- | Create a variable with an initial value
 createVar :: SSMExp -> Interp s (Var s)
 createVar e = do
-    v <- eval e
-    now' <- SSM.Interpret.Internal.now
-    lift' $ newVar' v now'
+  v <- eval e
+  n <- getNow
+  lift' $ newVar' v n
 
-{- | Create a new reference with an initial value, and add it to the current process's
-variable storage. It is considered written to when it is created.
+{- | Create a new reference with an initial value.
 
-Note: it is added to the map containing the local variables. -}
+Adds it to the current process's variable storage; when a variable is created it
+is considered written to in that instant.
+-}
 newRef :: Name -> SSMExp -> Interp s ()
 newRef n e = do
-    ref <- createVar e
-    p <- gets process
-    modify $ \st -> st { process = p { localrefs = Map.insert (getVarName n) ref (localrefs p) } }
+  ref <- createVar e
+  p   <- gets process
+  modify $ \st -> st
+    { process = p { localrefs = Map.insert (getVarName n) ref (localrefs p) }
+    }
 
-{- | Create a new variable with an initial value, and adds it to the current process's
-variable storage. When a variable is created it is considered written to.
+{- | Create a new variable with an initial value.
+
+Adds it to the current process's variable storage; when a variable is created it
+is considered written to in that instant.
 
 Note: This does the same thing as `NewRef`, but it adds the reference to the map
-containing expression variables & references supplied by a caller. -}
+containing expression variables & references supplied by a caller.
+-}
 newVar :: Name -> SSMExp -> Interp s ()
 newVar n e = do
-    ref <- createVar e
-    p <- gets process
-    modify $ \st -> st { process = p { variables = Map.insert (getVarName n) ref (variables p) } }
+  ref <- createVar e
+  p   <- gets process
+  modify $ \st -> st
+    { process = p { variables = Map.insert (getVarName n) ref (variables p) }
+    }
 
 -- | Write a value to a variable.
 writeRef :: String -> SSMExp -> Interp s ()
 writeRef r e = do
-    p <- gets process
-    case Map.lookup r (variables p) of
-        Just ref -> do v <- eval e
-                       writeVar ref v
-        Nothing  -> case Map.lookup r (localrefs p) of
-            Just ref -> do v <- eval e
-                           writeVar ref v
-            Nothing -> error $ "Interpreter: cannot find variable: " ++ r
+  p <- gets process
+  case Map.lookup r (variables p) of
+    Just ref -> do
+      v <- eval e
+      writeVar ref v
+    Nothing -> case Map.lookup r (localrefs p) of
+      Just ref -> do
+        v <- eval e
+        writeVar ref v
+      Nothing -> error $ "Interpreter: cannot find variable: " ++ r
 
--- | Read the value of a reference
+-- | Read the value of a reference.
 readRef :: Reference -> Interp s SSMExp
 readRef r = do
-    r <- lookupRef (refName r)
-    (vr,_,_,_,_) <- lift' $ readSTRef r
-    lift' $ readSTRef vr
+  r                <- lookupRef (refName r)
+  (vr, _, _, _, _) <- lift' $ readSTRef r
+  lift' $ readSTRef vr
 
-{- | This function returns @True@ if variable was written in this instant, and otherwise
-@False@. -}
+-- | Whether a variable was written to in this instant.
 wasWritten :: String -> Interp s SSMExp
 wasWritten r = do
-    p <- gets process
-    n <- SSM.Interpret.Internal.now
-    case Map.lookup r (variables p) of
-        Just v -> do (_,_,t,_,_) <- lift' $ readSTRef v
-                     return $ Lit TBool $ LBool $ t == n
-        Nothing -> case Map.lookup r (localrefs p) of
-            Just v  -> do (_,_,t,_,_) <- lift' $ readSTRef v
-                          return $ Lit TBool $ LBool $ t == n
-            Nothing -> error $ "Interpreter: can not find variable: " ++ r
+  p <- gets process
+  n <- getNow
+  case Map.lookup r (variables p) of
+    Just v -> do
+      (_, _, t, _, _) <- lift' $ readSTRef v
+      return $ Lit TBool $ LBool $ t == n
+    Nothing -> case Map.lookup r (localrefs p) of
+      Just v -> do
+        (_, _, t, _, _) <- lift' $ readSTRef v
+        return $ Lit TBool $ LBool $ t == n
+      Nothing -> error $ "Interpreter: can not find variable: " ++ r
 
 -- | Creates a new `Var s` with an initial value.
 newVar' :: SSMExp -> Word64 -> ST s (Var s)
 newVar' v n = do
-    val <- newSTRef v
-    ref <- newSTRef (val, Map.empty, n, Nothing, Nothing)
-    return ref
+  val <- newSTRef v
+  newSTRef (val, Map.empty, n, Nothing, Nothing)
 
 -- | Write a value to a variable.
 writeVar :: Var s -> SSMExp -> Interp s ()
 writeVar ref e = do
-    p <- gets process
-    writeVar_ ref e (priority p)
+  p <- gets process
+  writeVar_ ref e (priority p)
 
-{- | Helper that writes a value to a variable, with the given priority. The priority
-is used to make sure that we only enqueue those sensitized processes that has a priority
-larger than the one we have as a parameter here. -}
+{- | Writes a value to a variable, with the specified priority.
+
+The priority is used to make sure that we only enqueue those sensitized
+processes that has a priority larger than the one we have as a parameter here.
+-}
 writeVar_ :: Var s -> SSMExp -> Int -> Interp s ()
 writeVar_ ref e prio = do
-    (variable,waits,_,me,mv) <- lift' $ readSTRef ref
-    lift' $ writeSTRef variable e -- actually update the variable value
+  (variable, waits, _, me, mv) <- lift' $ readSTRef ref
+  lift' $ writeSTRef variable e -- actually update the variable value
 
-    let (keep, towake) = Map.split prio waits
+  let (keep, towake) = Map.split prio waits
 
-    -- wake up and desensitize the processes
-    mapM_ desensitize towake
+  -- wake up and desensitize the processes
+  mapM_ desensitize towake
 
-    -- update the variable to be written to in this instant and give it knowledge of
-    -- which processes are still waiting on it
-    n <- SSM.Interpret.Internal.now
-    lift' $ writeSTRef ref (variable, keep, n, me, mv)
-  where
-      {- | Desensitize a process by waking it up, removing it from all variables
-      waiting lists and enqueueing it in the ready queue. -}
-      desensitize :: Proc s -> Interp s ()
-      desensitize p = do
-          let variables = fromJust $ waitingOn p
-          forM_ variables $ \r -> do
-              (ref,procs,b,me,mv) <- lift' $ readSTRef r
-              lift' $ writeSTRef r (ref, Map.delete (priority p) procs,b,me,mv)
-          enqueue $ p { waitingOn = Nothing }
+  -- update the variable to be written to in this instant and give it knowledge
+  -- of which processes are still waiting on it
+  n <- getNow
+  lift' $ writeSTRef ref (variable, keep, n, me, mv)
+ where
+  -- | Wake up a process, remove it from all trigger lists, and enqueueing it.
+  desensitize :: Proc s -> Interp s ()
+  desensitize p = do
+    let variables = fromJust $ waitingOn p
+    forM_ variables $ \r -> do
+      (ref, procs, b, me, mv) <- lift' $ readSTRef r
+      lift' $ writeSTRef r (ref, Map.delete (priority p) procs, b, me, mv)
+    enqueue $ p { waitingOn = Nothing }
 
 -- | Look up a variable in the current process's variable store.
 lookupRef :: String -> Interp s (Var s)
 lookupRef r = do
-    p <- gets process
-    case Map.lookup r (variables p) of
+  p <- gets process
+  case Map.lookup r (variables p) of
+    Just ref -> return ref
+    Nothing  -> case Map.lookup r (localrefs p) of
       Just ref -> return ref
-      Nothing  -> case Map.lookup r (localrefs p) of
-          Just ref -> return ref
-          Nothing -> crash $ "Interpreter: can not find variable: " ++ r
+      Nothing  -> crash $ "Interpreter: can not find variable: " ++ r
 
 -- | Make a procedure wait for writes to the variable identified by the name @v@.
 sensitize :: String -> Interp s ()
 sensitize v = do
-    p <- gets process
-    r <- lookupRef v
-    (ref,procs,b,me,mv) <- lift' $ readSTRef r
-    -- don't want to register a process twice
-    if Map.member (priority p) procs
-        then return ()
-        else lift' $ writeSTRef r (ref, Map.insert (priority p) p procs,b,me,mv)
+  p                       <- gets process
+  r                       <- lookupRef v
+  (ref, procs, b, me, mv) <- lift' $ readSTRef r
+  -- don't want to register a process twice
+  if Map.member (priority p) procs
+    then return ()
+    else lift' $ writeSTRef r (ref, Map.insert (priority p) p procs, b, me, mv)
 
 -- | This function will, if told how many new processes are being forked, compute
 -- new priorities and depths for them.
 pds :: Int -> Interp s [(Int, Int)]
 pds k = do
-    p <- gets process
-    let prio  = priority p                                  -- old prio
-    let dep   = depth p                                     -- old dep
-    let d'    = dep - ceiling (logBase 2 (fromIntegral k))  -- new dep
-    when (d' < 0) $ terminate T.ExhaustedDepth
-    let prios = [ prio + i * (2^d') | i <- [0..k-1]]        -- new prios
-    return $ zip prios (repeat d')
-
-
-
-
-
-
-
-
+  p <- gets process
+  let prio = priority p                                  -- old prio
+  let dep  = depth p                                     -- old dep
+  let d' = dep - ceiling (logBase 2 (fromIntegral k))  -- new dep
+  when (d' < 0) $ terminate T.ExhaustedDepth
+  let prios = [ prio + i * (2 ^ d') | i <- [0 .. k - 1] ]        -- new prios
+  return $ zip prios (repeat d')
 
 {-********** Sensitizing a process **********-}
 
-{- | This function will make sure that the current process will block until any of the
-references in the list @refs@ have been written to. -}
+{- | This function will make sure that the current process will block until any
+of the references in the list @refs@ have been written to.
+-}
 wait :: [Reference] -> Interp s ()
 wait refs = do
-    refs' <- mapM (lookupRef . fst) refs
-    modify $ \st -> st { process = (process st) { waitingOn = Just refs' } }
-    mapM_ (sensitize . fst) refs
-
-
-
-
-
-
-
-
+  refs' <- mapM (lookupRef . fst) refs
+  modify $ \st -> st { process = (process st) { waitingOn = Just refs' } }
+  mapM_ (sensitize . fst) refs
 
 {-********** Forking processes **********-}
 
 -- | Set the number of running children of the current process to @n@.
 setRunningChildren :: Int -> Interp s ()
 setRunningChildren n =
-    modify $ \st -> st { process = (process st) { runningChildren = n } }
+  modify $ \st -> st { process = (process st) { runningChildren = n } }
 
 -- | Get a @STRef@ which points to the current running process's activation record.
 addressToSelf :: Interp s (STRef s (Proc s))
 addressToSelf = do
-    p <- gets process
-    lift' $ newSTRef p
+  p <- gets process
+  lift' $ newSTRef p
 
 -- | Fork a new process.
-fork :: (String, [Either SSMExp Reference])  -- ^ Procedure to fork (name and arguments)
-     -> Int                                  -- ^ Priority of the new process
-     -> Int                                  -- ^ Depth of the new process
-     -> STRef s (Proc s)                     -- ^ Reference to the parent process
-     -> Interp s ()
-fork (n,args) prio dep par = do
-    p <- lookupProcedure n
-    variables <- params $ (fst . unzip . arguments) p
-    enqueue $ mkProc prio dep 0 (Just par) variables Map.empty Nothing (body p)
-  where
-      -- | Return an initial variable storage for the new process. Expression arguments are turned into
-      -- new STRefs while reference arguments are passed from the calling processes variable storage.
-      params :: [String] -> Interp s (Map.Map String (Var s))
-      params names = do
-          st <- gets process
-          currenttime <- SSM.Interpret.Internal.now
-          m <- flip mapM (zip names args) $ \(n, a) ->
-              case a of
-                  Left e  -> do v <- eval e
-                                v' <- lift' (newVar' v currenttime)
-                                return (n, v')
-                  Right r -> do ref <- lookupRef (fst r)
-                                return (n, ref)
-          return $ Map.fromList m
+fork
+  :: (String, [Either SSMExp Reference])  -- ^ Procedure to fork (name and arguments)
+  -> Int                                  -- ^ Priority of the new process
+  -> Int                                  -- ^ Depth of the new process
+  -> STRef s (Proc s)                     -- ^ Reference to the parent process
+  -> Interp s ()
+fork (name, args) prio dep par = do
+  p         <- lookupProcedure name
+  variables <- params $ (map fst . arguments) p
+  enqueue
+    $ mkProc name prio dep 0 (Just par) variables Map.empty Nothing (body p)
+ where
+  -- | Return an initial variable storage for the new process. Expression arguments are turned into
+  -- new STRefs while reference arguments are passed from the calling processes variable storage.
+  params :: [String] -> Interp s (Map.Map String (Var s))
+  params names = do
+    st <- gets process
+    n  <- getNow
+    m  <- forM (zip names args) $ \(nm, a) -> case a of
+      Left e -> do
+        v  <- eval e
+        v' <- lift' (newVar' v n)
+        return (nm, v')
+      Right r -> do
+        ref <- lookupRef (fst r)
+        return (nm, ref)
+    return $ Map.fromList m
 
-      -- | Simple lookup function that throws an error if the desired procedure does not exist in
-      -- the procedure storage.
-      lookupProcedure :: String -> Interp s Procedure
-      lookupProcedure n = do
-          st <- get
-          case Map.lookup n (procedures st) of
-              Just p -> return p
-              Nothing -> crash $ "Interpreter: cannot fork non-existent procedure: " ++ n
-
-
-
-
-
-
-
-
+  -- | Finds a procedure in interpreter monad's procedure dictionary.
+  lookupProcedure :: String -> Interp s Procedure
+  lookupProcedure n = do
+    st <- get
+    case Map.lookup n (procedures st) of
+      Just p -> return p
+      Nothing ->
+        crash $ "Interpreter: cannot fork non-existent procedure: " ++ n
 
 {-********** Process termination **********-}
 
@@ -576,37 +537,31 @@ current process is the only child, enqueue the parent process. Otherwise, make s
 that the parent process knows that one child process has terminated. -}
 leave :: Interp s ()
 leave = do
-    p <- gets process
+  p <- gets process
 
-    -- need to dequeue event on local references before we leave
-    let lrefs = Map.elems $ localrefs p
-    todeq <- flip filterM lrefs $ \r -> do   -- references to dequeue
-        (_,_,_,mt,_) <- lift' $ readSTRef r
-        return $ isJust mt
-    todeqpairs <- flip mapM todeq $ \r -> do -- turn them into pairs
-        (_,_,_,mt,_) <- lift' $ readSTRef r
-        return (fromJust mt, r)
+  -- need to dequeue event on local references before we leave
+  let lrefs = Map.elems $ localrefs p
+  todeq <- flip filterM lrefs $ \r -> do   -- references to dequeue
+    (_, _, _, mt, _) <- lift' $ readSTRef r
+    return $ isJust mt
+  todeqpairs <- forM todeq $ \r -> do -- turn them into pairs
+    (_, _, _, mt, _) <- lift' $ readSTRef r
+    return (fromJust mt, r)
 
-    modify $ \st -> st { events = deleteEvents todeqpairs (events st)
-                       , numevents = numevents st - length todeq
-                       }
+  modify $ \st -> st { events    = deleteEvents todeqpairs (events st)
+                     , numevents = numevents st - length todeq
+                     }
 
-    -- if we have a parent and we are the only running child, schedule the parent
-    case parent p of
-        Nothing  -> return ()
-        Just p' -> do
-            par' <- lift' $ readSTRef p'
-            if runningChildren par' == 1
-                then enqueue $ par' { runningChildren = 0 }
-                else lift' $ writeSTRef p' $ par' { runningChildren = runningChildren par' - 1 }
-
-
-
-
-
-
-
-
+  -- if we have a parent and we are the only running child, schedule the parent
+  case parent p of
+    Nothing -> return ()
+    Just p' -> do
+      par' <- lift' $ readSTRef p'
+      if runningChildren par' == 1
+        then enqueue $ par' { runningChildren = 0 }
+        else lift' $ writeSTRef p' $ par'
+          { runningChildren = runningChildren par' - 1
+          }
 
 {-********** Expression evaluation **********-}
 
@@ -614,44 +569,55 @@ leave = do
 -- | Evaluate an @SSM@ expression
 eval :: SSMExp -> Interp s SSMExp
 eval e = do
-    p <- gets process
-    case e of
-        Var _ n -> case Map.lookup n (variables p) of
-            Just r -> do 
-                v <- lift $ lift $ (readSTRef . \(x,_,_,_,_) -> x) =<< readSTRef r
-                eval v
-            Nothing -> crash $ "Interpreter: variable not found: " ++ n
-            -- TODO: report name of process here
-        Lit _ l -> return e
-        UOpR _ r op -> case op of
-            Changed -> wasWritten $ fst r
-        UOpE _ e Neg -> do
-            e' <- eval e
-            return $ neg e'
-        BOp TBool e1 e2 op -> do
-            l1 <- eval e1
-            l2 <- eval e2
-            case op of
-                OLT -> return $ lessthan l1 l2
-                OEQ -> return $ equals l1 l2
-                _   -> crash $ "Type error: binary operator does not return TBool: " ++ show op
-        BOp _ e1 e2 op -> do
-            i1 <- eval e1
-            i2 <- eval e2
-            case op of
-                OPlus  -> return $ addition i1 i2
-                OMinus -> return $ SSM.Interpret.Internal.subtract i1 i2
-                OTimes -> return $ multiply i1 i2
-                _      -> crash $ "Type error: binary operator does not return int type: " ++ show op
+  p <- gets process
+  case e of
+    Var _ n -> case Map.lookup n (variables p) of
+      Just r -> do
+        v <- lift $ lift $ (readSTRef . \(x, _, _, _, _) -> x) =<< readSTRef r
+        eval v
+      Nothing ->
+        crash
+          $  "Interpreter: in process '"
+          ++ procname p
+          ++ "', variable not found: "
+          ++ n
+    Lit _ l     -> return e
+    UOpR _ r op -> case op of
+      Changed -> wasWritten $ fst r
+    UOpE _ e Neg -> do
+      e' <- eval e
+      return $ neg e'
+    BOp TBool e1 e2 op -> do
+      l1 <- eval e1
+      l2 <- eval e2
+      case op of
+        OLT -> return $ lessthan l1 l2
+        OEQ -> return $ equals l1 l2
+        _ ->
+          crash
+            $  "Type error: binary operator does not return TBool: "
+            ++ show op
+    BOp _ e1 e2 op -> do
+      i1 <- eval e1
+      i2 <- eval e2
+      case op of
+        OPlus  -> return $ addition i1 i2
+        OMinus -> return $ SSM.Interpret.Internal.subtract i1 i2
+        OTimes -> return $ multiply i1 i2
+        _ ->
+          crash
+            $  "Type error: binary operator does not return int type: "
+            ++ show op
 
 expOpTypeError :: String -> SSMExp -> SSMExp -> a
-expOpTypeError op le re = error
-           $ "Type error: cannot "
-           ++ op
-           ++ " terms of different types: "
-           ++ show le
-           ++ " v.s. "
-           ++ show re
+expOpTypeError op le re =
+  error
+    $  "Type error: cannot "
+    ++ op
+    ++ " terms of different types: "
+    ++ show le
+    ++ " v.s. "
+    ++ show re
 
 expTypeError :: String -> SSMExp -> a
 expTypeError t e = error $ "Type error: not a " ++ t ++ ": " ++ show e
@@ -660,54 +626,67 @@ expTypeError t e = error $ "Type error: not a " ++ t ++ ": " ++ show e
 neg :: SSMExp -> SSMExp
 neg (Lit _ (LInt32 i)) = Lit TInt32 $ LInt32 (-i)
 neg (Lit _ (LInt64 i)) = Lit TInt64 $ LInt64 (-i)
-neg _ = error "can only negate signed integer types"
+neg _                  = error "can only negate signed integer types"
 
 -- | Compute the ordering of an expression
 lessthan :: SSMExp -> SSMExp -> SSMExp
-lessthan (Lit _ (LInt32 i1))   (Lit _ (LInt32 i2)) = Lit TBool $ LBool $ i1 < i2
-lessthan (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TBool $ LBool $ i1 < i2
-lessthan (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TBool $ LBool $ i1 < i2
-lessthan (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) = Lit TBool $ LBool $ i1 < i2
 lessthan le re = expOpTypeError "compare" le re
 
 -- | Check if two expressions are equal
 equals :: SSMExp -> SSMExp -> SSMExp
-equals (Lit _ (LInt32 i1))   (Lit _ (LInt32 i2)) = Lit TBool $ LBool $ i1 == i2
-equals (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LInt32  i1)) (Lit _ (LInt32  i2)) = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LInt64  i1)) (Lit _ (LInt64  i2)) = Lit TBool $ LBool $ i1 == i2
 equals (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TBool $ LBool $ i1 == i2
-equals (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TBool $ LBool $ i1 == i2
-equals (Lit _ (LBool b1))  (Lit _ (LBool b2))    = Lit TBool $ LBool $ b1 == b2
+equals (Lit _ (LUInt8  i1)) (Lit _ (LUInt8  i2)) = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LBool   b1)) (Lit _ (LBool   b2)) = Lit TBool $ LBool $ b1 == b2
 equals le re = expOpTypeError "compare" le re
 
 -- | Add two expressions
 addition :: SSMExp -> SSMExp -> SSMExp
-addition (Lit _ (LInt32 i1))   (Lit _ (LInt32 i2)) = Lit TInt32  $ LInt32  $ i1 + i2
-addition (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TInt64  $ LInt64  $ i1 + i2
-addition (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 + i2
-addition (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TUInt8  $ LUInt8  $ i1 + i2
+addition (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
+  Lit TInt32 $ LInt32 $ i1 + i2
+addition (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
+  Lit TInt64 $ LInt64 $ i1 + i2
+addition (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TUInt64 $ LUInt64 $ i1 + i2
+addition (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
+  Lit TUInt8 $ LUInt8 $ i1 + i2
 addition le re = expOpTypeError "add" le re
 
 -- | Subtract two expressions
 subtract :: SSMExp -> SSMExp -> SSMExp
-subtract (Lit _ (LInt32 i1))   (Lit _ (LInt32 i2)) = Lit TInt32  $ LInt32  $ i1 - i2
-subtract (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TInt64  $ LInt64  $ i1 - i2
-subtract (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 - i2
-subtract (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TUInt8  $ LUInt8  $ i1 - i2
+subtract (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
+  Lit TInt32 $ LInt32 $ i1 - i2
+subtract (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
+  Lit TInt64 $ LInt64 $ i1 - i2
+subtract (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TUInt64 $ LUInt64 $ i1 - i2
+subtract (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
+  Lit TUInt8 $ LUInt8 $ i1 - i2
 subtract le re = expOpTypeError "subtract" le re
 
 -- | Multiply two expressions
 multiply :: SSMExp -> SSMExp -> SSMExp
-multiply (Lit _ (LInt32 i1))   (Lit _ (LInt32 i2)) = Lit TInt32  $ LInt32  $ i1 * i2
-multiply (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2))   = Lit TInt64  $ LInt64  $ i1 * i2
-multiply (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ i1 * i2
-multiply (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2))   = Lit TUInt8  $ LUInt8  $ i1 * i2
+multiply (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
+  Lit TInt32 $ LInt32 $ i1 * i2
+multiply (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
+  Lit TInt64 $ LInt64 $ i1 * i2
+multiply (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TUInt64 $ LUInt64 $ i1 * i2
+multiply (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
+  Lit TUInt8 $ LUInt8 $ i1 * i2
 multiply le re = expOpTypeError "multiply" le re
 
 {- | Retrieve a Haskell @Int32@ from an expression. Will crash if the expression
 is not an @Int32@. -}
 getInt32 :: SSMExp -> Int32
 getInt32 (Lit _ (LInt32 i)) = i
-getInt32 e                = expTypeError "Int32" e
+getInt32 e                  = expTypeError "Int32" e
 
 {- | Retrieve a Haskell @Int64@ from an expression. Will crash if the expression
 is not an @Int64@. -}
@@ -718,8 +697,8 @@ getInt64 e                  = expTypeError "Int64" e
 {- | Retrieve a Haskell @Word8@ from an expression. Will crash if the expression
 is not an @Word8@. -}
 getUInt8 :: SSMExp -> Word8
-getUInt8 (Lit _ (LUInt8  i)) = i
-getUInt8 e                   = expTypeError "Word8" e
+getUInt8 (Lit _ (LUInt8 i)) = i
+getUInt8 e                  = expTypeError "Word8" e
 
 {- | Retrieve a Haskell @Word64@ from an expression. Will crash if the expression
 is not an @Word64@. -}

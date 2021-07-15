@@ -41,7 +41,7 @@ interpret config = runST interpret'
 
     -- Set up initial activation record
     process <-
-      mkProc 0 32 0 Nothing <$> params p <#> Map.empty <#> Nothing <#> body fun
+      mkProc (entry p) 0 32 0 Nothing <$> params p <#> Map.empty <#> Nothing <#> body fun
 
     -- Input references that were given to the program. We fetch them here and put
     -- them in the main state record so that we can print their state afterwards.
@@ -74,8 +74,8 @@ run = tick >> runInstant
     if b
       then return T.TerminatedOk
       else do
-        now' <- nextEventTime
-        setNow now'
+        n' <- nextEventTime
+        setNow n'
         tick
         runInstant
 
@@ -86,8 +86,8 @@ run = tick >> runInstant
     nc <- contQueueSize
     runConts
     es <- fromIntegral <$> eventQueueSize
-    c  <- now
-    tellEvent [T.DriverEventQueueStatus es c]
+    n  <- getNow
+    tellEvent [T.DriverEventQueueStatus es n]
 
   -- | Pop and run processes from the ready queue until the queue is empty.
   runConts :: Interp s ()
@@ -144,8 +144,8 @@ step = do
       After d r v -> do
         d'   <- getUInt64 <$> eval d
         v'   <- eval v
-        now' <- now
-        scheduleEvent r (now' + d') v'
+        n' <- getNow
+        scheduleEvent r (n' + d') v'
         continue
 
       Wait refs -> do
