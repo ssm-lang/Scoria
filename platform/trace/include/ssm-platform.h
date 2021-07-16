@@ -25,7 +25,7 @@ extern unsigned long debug_count;
   if (debug_count++ >= SSM_DEBUG_LIMIT)                                        \
   exit(1)
 
-#define SSM_DEBUG_TRACE(...) printf(__VA_ARGS__)
+#define SSM_DEBUG_TRACE(...) printf(__VA_ARGS__), printf("\n")
 
 #define SSM_DEBUG_ASSERT(assertion, ...)                                       \
   do {                                                                         \
