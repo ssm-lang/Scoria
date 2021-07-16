@@ -82,7 +82,7 @@ type Var s
 -- | Process activation records.
 data Proc s = Proc
   { -- | Name of the process
-    procname :: String
+    procName :: String
     -- | priority of the process
   , priority        :: Int
     -- | The depth, which helps give priorities to children

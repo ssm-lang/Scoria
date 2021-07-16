@@ -77,7 +77,12 @@ run = tick >> runInstant
     b <- eventQueueEmpty
     if b
       then tellEvent T.TerminatedOk
-      else nextEventTime >>= setNow >> tick >> runInstant
+      else do
+        es <- fromIntegral <$> eventQueueSize
+        n  <- getNow
+        tellEvent $ T.DriverEventQueueStatus es n
+        nextEventTime >>= setNow
+        tick >> runInstant
 
   -- | Applies all scheduled updates for the current instant, then 'runConts'.
   tick :: Interp s ()
@@ -85,17 +90,15 @@ run = tick >> runInstant
     performEvents
     nc <- contQueueSize
     runConts
-    es <- fromIntegral <$> eventQueueSize
-    n  <- getNow
-    tellEvent $ T.DriverEventQueueStatus es n
 
   -- | Pop and run processes from the ready queue until the queue is empty.
   runConts :: Interp s ()
   runConts = do
     cs <- contQueueSize
-    unless (cs == 1) $ do
+    unless (cs < 1) $ do
       p <- dequeue
       setCurrentProcess p
+      tellEvent $ T.ActStepBegin $ procName p
       step
       runConts
 

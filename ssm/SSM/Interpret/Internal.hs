@@ -9,6 +9,7 @@ module SSM.Interpret.Internal
 
   -- * Interpreter state helpers
   , mkProc
+  , procName
   , variableStorage
   , interpState
   , params
@@ -578,7 +579,7 @@ eval e = do
       Nothing ->
         crash
           $  "Interpreter: in process '"
-          ++ procname p
+          ++ procName p
           ++ "', variable not found: "
           ++ n
     Lit _ l     -> return e
