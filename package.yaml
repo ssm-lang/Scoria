@@ -56,6 +56,7 @@ tests:
     - text
     - QuickCheck
     - hspec
+    - Diff
   2-arbitrary:
     main:                Spec.hs
     source-dirs:
@@ -72,3 +73,4 @@ tests:
     - text
     - QuickCheck
     - hspec
+    - Diff

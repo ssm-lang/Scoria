@@ -20,15 +20,15 @@ import           Test.SSM.Build                 ( doCompile
                                                 , doMake
                                                 , doVg
                                                 )
-import           Test.SSM.Output                ( doCompareTraces
-                                                , doInterpret
-                                                , doParseOutput
-                                                )
 import           Test.SSM.Report                ( Slug(..)
                                                 , TestName(..)
                                                 , getSlug
                                                 , reportProgramOnFail
                                                 , reportSlug
+                                                )
+import           Test.SSM.Trace                 ( doCompareTraces
+                                                , doInterpret
+                                                , doParseOutput
                                                 )
 
 -- | List to store event queue sizes for testing
@@ -52,7 +52,7 @@ propCompilesWithSize tn program (aQSize, eQSize) = do
 
 -- | Tests an SSM program by evaluating it under valgrind.
 propValgrind :: TestName -> Program -> QC.Property
-propValgrind tn program = 
+propValgrind tn program =
   QC.monadicIO $ mapM_ (propValgrindWithSize tn program) queueSizes
 
 -- | Tests an SSM program by evaluating it under valgrind, given some size
@@ -69,7 +69,7 @@ propValgrindWithSize tn program (aQSize, eQSize) = do
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
 propCorrect :: TestName -> Program -> QC.Property
-propCorrect tn program = 
+propCorrect tn program =
   QC.monadicIO $ mapM_ (propCorrectWithSize tn program) queueSizes
 
 -- | Tests an SSM program by evaluating both the interpreter and running the

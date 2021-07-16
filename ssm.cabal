@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d5aae9166f5822f02c1cbbc38a97c6c0b268072826f23dfd8dd147c4d9a2fdaa
+-- hash: 373622a390fd6b84143d49f988fe83cb8f2cb0839db38b532c6430535a871adc
 
 name:           ssm
 version:        0.1.0.0
@@ -74,7 +74,6 @@ test-suite 1-regression-low
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Output
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
@@ -89,6 +88,7 @@ test-suite 1-regression-low
       Test.SSM.QuickCheck.Shrink.Wait
       Test.SSM.QuickCheck.Util
       Test.SSM.Report
+      Test.SSM.Trace
       Regression.EmptyFunSpec
       Regression.FiveForkerSpec
       Regression.FlipFlopLoopSpec
@@ -111,6 +111,7 @@ test-suite 1-regression-low
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
+    , Diff
     , QuickCheck
     , base >=4.7 && <5
     , bytestring
@@ -136,7 +137,6 @@ test-suite 2-arbitrary
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Output
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
@@ -151,6 +151,7 @@ test-suite 2-arbitrary
       Test.SSM.QuickCheck.Shrink.Wait
       Test.SSM.QuickCheck.Util
       Test.SSM.Report
+      Test.SSM.Trace
       Paths_ssm
   hs-source-dirs:
       test/lib
@@ -158,6 +159,7 @@ test-suite 2-arbitrary
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
+    , Diff
     , QuickCheck
     , base >=4.7 && <5
     , bytestring
