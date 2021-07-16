@@ -43,8 +43,9 @@ interpret config program = runST $ do
     Nothing ->
       error $ "Interpreter error: cannot find entry point: " ++ identName (entry p)
   vars        <- params p
+  globs       <- globals p
   -- Run the interpret action and produce it's output
-  (_, events) <- runWriterT $ runStateT run $ initState config p 0 $ mkProc
+  (_, events) <- runWriterT $ runStateT run $ initState config p 0 globs $ mkProc
     config
     p
     fun
@@ -111,11 +112,11 @@ step = do
         continue
 
       SetRef r e -> do
-        writeRef (refIdent r) e
+        writeRef r e
         continue
 
       SetLocal n _ e2 -> do
-        writeRef n e2
+        writeLocal n e2
         continue
 
       If c thn els -> do

@@ -20,7 +20,7 @@ p = Program
         { name      = Ident "fun1" Nothing
         , arguments = []
         , body      =
-          [ NewRef ((Ident "v0" Nothing)) (Ref TInt32) (Lit TInt32 (LInt32 999999))
+          [ NewRef ((Ident "v0" Nothing)) TInt32 (Lit TInt32 (LInt32 999999))
           , If
             (BOp TBool
                  (Lit TInt32 (LInt32 0))

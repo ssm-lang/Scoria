@@ -38,6 +38,7 @@ module SSM.Core.Syntax
     , refIdent
     , renameRef
     , makeDynamicRef
+    , isDynamic
 
       -- ** Expressions
       {- | Expressions in the language are quite few at the moment. Adding support for
@@ -148,16 +149,24 @@ instance SSMType () where
 
 -- References
 
--- | References in our language
+-- | References have a name and a type
+type Ref = (Ident, Type)
+
+-- | References in our language. They are either dynamic or static.
 data Reference 
-      {- | A Dynamic reference will be dynamically allocated and deallocated as a program
-      is running. It will reside in an activation record in the generated C-code. -}
-    = Dynamic (Ident, Type)
+    {- | A Dynamic reference will be dynamically allocated and deallocated as a program
+    is running. It will reside in an activation record in the generated C-code. -}
+    = Dynamic Ref
+    {- | A static reference is allocated in the global scope of things, and does not
+    reside in an activation record in the generated C-code. It can be referenced from any
+    context. -}
+    | Static Ref
     deriving (Eq, Show, Read)
 
 -- | Type of a reference
 refType :: Reference -> Type
 refType (Dynamic (_,t)) = t
+refType (Static (_,t))  = t
 
 -- | Name of a reference
 refName :: Reference -> String
@@ -166,10 +175,17 @@ refName = identName . refIdent
 -- | Return the `Ident` of a `Reference`
 refIdent :: Reference -> Ident
 refIdent (Dynamic (n,_)) = n
+refIdent (Static (n,_))  = n
 
 -- | Rename a reference
 renameRef :: Reference -> Ident -> Reference
 renameRef (Dynamic (_,t)) n = Dynamic (n, t)
+renameRef (Static (_,t)) n  = Static (n, t)
+
+-- | Returns @True@ if a reference is a dynamic reference
+isDynamic :: Reference -> Bool
+isDynamic (Dynamic _) = True
+isDynamic _           = False
 
 -- Expressions
 

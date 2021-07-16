@@ -54,6 +54,12 @@ module SSM.Backend.C.Identifiers
     -- * Debug-/trace-specific macros
   , debug_microtick
   , debug_trace
+
+    -- * Accessing references
+    {- | These functions help the code generator compile a reference into a
+    C-expression that references the same reference. -}
+  , refPtr
+  , refVal
   ) where
 
 import           SSM.Core.Syntax
@@ -202,3 +208,22 @@ debug_microtick = "SSM_DEBUG_MICROTICK"
 
 debug_trace :: CIdent
 debug_trace = "SSM_DEBUG_TRACE"
+
+{- | Given a reference and a list of local references, this function will return
+a C expression that holds a pointer to the reference. -}
+refPtr :: Reference -> [Reference] -> C.Exp
+refPtr r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| &acts->$id:(refName r) |]
+    else [cexp| acts->$id:(refName r)  |]
+-- Static references can be referenced without an activation record
+refPtr r@(Static _) _ = [cexp| &$id:(refName r) |]
+
+{- | Given a Reference, this function will return a C expression that holds
+the value of that reference. -}
+refVal :: Reference -> [Reference] -> C.Exp
+refVal r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| acts->$id:(refName r).value|]
+    else [cexp| acts->$id:(refName r)->value|]
+refVal r@(Static _) _      = [cexp| $id:(refName r).value |]

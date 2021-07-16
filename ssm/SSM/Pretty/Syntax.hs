@@ -58,8 +58,15 @@ prettyProgram' p = do
     emit "entrypoint:"
     indent $ emit $ prettyApp (entry p, args p)
     emit ""
+    emit "global variables:"
+    prettyGlobals [] -- (global_Vars p)
+    emit ""
     intercalateM (emit "") $ map prettyProcedure (Map.elems (funs p))
     return ()
+
+prettyGlobals :: [(String, Type)] -> PP ()
+prettyGlobals xs = flip mapM_ xs $ \(n,t) ->
+    indent $ emit $ concat [prettyType t, " ", n]
 
 prettyProcedure :: Procedure -> PP ()
 prettyProcedure p = do

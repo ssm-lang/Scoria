@@ -67,13 +67,16 @@ instance Arbitrary Program where
              let inprefs      = [ makeDynamicRef (Ident ("ref" ++ show i) Nothing) t | (t,i) <- refs]
              let inpvars      = [(Ident ("var" ++ show i) Nothing, t) | (t,i) <- vars]
 
+             -- generate a procedure body where the input parameters are in scope
              (body,_)        <- arbProc tab inpvars inprefs 0 =<< choose (0, 15)
 
+             -- create (String, Type) pairs, representing the parameters to this procedure
              let params = [ (if isReference a
                              then Ident ("ref" ++ show i) Nothing
                              else Ident ("var" ++ show i) Nothing
                             , a) 
                           | (a,i) <- zip as [1..]]
+             -- return (function name, parameters, body)
              return (f, params, body)
         | (f,as) <- funs]
 

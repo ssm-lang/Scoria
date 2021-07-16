@@ -15,6 +15,7 @@ module SSM.Interpret.Internal
   , variableStorage
   , initState
   , params
+  , globals
 
   -- * Model time helpers
   , getNow
@@ -41,6 +42,7 @@ module SSM.Interpret.Internal
   -- * Reference helpers
   , newRef
   , writeRef
+  , writeLocal
   , readRef
 
   -- * Wait, fork, and leave + helpers
@@ -101,6 +103,15 @@ import           SSM.Interpret.Types
 
 {-********** Main interpret function helpers **********-}
 
+-- | Create initial global variable storage
+globals :: Program -> ST s (Map.Map Ident (Var s))
+globals p = do
+  vars <- forM undefined $ \(id,t) -> do
+    let initval = defaultValue (dereference t)
+    v <- newVar' initval 0
+    return (id, v)
+  return $ Map.fromList vars
+
 {- | Creates the initial variable storage for a program.
 
 Expressions are just allocated in an @STRef@, while references are given
@@ -118,15 +129,6 @@ params p = do
 
   return $ Map.fromList m
  where
-  -- | Default values for SSM types.
-  defaultValue :: Type -> SSMExp
-  defaultValue TInt32  = Lit TInt32 $ LInt32 0
-  defaultValue TInt64  = Lit TInt64 $ LInt64 0
-  defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
-  defaultValue TUInt8  = Lit TUInt8 $ LUInt8 0
-  defaultValue TBool   = Lit TBool $ LBool False
-  defaultValue (Ref _) = error "default value of reference not allowed"
-
   createParam :: ((a, Type), Either SSMExp b) -> ST s (a, Var s)
   createParam ((n, t), Left e) = do
     v <- newVar' e 0
@@ -134,6 +136,15 @@ params p = do
   createParam ((n, t), Right e) = do
     v <- newVar' (defaultValue $ dereference t) 0
     return (n, v)
+
+-- | Default values for SSM types.
+defaultValue :: Type -> SSMExp
+defaultValue TInt32  = Lit TInt32 $ LInt32 0
+defaultValue TInt64  = Lit TInt64 $ LInt64 0
+defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
+defaultValue TUInt8  = Lit TUInt8 $ LUInt8 0
+defaultValue TBool   = Lit TBool $ LBool False
+defaultValue (Ref _) = error "default value of reference not allowed"
 
 -- | Log the state of all variables in the current process to the event trace.
 traceVars :: Interp s ()
@@ -345,17 +356,49 @@ newVar n e = do
     modify $ \st -> st { process = p { variables = Map.insert n ref (variables p) } }
 
 -- | Write a value to a variable.
-writeRef :: Ident -> SSMExp -> Interp s ()
+writeRef :: Reference -> SSMExp -> Interp s ()
 writeRef r e = do
     p <- gets process
-    case Map.lookup r (variables p) of
-        Just ref -> do v <- eval e
-                       writeVar ref v
-        Nothing  -> case Map.lookup r (localrefs p) of
+    if isDynamic r
+
+        -- dynamic references must be fetched from the curent context
+        then case Map.lookup (refIdent r) (variables p) of
             Just ref -> do v <- eval e
                            writeVar ref v
-            Nothing ->
-                error $ "interpreter error - can not find variable " ++ identName r
+            Nothing  -> case Map.lookup (refIdent r) (localrefs p) of
+                Just ref -> do v <- eval e
+                               writeVar ref v
+                Nothing -> error $ "interpreter error - can't find variable " ++
+                                   (refName r)
+
+        -- static references can always be read from the global state
+        else do globals <- gets global_variables
+                case Map.lookup (refIdent r) globals of
+                    Just ref -> eval e >>= \v -> writeVar ref v
+                    Nothing  -> error $ "interpreter error - can't find global variable :"
+                                     ++ refName r
+
+-- | Write a value to a local expression variable.
+writeLocal :: Ident -> SSMExp -> Interp s ()
+writeLocal n e = do
+    p <- gets process
+    case Map.lookup n (variables p) of
+        Just ref -> do v <- eval e
+                       writeVar ref v
+        Nothing  -> case Map.lookup n (localrefs p) of
+            Just ref -> do v <- eval e
+                           writeVar ref v
+            Nothing -> error $ "interpreter error - can't find variable " ++
+                               (identName n)
+
+writeDynamic_ :: Ident -> SSMExp -> Interp s ()
+writeDynamic_ n e = do
+    p <- gets process
+    case Map.lookup n (variables p) of
+        Just ref -> eval e >>= \v -> writeVar ref v
+        Nothing  -> case Map.lookup n (localrefs p) of
+            Just ref -> eval e >>= \v -> writeVar ref v
+            Nothing  -> error $ "interpreter error - can't find variable " ++ identName n
 
 -- | Read the value of a reference
 readRef :: Reference -> Interp s SSMExp

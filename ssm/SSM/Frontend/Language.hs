@@ -78,6 +78,8 @@ import BinderAnn.Monadic
 import SSM.Frontend.Syntax
 import SSM.Frontend.Box
 
+-- Binderann name capturing
+
 instance AnnotatedM SSM (Exp a) where
     annotateM ma info = do
         v       <- ma
@@ -122,7 +124,7 @@ newtype Ref a = Ptr Reference
   deriving Show
 newtype Exp a = Exp SSMExp
   deriving Show
-newtype Lit a = FLit SSMLit
+newtype Lit a = FLit SSMLit    -- ^ literals
   deriving Show
 
 class FromLiteral a where
@@ -165,16 +167,20 @@ instance Arg (Ref a) where
 -- | When interpreting or compiling a SSM program that requires input references,
 -- supply this value instead.
 inputref :: forall a. SSMType a => Ref a
-inputref = Ptr $ Dynamic $ (Ident "dummy" Nothing, Ref (typeOf (Proxy @a)))
+inputref = Ptr $ makeDynamicRef (Ident "dummy" Nothing) (Ref (typeOf (Proxy @a)))
 
+{- | Class of types @a@ and @b@ where we can perform an immediate assignment of an @b@
+to an @a@. -}
 class Assignable a b where
     -- | Immediate assignment
     (<~) :: a -> b -> SSM ()
 
+-- | We can assign expressions to expressions, if that expression is a variable.
 instance Assignable (Exp a) (Exp a) where
     (Exp (Var t s)) <~ (Exp e) = emit $ SetLocal (Var t s) e
     e <~ _                     = error $ "can not assign a value to expression: " ++ show e
 
+-- | We can always assign an expression to a reference.
 instance Assignable (Ref a) (Exp a) where
     (Ptr r) <~ (Exp e) = emit $ SetRef r e
 
