@@ -64,7 +64,7 @@ doParseOutput slug outs = do
   return $ Tr.Trace cTrace
  where
   go :: Monad m => Int -> [String] -> QC.PropertyM m [Tr.Event]
-  go _ []       = return []
+  go _  []       = return []
   go ln (x : xs) = case readMaybe x of
     Just (e :: Tr.Event) -> go (ln + 1) xs <&> (e :)
     Nothing | null x     -> go (ln + 1) xs -- Skip empty line
@@ -90,8 +90,9 @@ doInterpret slug program limit (actQueueSize, eventQueueSize) = do
       limit
       ref
     case xs' of
-      Nothing                          -> return ()
-      Just (Left (e :: SomeException)) -> case readMaybe $ show e of
+      Nothing                           -> return ()
+      Just (Right ()                  ) -> return ()
+      Just (Left  (e :: SomeException)) -> case readMaybe $ show e of
         Just (t :: Tr.Event) -> modifyIORef ref (t :)
         Nothing              -> modifyIORef ref (Tr.CrashUnforeseen (show e) :)
     Tr.Trace . reverse <$> readIORef ref
@@ -140,9 +141,9 @@ doCompareTraces slug (Tr.Trace te) (Tr.Trace tg)
 
   -- | Format a diff, for generating report.
   fmtDiff :: Diff Tr.Event -> String
-  fmtDiff (Both e g) = "Both: " ++ rpad (show e) ++ " ~~ " ++ show g
-  fmtDiff (First  e) = "Expected: " ++ rpad (show e) ++ "<<<"
-  fmtDiff (Second e) = "Got: " ++ rpad "" ++ " >>>" ++ show e
+  fmtDiff (Both e g) = "Both:     " ++ rpad (show e) ++ " ~~ " ++ show g
+  fmtDiff (First  e) = "Expected: " ++ rpad (show e) ++ " <<"
+  fmtDiff (Second e) = "Got:      " ++ rpad "" ++ " >> " ++ show e
 
   -- | Error reported to user.
   report :: [String]
