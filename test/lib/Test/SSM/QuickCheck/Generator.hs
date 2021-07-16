@@ -40,7 +40,6 @@ instance Arbitrary Type where
 
 type Procedures = [(String, [(String, Type)], [Stm])]
 type Variable   = (Name, Type)
---type Ref        = (String, Type)
 
 genListOfLength :: Gen a -> Int -> Gen [a]
 genListOfLength ga 0 = return []
@@ -50,33 +49,51 @@ instance Arbitrary Program where
   shrink = shrinkProgram
 
   arbitrary = do
+    -- type signature generator for the SSM procedures
     let typesiggen = genListOfLength arbitrary =<< choose (0,10)
-    types <- genListOfLength typesiggen =<< choose (1,5)
+
+    -- generate 1-10 procedure typesignatures
+    types <- genListOfLength typesiggen =<< choose (1,10)
+
+    -- pair them up with a function name
     let funs = [ ("fun" ++ show i, as) | (as,i) <- zip types [1..]]
+
+    -- generate procedure bodies
     tab <- mfix $ \tab -> sequence
-        [ do let (refs, vars) = partition (isReference . fst) $ zip as [1..]
+        [ do -- partition the types in the type sig into expressions and references
+             let (refs, vars) = partition (isReference . fst) $ zip as [1..]
+             -- name the input references
              let inprefs      = [ makeDynamicRef ("ref" ++ show i) t | (t,i) <- refs]
+             -- name the input expressions
              let inpvars      = [ (Fresh $ "var" ++ show i, t)       | (t,i) <- vars]
 
+             -- generate a procedure body where the input parameters are in scope
              (body,_)        <- arbProc tab inpvars inprefs 0 =<< choose (0, 15)
 
+             -- create (String, Type) pairs, representing the parameters to this procedure
              let params = [ (if isReference a
                              then "ref"  ++ show i
                              else "var"  ++ show i
                             , a) 
                           | (a,i) <- zip as [1..]]
+             -- return (function name, parameters, body)
              return (f, params, body)
         | (f,as) <- funs]
     
+    -- randomly select one of the procedures to be the entry point of the program
     (entrypoint, argtypes) <- elements $ map (\(name,t,_) -> (name, t)) tab
+    -- generate random arguments for that procedure
     args <- flip mapM argtypes $ \(n,t) -> if isReference t
       then return $ Right $ makeDynamicRef n t
       else do e <- arbExp t [] [] 1
               return $ Left e
     
+    -- turn each (name, params, body) tuple into a procedure
     let funs = Map.fromList $ [ (fun, Procedure fun params bdy)
                               | (fun, params, bdy) <- tab]
     
+    {- return the program with the entrypoint, arguments to the entrypoint and the
+    procedures -}
     return $ Program entrypoint args funs
 
 -- | Generate a procedure body.
@@ -91,9 +108,8 @@ arbProc funs vars refs c n = frequency $
       [ (1, do t         <- elements [TInt32, TBool]
                e         <- choose (0,3) >>= arbExp t vars refs
                (name,c1) <- fresh c
-               let rt     = mkReference t
-               let stm    = NewRef name rt e
-               let ref    = makeDynamicRef (getVarName name) rt
+               let stm    = NewRef name t e
+               let ref    = makeDynamicRef (getVarName name) (mkReference t)
                (rest, c2) <- arbProc funs vars (ref:refs) c1 (n-1)
                return (stm:rest, c2)
         )

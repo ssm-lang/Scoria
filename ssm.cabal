@@ -1,8 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
+--
+-- hash: d5aae9166f5822f02c1cbbc38a97c6c0b268072826f23dfd8dd147c4d9a2fdaa
 
 name:           ssm
 version:        0.1.0.0

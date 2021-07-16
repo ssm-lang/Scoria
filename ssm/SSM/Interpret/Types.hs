@@ -116,33 +116,39 @@ instance Ord (Proc s) where
 -- | The interpreter state maintained while interpreting a program.
 data St s = St
   { -- | The current model time
-    now        :: Word64
+    now              :: Word64
+    {- | The variables which exist in the global scope and can be referenced from any
+    context. There is no need to have an activation record to look up one of these
+    variables. -}
+  , global_variables :: Map.Map String (Var s)
     {- | The outstanding events. Represented as a map from the time at which the
     event should occur to a list of the variables that should be updated at that time.
     This representation is faithful to the order in which the events are inserted in
     the event queue, while the C heap might shuffle events around when they are
     scheduled for the same instant. -}
-  , events     :: Map.Map Word64 [Var s]
+  , events           :: Map.Map Word64 [Var s]
     {- | Number of outstanding events. Bounded by the number of variables currently
     allocated in the program, as there can be at most 1 outstanding event per
     variable. While this number could be derived from the map, that would be a linear
     complexity computation. If we maintain this state we can look it up in @O(1)@. -}
-  , numevents  :: Int
+  , numevents        :: Int
     {- | Map that associates priorities to processes. We use a map as it gives us a
     pleasant complexity for getting the minimum element. This map only holds processes
     that are scheduled to be evaluated. -}
-  , readyQueue :: IntMap.IntMap (Proc s)
+  , readyQueue       :: IntMap.IntMap (Proc s)
     -- | Number of processes in the readyqueue
-  , numconts   :: Int
+  , numconts         :: Int
     {- | Map that associates procedure names with procedure definitions. Used when we
     fork a procedure and we need to create an activation record. -}
-  , procedures :: Map.Map String Procedure
+  , procedures       :: Map.Map String Procedure
     {- | Argment-references given to the entrypoint. Will probably be removed, depending
     on how we end up managing input/output in SSM programs. -}
-  , inputargs  :: [(String, Var s)]
+  , inputargs        :: [(String, Var s)]
     -- | The process that is currently being evaluated
-  , process    :: Proc s
+  , process          :: Proc s
+    -- | The upper bound on the size of the continuation queue
   , maxContQueueSize :: Int
+    -- | The upper bound on the size of the event queue
   , maxEventQueueSize :: Int
   }
   deriving Eq
@@ -168,6 +174,7 @@ variableStorage = variables
 {- | Alias for creating the interpretation state, so that we don't expose the internals
 of the @St@ type to the developer. -}
 interpState :: Word64                    -- ^ Now
+            -> Map.Map String (Var s)    -- ^ Global variables
             -> Map.Map Word64 [Var s]    -- ^ Events
             -> Int                       -- ^ #numevents
             -> IntMap.IntMap (Proc s)    -- ^ Ready queue

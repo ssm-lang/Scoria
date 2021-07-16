@@ -16,7 +16,7 @@ p = Program
                   { name      = "fun1"
                   , arguments = []
                   , body      = [ NewRef (Fresh "v0")
-                                         (Ref TInt32)
+                                         TInt32
                                          (Lit TInt32 (LInt32 999999))
                                 , If
                                   (BOp
@@ -32,7 +32,7 @@ p = Program
                                   []
                                   []
                                 , NewRef (Fresh "v3")
-                                         (Ref TInt32)
+                                         TInt32
                                          (Lit TInt32 (LInt32 0))
                                 , Wait [Dynamic ("v3", Ref TInt32)]
                                 ]

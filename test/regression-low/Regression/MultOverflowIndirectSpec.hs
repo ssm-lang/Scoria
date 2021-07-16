@@ -17,7 +17,7 @@ p = Program
                   , arguments = []
                   , body      =
                     [ NewRef (Fresh "v0")
-                             (Ref TInt32)
+                             TInt32
                              (Lit TInt32 (LInt32 999999))
                     , GetRef (Fresh "v1") TInt32 (Dynamic ("v0", Ref TInt32))
                     , If
@@ -32,7 +32,7 @@ p = Program
                               (Lit TInt32 (LInt32 0))
                       ]
                       []
-                    , NewRef (Fresh "v3") (Ref TInt32) (Lit TInt32 (LInt32 0))
+                    , NewRef (Fresh "v3") TInt32 (Lit TInt32 (LInt32 0))
                     , Wait [Dynamic ("v3", Ref TInt32)]
                     ]
                   }

@@ -30,6 +30,7 @@ module SSM.Core.Syntax
     , refName
     , renameRef
     , makeDynamicRef
+    , isDynamic
 
       -- ** Expressions
       {- | Expressions in the language are quite few at the moment. Adding support for
@@ -97,10 +98,6 @@ isReference :: Type -> Bool
 isReference (Ref _) = True
 isReference _       = False
 
--- | Create a dynamic reference
-makeDynamicRef :: String -> Type -> Reference
-makeDynamicRef name typ = Dynamic (name, typ)
-
 {-| The class of Haskell types that can be marshalled to a representation
 in the SSM language. -}
 class SSMType a where
@@ -125,24 +122,43 @@ instance SSMType Bool where
 
 -- References
 
--- | References in our language
+-- | References have a name and a type
+type Ref = (String, Type)
+
+-- | References in our language. They are either dynamic or static.
 data Reference 
-      {- | A Dynamic reference will be dynamically allocated and deallocated as a program
-      is running. It will reside in an activation record in the generated C-code. -}
-    = Dynamic (String, Type)
+    {- | A Dynamic reference will be dynamically allocated and deallocated as a program
+    is running. It will reside in an activation record in the generated C-code. -}
+    = Dynamic Ref
+    {- | A static reference is allocated in the global scope of things, and does not
+    reside in an activation record in the generated C-code. It can be referenced from any
+    context. -}
+    | Static Ref
     deriving (Eq, Show, Read)
 
 -- | Type of a reference
 refType :: Reference -> Type
 refType (Dynamic (_,t)) = t
+refType (Static (_,t))  = t
 
 -- | Name of a reference
 refName :: Reference -> String
 refName (Dynamic (n,_)) = n
+refName (Static (n,_))  = n
 
 -- | Rename a reference
 renameRef :: Reference -> String -> Reference
 renameRef (Dynamic (_,t)) n = Dynamic (n, t)
+renameRef (Static (_,t)) n  = Static (n, t)
+
+-- | Create a dynamic reference
+makeDynamicRef :: String -> Type -> Reference
+makeDynamicRef name typ = Dynamic (name, typ)
+
+-- | Returns @True@ if a reference is a dynamic reference
+isDynamic :: Reference -> Bool
+isDynamic (Dynamic _) = True
+isDynamic _           = False
 
 -- Expressions
 
@@ -255,7 +271,10 @@ data Program = Program
     , args :: [Either SSMExp Reference]
       -- | Map that associates procedure names with their definitions.
     , funs :: Map.Map String Procedure
-    } deriving (Show, Read, Eq)
+      -- | Name and type of references that exist in the global scope.
+--    , global_references :: [(Name, Type)]
+    }
+    deriving (Show, Read, Eq)
 
 -- | Class of types that can be converted to a `Program`.
 class SSMProgram a where

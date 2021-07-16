@@ -47,11 +47,16 @@ module SSM.Backend.C.Identifiers
     , assign_
     , later_
 
+      -- * Accessing references
+      {- | These functions help the code generator compile a reference into a
+      C-expression that references the same reference. -}
+    , refPtr
+    , refVal
     ) where
 
 import SSM.Core.Syntax
 
-import Language.C.Quote.GCC ( cty )
+import Language.C.Quote.GCC ( cty, cexp )
 import qualified Language.C.Syntax             as C
 
 -- | Type alias for C identifiers.
@@ -171,3 +176,22 @@ assign_ ty = "assign_" ++ typeId ty
 -- | Obtain the name of the later method for an SSM `Type`.
 later_ :: Type -> CIdent
 later_ ty = "later_" ++ typeId ty
+
+{- | Given a reference and a list of local references, this function will return
+a C expression that holds a pointer to the reference. -}
+refPtr :: Reference -> [Reference] -> C.Exp
+refPtr r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| &acts->$id:(refName r) |]
+    else [cexp| acts->$id:(refName r)  |]
+-- Static references can be referenced without an activation record
+refPtr r@(Static _) _ = [cexp| &$id:(refName r) |]
+
+{- | Given a Reference, this function will return a C expression that holds
+the value of that reference. -}
+refVal :: Reference -> [Reference] -> C.Exp
+refVal r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| acts->$id:(refName r).value|]
+    else [cexp| acts->$id:(refName r)->value|]
+refVal r@(Static _) _      = [cexp| $id:(refName r).value |]

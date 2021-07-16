@@ -48,12 +48,15 @@ interpret config = runST interpret'
           -- Input references that were given to the program. We fetch them here and put
           -- them in the main state record so that we can print their state afterwards.
           let actualrefs = getReferences p $ variableStorage process
+
+          globals <- createStaticVariables [] -- (global_references p)
           
           -- Run the interpret action and produce it's output
           outp <- execWriterT $ 
                   evalStateT (run >> emitResult) 
                       (interpState
                           0                             -- now
+                          globals                       -- global variables
                           Map.empty                     -- events
                           0                             -- numevents
                           (IntMap.singleton 0 process)  -- ready queue
@@ -128,10 +131,10 @@ step = do
                 newVar n v
                 next
             SetRef r e      -> do
-                writeRef (refName r) e
+                writeRef r e
                 next
             SetLocal n t e2 -> do
-                writeRef (getVarName n) e2
+                writeLocal n e2
                 next
             If c thn els    -> do
                 b <- getBool <$> eval c
