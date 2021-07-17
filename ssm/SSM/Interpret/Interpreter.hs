@@ -17,7 +17,7 @@ import           Control.Monad.ST.Lazy
 import           Control.Monad.State.Lazy
 import           Control.Monad.Writer.Lazy
 
-import Debug.Trace
+import           Debug.Trace
 
 {-| Interpret an SSM program.
 
@@ -44,7 +44,7 @@ interpret config = runST interpret'
     vars                <- params p
 
     -- Run the interpret action and produce it's output
-    ((term, _), events) <-
+    (_, events) <-
       runWriterT $ runStateT run $ initState config 0 $ mkProc config fun vars
     return $ fromHughes events
 
@@ -76,7 +76,7 @@ run = tick >> runInstant
   runConts :: Interp s ()
   runConts = do
     cs <- contQueueSize
-    unless (cs < 1) $ do
+    unless (cs == 0) $ do
       p <- dequeue
       setCurrentProcess p
       tellEvent $ T.ActStepBegin $ procName p
