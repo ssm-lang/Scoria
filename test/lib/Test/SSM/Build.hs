@@ -115,4 +115,5 @@ doExec slug fp = do
   QC.assert $ null err
   reportOnFail slug "exec.out" out
   reportOnFail slug "exec.err" err
-  return res
+  if null err then return res
+              else fail "Unexpected stderr output (see trace-report)"

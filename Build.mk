@@ -183,6 +183,9 @@ LIBS += libssm.a
 # parentheses, which GCC goes out of its way to warn about without this flag.
 CFLAGS += -Wno-parentheses
 
+# Forbid incompatible pointer types, which are likely due to CodeGen errors.
+CFLAGS += -Werror=incompatible-pointer-types
+
 # Generated C files are placed in the build directory.
 # TODO: remove this, or at least make this specific to the trace platform.
 # This is no longer needed for generic builds.
