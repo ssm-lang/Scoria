@@ -61,7 +61,7 @@ doParseOutput :: Monad m => Slug -> String -> QC.PropertyM m Tr.Trace
 doParseOutput slug outs = do
   cTrace <- go 1 $ lines outs
   reportOnFail slug "executed.out" $ show cTrace
-  return $ Tr.Trace cTrace
+  return cTrace
  where
   go :: Monad m => Int -> [String] -> QC.PropertyM m [Tr.Event]
   go _  []       = return []
@@ -92,7 +92,7 @@ doInterpret slug program limit (actQueueSize, eventQueueSize) = do
       Just (Left  (e :: SomeException)) -> case readMaybe $ show e of
         Just (t :: Tr.Event) -> modifyIORef ref (t :)
         Nothing              -> modifyIORef ref (Tr.CrashUnforeseen (show e) :)
-    Tr.Trace . reverse <$> readIORef ref
+    reverse <$> readIORef ref
 
   interpreted :: Tr.Trace
   interpreted =
@@ -102,18 +102,18 @@ doInterpret slug program limit (actQueueSize, eventQueueSize) = do
   limit' = limit + extraEvents
 
   evalTrace :: Tr.Trace -> Int -> IORef [Tr.Event] -> IO ()
-  evalTrace (Tr.Trace [])       _   _   = return ()
-  evalTrace _                   0   _   = return ()
-  evalTrace (Tr.Trace (x : xs)) lim ref = do
+  evalTrace []       _   _   = return ()
+  evalTrace _        0   _   = return ()
+  evalTrace (x : xs) lim ref = do
     y <- evaluate x
     modifyIORef ref (y :)
-    evalTrace (Tr.Trace xs) (lim - 1) ref
+    evalTrace xs (lim - 1) ref
 
 -- | Compare two traces, and fail if they differ.
 --
 -- Note that the "Expected" argument should come first.
 doCompareTraces :: Monad m => Slug -> Tr.Trace -> Tr.Trace -> QC.PropertyM m ()
-doCompareTraces slug (Tr.Trace te) (Tr.Trace tg)
+doCompareTraces slug te tg
   | null after = return ()
   | otherwise = do
     QC.monitor $ QC.counterexample $ unlines report

@@ -30,8 +30,7 @@ import           Data.Word
 type ActIdent = String
 
 -- | What transpired during the execution of an SSM program.
-newtype Trace = Trace [Event]
-  deriving (Show, Eq)
+type Trace = [Event]
 
 -- | The events that characterize an execution of an SSM program.
 data Event =
@@ -89,6 +88,5 @@ isTerminal (CrashUnforeseen _)  = True
 isTerminal _                    = False
 
 isWellFormed :: Trace -> Bool
-isWellFormed (Trace []) = False
-isWellFormed (Trace es) =
-  isTerminal (last es) && not (any isTerminal (init es))
+isWellFormed [] = False
+isWellFormed es = isTerminal (last es) && not (any isTerminal (init es))

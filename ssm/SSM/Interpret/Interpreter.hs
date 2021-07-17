@@ -65,7 +65,7 @@ interpret config = runST interpret'
                    (boundContQueueSize config)   -- bound on continuation queue
                    (boundEventQueueSize config)
       ) -- bound on event queue
-    return $ T.Trace (fromHughes events)
+    return $ fromHughes events
 
 -- | Run the interpreter, serving the role of the @main@ function.
 run :: Interp s ()
