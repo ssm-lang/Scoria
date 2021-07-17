@@ -30,13 +30,12 @@ module SSM.Interpret.Types
   , InterpretConfig(..)
 
       -- * Utility functions
-  , mkProc
   , variableStorage
-  , interpState
   , lift'
   , crash
   , terminate
   , tellEvent
+  , microtick
   ) where
 
 import           Data.List
@@ -82,7 +81,7 @@ type Var s
 -- | Process activation records.
 data Proc s = Proc
   { -- | Name of the process
-    procName :: String
+    procName        :: String
     -- | priority of the process
   , priority        :: Int
     -- | The depth, which helps give priorities to children
@@ -146,46 +145,18 @@ data St s = St
   , inputargs         :: [(String, Var s)]
     -- | The process that is currently being evaluated
   , process           :: Proc s
+    -- | The number of microticks counted so far.
+  , microticks        :: Int
+  , microtickLimit    :: Int
   , maxContQueueSize  :: Int
   , maxEventQueueSize :: Int
   }
   deriving Eq
 
-{- | Alias for creating a process, so we don't need to rely on the internals of the
-@Proc s@ datatype. -}
-mkProc
-  :: String                    -- ^ Name
-  -> Int                       -- ^ Priority
-  -> Int                       -- ^ Depth
-  -> Int                       -- ^ #Running children
-  -> Maybe (STRef s (Proc s))  -- ^ Reference to parent, if any
-  -> Map.Map String (Var s)    -- ^ Variable storage
-  -> Map.Map String (Var s)    -- ^ Local reference storage
-  -> Maybe [Var s]             -- ^ Variables to wait for
-  -> [Stm]                     -- ^ Continuation
-  -> Proc s
-mkProc = Proc
-
 {- | Alias for getting the variable storage from a process, so we don't expose the
 internals of the @Proc s@ datatype. -}
 variableStorage :: Proc s -> Map.Map String (Var s)
 variableStorage = variables
-
-{- | Alias for creating the interpretation state, so that we don't expose the internals
-of the @St@ type to the developer. -}
-interpState
-  :: Word64                    -- ^ Now
-  -> Map.Map Word64 [Var s]    -- ^ Events
-  -> Int                       -- ^ #numevents
-  -> IntMap.IntMap (Proc s)    -- ^ Ready queue
-  -> Int                       -- ^ #numcontinuations
-  -> Map.Map String Procedure  -- ^ Procedures
-  -> [(String, Var s)]         -- ^ Input references
-  -> Proc s                    -- ^ Current process
-  -> Int                       -- ^ Max continuation queue size
-  -> Int                       -- ^ Max event queue size
-  -> St s
-interpState = St
 
 -- | Interpretation monad
 type Interp s a = StateT (St s) (WriterT (Hughes T.Event) (ST s)) a
@@ -206,14 +177,25 @@ terminate t = error $ show t
 crash :: String -> Interp s a
 crash = terminate . T.CrashUnforeseen
 
+-- | Increment the microtick, and terminate if exceeded limit.
+microtick :: Interp s ()
+microtick = do
+  mt  <- gets microticks
+  mtl <- gets microtickLimit
+  if mt > mtl
+    then terminate T.ExhaustedMicrotick
+    else modify $ \st -> st { microticks = microticks st + 1 }
+
 {- | Data type of interpreter configuration. Need to modify the interpreter to
 interpret a program after loading this information into the interpretation state.
 I can hack this together on monday. -}
 data InterpretConfig = InterpretConfig
   { -- | Size of continuation queue
     boundContQueueSize  :: Int
-                       -- | Size of event queue
+    -- | Size of event queue
   , boundEventQueueSize :: Int
-                       -- | Program to interpret
+    -- | Microtick limit
+  , boundMicrotick      :: Int
+    -- | Program to interpret
   , program             :: Program
   }

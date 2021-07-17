@@ -5,13 +5,14 @@ module SSM.Interpret.Internal
   , InterpretConfig(..)
   , terminate
   , crash
+  , microtick
   , tellEvent
 
   -- * Interpreter state helpers
   , mkProc
   , procName
   , variableStorage
-  , interpState
+  , initState
   , params
   , getReferences
 
@@ -100,6 +101,45 @@ import           SSM.Interpret.Types
 
 {-********** Main interpret function helpers **********-}
 
+-- | Create the initial process.
+
+mkProc
+  :: InterpretConfig          -- ^ Configuration
+  -> Procedure                -- ^ Entry point
+  -> Map.Map String (Var s)   -- ^ Parameters
+  -> Proc s
+mkProc conf fun vars = Proc { procName        = entry $ program conf
+                            , priority        = 0  -- TODO: don't hardcode
+                            , depth           = 32 -- TODO: ^^
+                            , runningChildren = 0
+                            , parent          = Nothing
+                            , variables       = vars
+                            , localrefs       = Map.empty
+                            , waitingOn       = Nothing
+                            , continuation    = body fun
+                            }
+
+-- | Create initial state for interpreter.
+initState
+  :: InterpretConfig           -- ^ Configuration
+  -> Word64                    -- ^ Start time
+  -> Proc s                    -- ^ Entry point
+  -> St s
+initState conf startTime entryPoint = St
+  { now               = startTime
+  , events            = Map.empty
+  , numevents         = 0
+  , readyQueue        = IntMap.singleton 0 entryPoint
+  , numconts          = 1
+  , procedures        = funs $ program conf
+  , process           = entryPoint
+  , inputargs = getReferences (program conf) $ variableStorage entryPoint
+  , microticks        = 0
+  , microtickLimit    = boundMicrotick conf
+  , maxContQueueSize  = boundContQueueSize conf
+  , maxEventQueueSize = boundEventQueueSize conf
+  }
+
 {- | Creates the initial variable storage for a program.
 
 Expressions are just allocated in an @STRef@, while references are given
@@ -177,9 +217,8 @@ scheduleEvent r thn val = do
   -- If it was scheduled before we remove the old one from the eventqueue
   -- and just insert it again.
   case mt of
-    Just t ->
-      modify $ \st ->
-        st { events = insertEvent thn e (deleteEvent t e (events st)) }
+    Just t -> modify
+      $ \st -> st { events = insertEvent thn e (deleteEvent t e (events st)) }
     Nothing -> do
       meqs <- eventqueueSize
       when (numevents st == meqs) $ terminate T.ExhaustedEventQueue
@@ -492,7 +531,7 @@ addressToSelf = do
   p <- gets process
   lift' $ newSTRef p
 
--- | Fork a new process.
+-- | Fork a new process by adding it to the contqueue.
 fork
   :: (String, [Either SSMExp Reference])  -- ^ Procedure to fork (name and arguments)
   -> Int                                  -- ^ Priority of the new process
@@ -503,7 +542,7 @@ fork (name, args) prio dep par = do
   p         <- lookupProcedure name
   variables <- params $ (map fst . arguments) p
   enqueue
-    $ mkProc name prio dep 0 (Just par) variables Map.empty Nothing (body p)
+    $ Proc name prio dep 0 (Just par) variables Map.empty Nothing (body p)
  where
   -- | Return an initial variable storage for the new process. Expression arguments are turned into
   -- new STRefs while reference arguments are passed from the calling processes variable storage.

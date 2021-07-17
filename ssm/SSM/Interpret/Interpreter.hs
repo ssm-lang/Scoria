@@ -17,6 +17,8 @@ import           Control.Monad.ST.Lazy
 import           Control.Monad.State.Lazy
 import           Control.Monad.Writer.Lazy
 
+import Debug.Trace
+
 {-| Interpret an SSM program.
 
 The output is the debug information specified in "SSM.Interpret.Trace", which is
@@ -39,32 +41,11 @@ interpret config = runST interpret'
       Nothing ->
         error $ "Interpreter error: cannot find entry point: " ++ entry p
 
-    -- Set up initial activation record
-    process <-
-      mkProc (entry p) 0 32 0 Nothing
-      <$> params p
-      <#> Map.empty
-      <#> Nothing
-      <#> body fun
-
-    -- Input references that were given to the program. We fetch them here and put
-    -- them in the main state record so that we can print their state afterwards.
-    let actualrefs = getReferences p $ variableStorage process
+    vars                <- params p
 
     -- Run the interpret action and produce it's output
-    ((term, _), events) <- runWriterT $ runStateT
-      run
-      (interpState 0                             -- now
-                   Map.empty                     -- events
-                   0                             -- numevents
-                   (IntMap.singleton 0 process)  -- ready queue
-                   1                             -- numcontinuations
-                   (funs p)                      -- procedures
-                   actualrefs                    -- input references
-                   process                       -- current process
-                   (boundContQueueSize config)   -- bound on continuation queue
-                   (boundEventQueueSize config)
-      ) -- bound on event queue
+    ((term, _), events) <-
+      runWriterT $ runStateT run $ initState config 0 $ mkProc config fun vars
     return $ fromHughes events
 
 -- | Run the interpreter, serving the role of the @main@ function.
@@ -99,6 +80,7 @@ run = tick >> runInstant
       p <- dequeue
       setCurrentProcess p
       tellEvent $ T.ActStepBegin $ procName p
+      microtick
       step
       runConts
 
@@ -139,6 +121,7 @@ step = do
 
       While c bdy -> do
         b <- getBool <$> eval c
+        when b microtick
         when b $ pushInstructions $ bdy ++ [stm]
         continue
 

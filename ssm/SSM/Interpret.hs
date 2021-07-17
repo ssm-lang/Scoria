@@ -26,7 +26,7 @@ class Interpretable a where
 
 -- | Programs can be interpreter with default values
 instance SSMProgram a => Interpretable a where
-    toConfiguration a = I.InterpretConfig 1024 2048 (toProgram a)
+    toConfiguration a = I.InterpretConfig 1024 2048 10000 (toProgram a)
 
 {- | Dummy instance for custom configurations. Don't do anything with them, just
 return them as they are given.
