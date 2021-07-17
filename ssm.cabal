@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 373622a390fd6b84143d49f988fe83cb8f2cb0839db38b532c6430535a871adc
+-- hash: f3d201ada4fbfd2389135ad8093a98f939cd2e45a7099b3f341b05a7d80497e6
 
 name:           ssm
 version:        0.1.0.0
@@ -57,11 +57,9 @@ library
     , base >=4.7 && <5
     , bytestring
     , containers
-    , deepseq
     , extra
     , language-c-quote
     , mainland-pretty
-    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
@@ -116,13 +114,11 @@ test-suite 1-regression-low
     , base >=4.7 && <5
     , bytestring
     , containers
-    , deepseq
     , directory
     , extra
     , hspec
     , language-c-quote
     , mainland-pretty
-    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
@@ -164,13 +160,11 @@ test-suite 2-arbitrary
     , base >=4.7 && <5
     , bytestring
     , containers
-    , deepseq
     , directory
     , extra
     , hspec
     , language-c-quote
     , mainland-pretty
-    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter

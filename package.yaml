@@ -28,9 +28,7 @@ dependencies:
 - prettyprinter
 - QuickCheck
 - text
-- megaparsec
 - parser-combinators
-- deepseq
 - extra
 - mainland-pretty
 - time
