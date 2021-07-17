@@ -44,17 +44,17 @@ import           Data.Algorithm.Diff            ( Diff(..)
 testTimeout :: Int
 testTimeout = 15000000
 
+-- | No. of extra events read from the interpreter's trace, to ensure nonzero.
+extraEvents :: Int
+extraEvents = 8
+
 -- | Number of lines of context shown for diffs.
 linesOfContext :: Int
-linesOfContext = 5
+linesOfContext = 16
 
--- | Width of diff columns.
-diffColumnWidth :: Int
-diffColumnWidth = 60
-
--- | Width of number columns.
-diffNumWidth :: Int
-diffNumWidth = 8
+-- | Width of diff and line number columns.
+diffColumnWidth, diffNumWidth :: Int
+(diffColumnWidth, diffNumWidth) = (60, 8)
 
 -- | Parse the output line by line; report line number upon failure.
 doParseOutput :: Monad m => Slug -> String -> QC.PropertyM m Tr.Trace
@@ -85,10 +85,7 @@ doInterpret slug program limit (actQueueSize, eventQueueSize) = do
   timeoutEval :: IO Tr.Trace
   timeoutEval = do
     ref <- newIORef []
-    xs' <- timeout testTimeout $ try $ evalTrace
-      (interpret (customQueueSizes actQueueSize eventQueueSize program))
-      limit
-      ref
+    xs' <- timeout testTimeout $ try $ evalTrace interpreted limit' ref
     case xs' of
       Nothing                           -> return ()
       Just (Right ()                  ) -> return ()
@@ -96,6 +93,13 @@ doInterpret slug program limit (actQueueSize, eventQueueSize) = do
         Just (t :: Tr.Event) -> modifyIORef ref (t :)
         Nothing              -> modifyIORef ref (Tr.CrashUnforeseen (show e) :)
     Tr.Trace . reverse <$> readIORef ref
+
+  interpreted :: Tr.Trace
+  interpreted =
+    interpret (customQueueSizes actQueueSize eventQueueSize program)
+
+  limit' :: Int
+  limit' = limit + extraEvents
 
   evalTrace :: Tr.Trace -> Int -> IORef [Tr.Event] -> IO ()
   evalTrace (Tr.Trace [])       _   _   = return ()
