@@ -87,11 +87,13 @@ doInterpret slug program limit (actQueueSize, eventQueueSize) = do
     ref <- newIORef []
     xs' <- timeout testTimeout $ try $ evalTrace interpreted limit' ref
     case xs' of
-      Nothing                           -> return ()
-      Just (Right ()                  ) -> return ()
-      Just (Left  (e :: SomeException)) -> case readMaybe $ show e of
-        Just (t :: Tr.Event) -> modifyIORef ref (t :)
-        Nothing              -> modifyIORef ref (Tr.CrashUnforeseen (show e) :)
+      Nothing         -> return ()
+      Just (Right ()) -> return ()
+      Just (Left (e :: SomeException)) ->
+        -- Only try to parse first line (i.e., ignore stack trace)
+        case readMaybe $ head $ take 1 $ lines $ show e of
+          Just (t :: Tr.Event) -> modifyIORef ref (t :)
+          Nothing -> modifyIORef ref (Tr.CrashUnforeseen (show e) :)
     reverse <$> readIORef ref
 
   interpreted :: Tr.Trace
