@@ -319,28 +319,30 @@ genCase (Wait ts) = do
 genCase (Fork cs) = do
   locs    <- map fst <$> gets locals
   caseNum <- nextCase
-  let
-    genCall i (r, as) = [cstm|$id:fork($id:(enter_ r)($args:enterArgs));|]
-     where
-      enterArgs =
-        [ [cexp|$id:actg|]
-          , [cexp|$id:actg->priority + $int:i * (1 << $exp:newDepth)|]
-          , newDepth
-          ]
-          ++ map genArg as
-      genArg (Left  e     ) = genExp locs e
-      genArg (Right (r, _)) = if r `elem` locs
-        then [cexp|&$id:acts->$id:r|]
-        else [cexp|$id:acts->$id:r|]
-
-      newDepth = [cexp|$id:actg->depth - $int:depthSub|]
+  let newDepth = [cexp|$id:actg->depth - $int:depthSub|]
       depthSub =
         (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Int
 
-    genDebug (r, _) = r
-    -- [cstm| $id:debug_trace($string:((++ "\n") $ unwords $ "fork" : map fst cs)); |] :
+      checkNewDepth = [cstm|
+        if ($id:actg->depth < $int:depthSub)
+           SSM_CRASH(SSM_EXHAUSTED_DEPTH);
+      |]
+
+      genCall i (r, as) = [cstm|$id:fork($id:(enter_ r)($args:enterArgs));|]
+       where
+        enterArgs =
+          [ [cexp|$id:actg|]
+            , [cexp|$id:actg->priority + $int:i * (1 << $exp:newDepth)|]
+            , newDepth
+            ]
+            ++ map genArg as
+        genArg (Left  e     ) = genExp locs e
+        genArg (Right (r, _)) = if r `elem` locs
+          then [cexp|&$id:acts->$id:r|]
+          else [cexp|$id:acts->$id:r|]
   return
-    $  zipWith genCall [0 :: Int ..] cs
+    $  checkNewDepth
+    :  zipWith genCall [0 :: Int ..] cs
     ++ [ [cstm| $id:actg->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]
