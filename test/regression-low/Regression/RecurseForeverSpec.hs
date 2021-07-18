@@ -1,3 +1,7 @@
+-- | Recurse forever.
+--
+-- We should not run out of depth, because that should only be incremented if
+-- forking multiple children.
 module Regression.RecurseForeverSpec where
 
 import           Data.Map                       ( fromList )
