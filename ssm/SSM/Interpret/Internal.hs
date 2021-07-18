@@ -208,7 +208,7 @@ scheduleEvent r thn val = do
   st <- get
   e  <- lookupRef (refName r)
 
-  when (SSM.Interpret.Types.now st > thn) $ terminate T.CrashInvalidLater
+  when (SSM.Interpret.Types.now st > thn) $ terminate T.CrashInvalidTime
 
   -- Fetch ref so we can update the scheduled information
   (ref, pr, b, mt, _) <- lift' $ readSTRef e

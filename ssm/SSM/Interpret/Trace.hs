@@ -67,8 +67,8 @@ data Event =
   | ExhaustedMemory
   -- | Tried to fork too deeply.
   | ExhaustedDepth
-  -- | Tried to schedule a "delayed" assignment for an earlier time.
-  | CrashInvalidLater
+  -- | E.g., tried to schedule a "delayed" assignment for an earlier time.
+  | CrashInvalidTime
   -- | Tried to compute invalid arithmetic exception.
   | CrashArithmeticError
   -- | Interpreter crashed for an unforeseen reason (should be unreachable).
@@ -82,7 +82,7 @@ isTerminal ExhaustedActQueue    = True
 isTerminal ExhaustedEventQueue  = True
 isTerminal ExhaustedMemory      = True
 isTerminal ExhaustedDepth       = True
-isTerminal CrashInvalidLater    = True
+isTerminal CrashInvalidTime    = True
 isTerminal CrashArithmeticError = True
 isTerminal (CrashUnforeseen _)  = True
 isTerminal _                    = False
