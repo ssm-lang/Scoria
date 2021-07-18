@@ -1,3 +1,7 @@
+-- | Test for signed integer overflow behavior.
+--
+-- Note that signed integer overflow is undefined in both C and Haskell, so
+-- great care should be taken here.
 module Regression.MultOverflowIndirectSpec where
 
 import           Data.Map                       ( fromList )
