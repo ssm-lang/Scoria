@@ -21,12 +21,6 @@
 
 extern unsigned long debug_count;
 
-#define SSM_DEBUG_MICROTICK()                                                  \
-  if (debug_count++ >= SSM_DEBUG_LIMIT)                                        \
-  exit(1)
-
-#define SSM_DEBUG_TRACE(...) printf(__VA_ARGS__), printf("\n")
-
 #define SSM_DEBUG_ASSERT(assertion, ...)                                       \
   do {                                                                         \
     if (!(assertion)) {                                                        \
@@ -34,6 +28,12 @@ extern unsigned long debug_count;
       exit(1);                                                                 \
     }                                                                          \
   } while (0)
+
+#define SSM_DEBUG_TRACE(...) printf(__VA_ARGS__), printf("\n")
+
+#define SSM_DEBUG_MICROTICK()                                                  \
+  if (debug_count++ >= SSM_DEBUG_LIMIT)                                        \
+  SSM_DEBUG_TRACE("ExhaustedMicrotick"), exit(1)
 
 extern struct ssm_act *(*ssm_entry_point)(struct ssm_act *, ssm_priority_t,
                                           ssm_depth_t);
