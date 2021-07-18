@@ -4,10 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-extern void ssm_crash(int);
-
-#define SSM_CRASH(reason) ssm_crash(reason)
-
 #include "ssm.h"
 
 extern struct ssm_act *(*ssm_entry_point)(struct ssm_act *, ssm_priority_t,

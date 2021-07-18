@@ -11,7 +11,11 @@
 CC = gcc
 AR = ar
 
-CPPFLAGS += -I $(PLATFORMDIR)/include -DSSM_DEBUG
+CPPFLAGS += -I $(PLATFORMDIR)/include
+
+# Compile libssm with debug build
+CPPFLAGS += -DSSM_DEBUG
+
 vpath %.c $(PLATFORMDIR)/src
 
 LDLIBS += -lplatform

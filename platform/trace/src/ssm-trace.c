@@ -2,7 +2,7 @@
 
 unsigned long debug_count = 0;
 
-void ssm_crash(int reason) {
+void ssm_crash(int reason, const char *file, int line, const char *func) {
   /** Translate error codes into parseable trace events. */
   switch (reason) {
   case SSM_EXHAUSTED_ACT_QUEUE:
