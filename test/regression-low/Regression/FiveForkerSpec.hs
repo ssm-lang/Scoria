@@ -1,3 +1,7 @@
+{- | It's not very clear what this example tests, but it did trigger a bug where
+the order of forked child processes differed between the interpreter and the
+compiled code..
+-}
 module Regression.FiveForkerSpec where
 
 import           Data.Map                       ( fromList )
