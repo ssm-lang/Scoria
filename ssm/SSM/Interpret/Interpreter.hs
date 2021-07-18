@@ -60,9 +60,9 @@ run = tick >> runInstant
       then tellEvent T.TerminatedOk
       else do
         es <- fromIntegral <$> eventQueueSize
-        n  <- getNow
+        n  <- nextEventTime
         tellEvent $ T.DriverEventQueueStatus es n
-        nextEventTime >>= setNow
+        setNow n
         tick >> runInstant
 
   -- | Applies all scheduled updates for the current instant, then 'runConts'.
