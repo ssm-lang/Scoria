@@ -105,7 +105,6 @@ static int _add(int a, int b) {
 
 includes :: [C.Definition]
 includes = [cunit|
-$esc:("#include \"ssm.h\"")
 $esc:("#include \"ssm-platform.h\"")
 |]
 
