@@ -224,8 +224,8 @@ genStep = do
     , [cedecl|
         void $id:step($ty:act_t *$id:actg) {
 
-          $id:debug_microtick();
           $id:debug_trace($string:actStepBeginS);
+          $id:debug_microtick();
 
           $ty:act *$id:acts = container_of($id:actg, $id:actt, act);
           switch ($id:actg->pc) {
