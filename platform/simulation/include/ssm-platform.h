@@ -6,6 +6,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+extern struct ssm_act *(*ssm_entry_point)(struct ssm_act *, ssm_priority_t,
+                                          ssm_depth_t);
+
 #define SSM_DEBUG_ASSERT(assertion, ...)                                       \
     do if (!(assertion)){                                                     \
       printf(__VA_ARGS__);                                                     \
