@@ -611,4 +611,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.semanticIncorrectSpec "FiveForker" p
+spec = T.correctSpec "FiveForker" p
