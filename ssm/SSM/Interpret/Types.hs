@@ -182,7 +182,7 @@ microtick :: Interp s ()
 microtick = do
   mt  <- gets microticks
   mtl <- gets microtickLimit
-  if mt >= mtl
+  if mtl > 0 && mt >= mtl
     then terminate T.ExhaustedMicrotick
     else modify $ \st -> st { microticks = microticks st + 1 }
 

@@ -44,10 +44,6 @@ import           Data.Algorithm.Diff            ( Diff(..)
 testTimeout :: Int
 testTimeout = 15000000
 
--- | No. of extra events read from the interpreter's trace, to ensure nonzero.
-extraEvents :: Int
-extraEvents = 8
-
 -- | Number of lines of context shown for diffs.
 linesOfContext :: Int
 linesOfContext = 16
@@ -64,13 +60,19 @@ doParseOutput slug outs = do
   return cTrace
  where
   go :: Monad m => Int -> [String] -> QC.PropertyM m [Tr.Event]
-  go _  []       = return []
+  go _  []       = fail "Parse error: empty output"
   go ln (x : xs) = case readMaybe x of
-    Just (e :: Tr.Event) -> go (ln + 1) xs <&> (e :)
-    Nothing | null x     -> go (ln + 1) xs -- Skip empty line
-    Nothing | otherwise  -> do
-      QC.monitor $ QC.counterexample x
-      fail $ "Parse error: line " ++ show ln
+    Just (e :: Tr.Event)
+      | null xs -> if Tr.isTerminal e
+        then return [e]
+        else fail "Parse error: trace ended with non-terminal event"
+      | otherwise -> go (ln + 1) xs <&> (e :)
+    Nothing
+      | -- Skip empty line
+        null x -> go (ln + 1) xs
+      | otherwise -> do
+        QC.monitor $ QC.counterexample x
+        fail $ "Parse error: line " ++ show ln
 
 -- | Interpret a program and produce a (potentially trucated) output trace.
 --
@@ -85,7 +87,7 @@ doInterpret slug program limit (actQueueSize, eventQueueSize) = do
   timeoutEval :: IO Tr.Trace
   timeoutEval = do
     ref <- newIORef []
-    xs' <- timeout testTimeout $ try $ evalTrace interpreted limit' ref
+    xs' <- timeout testTimeout $ try $ evalTrace interpreted limit ref
     case xs' of
       Nothing         -> return ()
       Just (Right ()) -> return ()
@@ -100,9 +102,6 @@ doInterpret slug program limit (actQueueSize, eventQueueSize) = do
   interpreted =
     interpret (customQueueSizes actQueueSize eventQueueSize program)
 
-  limit' :: Int
-  limit' = limit + extraEvents
-
   evalTrace :: Tr.Trace -> Int -> IORef [Tr.Event] -> IO ()
   evalTrace []       _   _   = return ()
   evalTrace _        0   _   = return ()
@@ -115,7 +114,7 @@ doInterpret slug program limit (actQueueSize, eventQueueSize) = do
 --
 -- Note that the "Expected" argument should come first.
 doCompareTraces :: Monad m => Slug -> Tr.Trace -> Tr.Trace -> QC.PropertyM m ()
-doCompareTraces slug te tg
+doCompareTraces slug expected got
   | null after = return ()
   | otherwise = do
     QC.monitor $ QC.counterexample $ unlines report
@@ -130,7 +129,11 @@ doCompareTraces slug te tg
 
   -- | Before and after the first difference in the event trace.
   before, after :: [Diff Tr.Event]
-  (before, after) = span isBoth $ getDiff te tg
+  (before, after) = span isBoth $ getDiff expected' got'
+   where
+    (expected', got') = if last got == Tr.ExhaustedMicrotick
+      then (init expected, init got)
+      else (expected, got)
 
   -- | The line number where the first difference occurs.
   diffLn :: Int
