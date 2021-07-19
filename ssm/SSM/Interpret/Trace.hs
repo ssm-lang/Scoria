@@ -66,7 +66,7 @@ data Event =
   -- | Tried to allocate too many activation records.
   | ExhaustedMemory
   -- | Tried to fork too deeply.
-  | ExhaustedDepth
+  | ExhaustedPriority
   -- | E.g., tried to schedule a "delayed" assignment for an earlier time.
   | CrashInvalidTime
   -- | Tried to compute invalid arithmetic exception.
@@ -81,8 +81,8 @@ isTerminal ExhaustedMicrotick   = True
 isTerminal ExhaustedActQueue    = True
 isTerminal ExhaustedEventQueue  = True
 isTerminal ExhaustedMemory      = True
-isTerminal ExhaustedDepth       = True
-isTerminal CrashInvalidTime    = True
+isTerminal ExhaustedPriority    = True
+isTerminal CrashInvalidTime     = True
 isTerminal CrashArithmeticError = True
 isTerminal (CrashUnforeseen _)  = True
 isTerminal _                    = False

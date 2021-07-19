@@ -2,7 +2,7 @@
 
 unsigned long debug_count = 0;
 
-void ssm_crash(int reason, const char *file, int line, const char *func) {
+void ssm_throw(int reason, const char *file, int line, const char *func) {
   /** Translate error codes into parseable trace events. */
   switch (reason) {
   case SSM_EXHAUSTED_ACT_QUEUE:
@@ -14,8 +14,8 @@ void ssm_crash(int reason, const char *file, int line, const char *func) {
   case SSM_EXHAUSTED_MEMORY:
     SSM_DEBUG_TRACE("ExhaustedMemory");
     exit(0);
-  case SSM_EXHAUSTED_DEPTH:
-    SSM_DEBUG_TRACE("ExhaustedDepth");
+  case SSM_EXHAUSTED_PRIORITY:
+    SSM_DEBUG_TRACE("ExhaustedPriority");
     exit(0);
   case SSM_INVALID_TIME:
     SSM_DEBUG_TRACE("CrashInvalidTime");

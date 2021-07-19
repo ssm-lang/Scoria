@@ -325,7 +325,7 @@ genCase (Fork cs) = do
 
       checkNewDepth = [cstm|
         if ($id:actg->depth < $int:depthSub)
-           SSM_CRASH(SSM_EXHAUSTED_DEPTH);
+           $id:throw($exp:exhausted_priority);
       |]
 
       genCall i (r, as) = [cstm|$id:fork($id:(enter_ r)($args:enterArgs));|]

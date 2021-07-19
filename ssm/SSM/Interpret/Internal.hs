@@ -503,7 +503,7 @@ pds k = do
   let prio = priority p                                  -- old prio
   let dep  = depth p                                     -- old dep
   let d' = dep - ceiling (logBase 2 (fromIntegral k))  -- new dep
-  when (d' < 0) $ terminate T.ExhaustedDepth
+  when (d' < 0) $ terminate T.ExhaustedPriority
   let prios = [ prio + i * (2 ^ d') | i <- [0 .. k - 1] ]        -- new prios
   return $ zip prios (repeat d')
 

@@ -16,6 +16,8 @@ module SSM.Backend.C.Identifiers
   , desensitize
   , unsched_event
   , entry_point
+  , throw
+  , exhausted_priority
 
       -- * Type names recognized by the the C runtime system.
   , time_t
@@ -101,6 +103,12 @@ desensitize = "ssm_desensitize"
 -- | Name of routine that dequeues an event from the event queue
 unsched_event :: CIdent
 unsched_event = "ssm_unschedule"
+
+throw :: CIdent
+throw = "SSM_THROW"
+
+exhausted_priority :: C.Exp
+exhausted_priority = [cexp|SSM_EXHAUSTED_PRIORITY|]
 
 -- | C type that represents model time
 time_t :: C.Type
