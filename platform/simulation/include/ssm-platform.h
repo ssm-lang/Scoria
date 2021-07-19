@@ -1,11 +1,18 @@
 #ifndef _PENG_PLATFORM_H
 #define _PENG_PLATFORM_H
 
-#define NANOSECOND_TICKS(x)  (x)
-#define MICROSECOND_TICKS(x) ((x) *          1000L)
-#define MILLISECOND_TICKS(x) ((x) *       1000000L)
-#define SECOND_TICKS(x)      ((x) *    1000000000L)
-#define MINUTE_TICKS(x)      ((x) *   60000000000L)
-#define HOUR_TICKS(x)        ((x) * 3600000000000L)
+#include "ssm.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#define SSM_DEBUG_ASSERT(assertion, ...)                                       \
+    do if (!(assertion)){                                                     \
+      printf(__VA_ARGS__);                                                     \
+      exit(1);                                                                 \
+  } while (0)
+
+#define SSM_DEBUG_TRACE(...) do; while(0)
+#define SSM_DEBUG_MICROTICK() do; while(0)
 
 #endif

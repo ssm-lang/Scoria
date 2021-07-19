@@ -1,10 +1,10 @@
 #ifndef _SSM_PLATFORM_H
 #define _SSM_PLATFORM_H
 
+#include "ssm.h"
+
 #include <stdio.h>
 #include <stdlib.h>
-
-#include "ssm.h"
 
 extern struct ssm_act *(*ssm_entry_point)(struct ssm_act *, ssm_priority_t,
                                           ssm_depth_t);
@@ -15,8 +15,7 @@ enum { SSM_EXHAUSTED_MICROTICK = SSM_PLATFORM_ERROR, SSM_ARITHMETIC_ERROR };
 extern unsigned long debug_count;
 
 #define SSM_DEBUG_ASSERT(assertion, ...)                                       \
-  if (!(assertion))                                                            \
-    do {                                                                       \
+    do if (!(assertion)){                                                     \
       printf(__VA_ARGS__);                                                     \
       exit(1);                                                                 \
   } while (0)
