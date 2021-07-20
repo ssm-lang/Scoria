@@ -111,7 +111,15 @@ reportProgramOnFail slug program = do
  where
   -- | Format a spec that can be added to the low-regression test suite
   regressionSpec = unlines
-    [ "module Regression." ++ show slug ++ "Spec where"
+    [ "-- | FIXME: add documentation about this regression test; use template below."
+    , "--"
+    , "-- Bug encountered: (what happened)"
+    , "-- Suspected cause: (why it happened)"
+    , "-- Fix: (suggestion for how to fix)"
+    , "-- Fixed: (include commit hash if already fixed; otherwise write 'notyet' or 'wontfix')"
+    , "--"
+    , "-- Include links to GitHub issues if any are created."
+    , "module Regression." ++ show slug ++ "Spec where"
     , ""
     , "import Data.Map (fromList)"
     , "import SSM.Core.Syntax"
