@@ -1,3 +1,6 @@
+-- | Empty program.
+--
+-- If this fails, something is severely broken with the compiler pipeline.
 module Regression.EmptyFunSpec where
 
 import Data.Map (fromList)
