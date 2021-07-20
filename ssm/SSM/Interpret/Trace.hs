@@ -19,12 +19,13 @@ module SSM.Interpret.Trace
   ) where
 
 import           Data.Word
+import SSM.Core.Syntax (SSMLit)
 
--- -- | A typed, concrete value. TODO: decouple this from Literals.
+-- | A typed, concrete value. TODO: decouple this from Literals.
 -- type ConcreteValue = SSMLit
 
--- -- | A variable name.
--- type VarIdent = String
+-- | A variable name.
+type VarIdent = String
 
 -- | The name of an activation record
 type ActIdent = String
@@ -36,11 +37,13 @@ type Trace = [Event]
 data Event =
   -- | The length and head time of the event queue, reported between ticks.
     DriverEventQueueStatus Word Word64
+
   -- | Enter/re-enter a step function.
   | ActStepBegin ActIdent
+  -- | Activate another process, in preparation for a fork.
+  | ActActivate ActIdent -- [ConcreteValue]
 
 {- TODO: the following, if they ever become necessary.
-
   -- | Leave a step function because the process terminated.
   | ActStepEndLeave ActIdent
   -- | Leave a step function because the process forked other processes.
@@ -49,11 +52,8 @@ data Event =
   | ActStepEndWait ActIdent
   -- | Value of variable in activation record.
   | ActLocalVal VarIdent ConcreteValue
-  -- | Activate another process, in preparation for a fork.
-  | ActActivate ActIdent [ConcreteValue]
   -- | Sensitize to a variable.
   | ActSensitize VarIdent
-
 -}
   -- | Terminated gracefully.
   | TerminatedOk

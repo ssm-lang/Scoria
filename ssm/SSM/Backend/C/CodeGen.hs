@@ -328,6 +328,9 @@ genCase (Fork cs) = do
            $id:throw($exp:exhausted_priority);
       |]
 
+      genTrace (r, _) = [cstm|$id:debug_trace($string:event);|]
+        where event = show $ T.ActActivate r
+
       genCall i (r, as) = [cstm|$id:fork($id:(enter_ r)($args:enterArgs));|]
        where
         enterArgs =
@@ -342,7 +345,8 @@ genCase (Fork cs) = do
           else [cexp|$id:acts->$id:r|]
   return
     $  checkNewDepth
-    :  zipWith genCall [0 :: Int ..] cs
+    :  map genTrace cs
+    ++ zipWith genCall [0 :: Int ..] cs
     ++ [ [cstm| $id:actg->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]

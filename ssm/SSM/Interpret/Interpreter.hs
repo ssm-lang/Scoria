@@ -41,11 +41,13 @@ interpret config = runST interpret'
       Nothing ->
         error $ "Interpreter error: cannot find entry point: " ++ entry p
 
-    vars                <- params p
+    vars        <- params p
 
     -- Run the interpret action and produce it's output
-    (_, events) <-
-      runWriterT $ runStateT run $ initState config 0 $ mkProc config fun vars
+    (_, events) <- runWriterT $ runStateT run $ initState config 0 $ mkProc
+      config
+      fun
+      vars
     return $ fromHughes events
 
 -- | Run the interpreter, serving the role of the @main@ function.
@@ -139,6 +141,7 @@ step = do
         yield
 
       Fork procs -> do
+        forM_ procs $ \(f, _) -> tellEvent $ T.ActActivate f
         setRunningChildren (length procs)
         parent <- addressToSelf
         pdeps  <- pds (length procs)
