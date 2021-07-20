@@ -26,10 +26,6 @@ import           Test.SSM.Report                ( (</>)
                                                 , reportUnixError
                                                 )
 
--- | Tick limit compiled into the test target.
-tickLimit :: Maybe Int
-tickLimit = Just 7500
-
 -- | Name of the build platform.
 buildPlatform :: String
 buildPlatform = "trace"
@@ -45,7 +41,7 @@ eventQueueSize = 2048
 -- | Compile an SSM program to a C program's string representation.
 doCompile :: Monad m => Slug -> Program -> QC.PropertyM m String
 doCompile slug program = do
-  let cSrc = compile program True tickLimit
+  let cSrc = compile program
   reportOnFail slug (show slug ++ ".c") cSrc
   return cSrc
 

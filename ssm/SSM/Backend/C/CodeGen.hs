@@ -1,3 +1,11 @@
+-- | Translate SSM program to C compilation unit.
+--
+-- Each procedure in a program is turned into three components:
+--
+-- 1) A struct (the activation record)
+-- 2) An initialization function (the enter function)
+-- 3) A step function, which corresponds to the actual procedure body
+
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE QuasiQuotes #-}
 
@@ -296,7 +304,7 @@ genCase (After d (lvar, t) v) = do
         else [cexp|$id:acts->$id:lvar|]
       rhs = genExp locs v
       -- | NOTE: we add `now` to the delay here.
-  return [[cstm| $id:(later_ t)($exp:lhs, ssm_now() + $exp:del, $exp:rhs);|]]
+  return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
 genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts

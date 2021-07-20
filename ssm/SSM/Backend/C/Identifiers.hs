@@ -18,6 +18,7 @@ module SSM.Backend.C.Identifiers
   , entry_point
   , throw
   , exhausted_priority
+  , now
 
       -- * Type names recognized by the the C runtime system.
   , time_t
@@ -104,6 +105,11 @@ desensitize = "ssm_desensitize"
 unsched_event :: CIdent
 unsched_event = "ssm_unschedule"
 
+-- | Name of routine that returns the current value of now.
+now :: CIdent
+now = "ssm_now"
+
+-- | Name of macro that throws an error.
 throw :: CIdent
 throw = "SSM_THROW"
 
