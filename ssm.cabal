@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1e544eb1ee5be3cbb3cb4536d71e2244f8ff898bfb1e0285044a3b1454e34df7
+-- hash: f948ca32c62e8634190924dec23633fadc6553798d08314b0ef026d543273fe3
 
 name:           ssm
 version:        0.1.0.0
@@ -87,6 +87,7 @@ test-suite 1-regression-low
       Test.SSM.QuickCheck.Util
       Test.SSM.Report
       Test.SSM.Trace
+      Regression.CancelBothSpec
       Regression.CancelLaterSpec
       Regression.EmptyFunSpec
       Regression.FiveForkerSpec
