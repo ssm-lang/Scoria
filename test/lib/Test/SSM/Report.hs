@@ -1,7 +1,9 @@
 module Test.SSM.Report
   ( (</>)
+  , reportDir
   , reportOnFail
   , reportFileOnFail
+  , reportScriptOnFail
   , reportUnixError
   , reportProgramOnFail
   , Slug(..)
@@ -15,6 +17,7 @@ import           System.Directory               ( createDirectoryIfMissing
                                                 , doesPathExist
                                                 , getPermissions
                                                 , removePathForcibly
+                                                , setOwnerExecutable
                                                 , setPermissions
                                                 )
 
@@ -28,6 +31,9 @@ import qualified Test.QuickCheck.Monadic       as QC
 -- | Directory where reports are dumped.
 reportDir :: Slug -> FilePath
 reportDir sl = "trace-report" </> show sl
+
+lowRegressionSuiteDir :: FilePath
+lowRegressionSuiteDir = "test/regression-low/Regression"
 
 -- | Used to specify the name of a test case.
 --
@@ -73,6 +79,16 @@ reportOnFail slug fp s = QC.monitor $ QC.whenFail $ do
   createDirectoryIfMissing True $ reportDir slug
   writeFile (reportDir slug </> fp) s
 
+-- | Write string s to file with exec permissions at fp if the test fails.
+reportScriptOnFail
+  :: Monad m => Slug -> FilePath -> String -> QC.PropertyM m ()
+reportScriptOnFail slug fp s = QC.monitor $ QC.whenFail $ do
+  createDirectoryIfMissing True $ reportDir slug
+  writeFile path s
+  perm <- getPermissions path
+  setPermissions path $ setOwnerExecutable True perm
+  where path = reportDir slug </> fp
+
 -- | Copy contents of src file (as it exists now) to dst if the test fails.
 reportFileOnFail :: Slug -> FilePath -> FilePath -> QC.PropertyM IO ()
 reportFileOnFail slug src dst = do
@@ -91,6 +107,7 @@ reportProgramOnFail :: Monad m => Slug -> Program -> QC.PropertyM m ()
 reportProgramOnFail slug program = do
   reportOnFail slug (show slug ++ ".ssm") $ prettyProgram program
   reportOnFail slug (show slug ++ "Spec.hs") regressionSpec
+  reportScriptOnFail slug "save-regression" saveSpecScript
  where
   -- | Format a spec that can be added to the low-regression test suite
   regressionSpec = unlines
@@ -102,20 +119,35 @@ reportProgramOnFail slug program = do
     , "import qualified Test.Hspec as H"
     , "import qualified Test.Hspec.QuickCheck as H"
     , ""
-    , "p :: Program"
-    , "p = " ++ show program
-    , ""
     , "spec :: H.Spec"
     , "spec = T.correctSpec \"" ++ show slug ++ "\" p"
+    , ""
+    , "p :: Program"
+    , "p = " ++ show program
     ]
+
+  saveSpecScript = unlines
+    [ "#!/usr/bin/env bash"
+    , "GITROOT=\"$(git rev-parse --show-toplevel)\""
+    , ""
+    , "echo cp \"$GITROOT/" ++ src ++ "\" \"$GITROOT/" ++ dst ++ "\""
+    , "cp \"$GITROOT/" ++ src ++ "\" \"$GITROOT/" ++ dst ++ "\""
+    , ""
+    , "echo \"# Copied Spec file into the regression test suite.\""
+    ]
+   where
+    src  = reportDir slug </> spec
+    dst  = lowRegressionSuiteDir </> spec
+    spec = show slug ++ "Spec.hs"
 
 -- | Report a Unix error in a Quickcheck Property monad transformer.
 reportUnixError
   :: Monad m => Slug -> [String] -> (Int, String, String) -> QC.PropertyM m ()
 reportUnixError slug cmd (c, out, err) = do
-  reportOnFail slug "unix.err" $ msg trunc
+  reportOnFail slug filename $ msg trunc
   QC.monitor $ QC.counterexample $ msg notrunc
  where
+  filename = if null cmd then "unix.err" else head cmd
   msg t = unlines
     [ "Command: "
     , unwords (map quoteCmd cmd)
