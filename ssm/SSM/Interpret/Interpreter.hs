@@ -141,10 +141,10 @@ step = do
         yield
 
       Fork procs -> do
-        forM_ procs $ \(f, _) -> tellEvent $ T.ActActivate f
         setRunningChildren (length procs)
         parent <- addressToSelf
         pdeps  <- pds (length procs)
+        forM_ procs $ \(f, _) -> tellEvent $ T.ActActivate f
         forM_ (zip procs pdeps) $ \(f, (prio, dep)) -> fork f prio dep parent
         yield
 

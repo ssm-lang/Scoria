@@ -41,6 +41,7 @@ data Event =
   -- | Enter/re-enter a step function.
   | ActStepBegin ActIdent
   -- | Activate another process, in preparation for a fork.
+  -- If forking multiple processes, these events should appear in fork order.
   | ActActivate ActIdent -- [ConcreteValue]
 
 {- TODO: the following, if they ever become necessary.

@@ -501,8 +501,8 @@ pds :: Int -> Interp s [(Int, Int)]
 pds k = do
   p <- gets process
   let prio = priority p                                  -- old prio
-  let dep  = depth p                                     -- old dep
-  let d' = dep - ceiling (logBase 2 (fromIntegral k))  -- new dep
+      dep  = depth p                                     -- old dep
+      d'   = dep - ceiling (logBase 2 (fromIntegral k))  -- new dep
   when (d' < 0) $ terminate T.ExhaustedPriority
   let prios = [ prio + i * (2 ^ d') | i <- [0 .. k - 1] ]        -- new prios
   return $ zip prios (repeat d')
@@ -541,8 +541,7 @@ fork
 fork (name, args) prio dep par = do
   p         <- lookupProcedure name
   variables <- params $ (map fst . arguments) p
-  enqueue
-    $ Proc name prio dep 0 (Just par) variables Map.empty Nothing (body p)
+  enqueue $ Proc name prio dep 0 (Just par) variables Map.empty Nothing (body p)
  where
   -- | Return an initial variable storage for the new process. Expression arguments are turned into
   -- new STRefs while reference arguments are passed from the calling processes variable storage.
