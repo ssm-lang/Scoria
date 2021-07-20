@@ -22,7 +22,6 @@ import           Test.SSM.Report                ( (</>)
                                                 , reportFileOnFail
                                                 , reportOnFail
                                                 , reportUnixError
-                                                , slugStr
                                                 )
 
 -- | Tick limit compiled into the test target.
@@ -41,20 +40,11 @@ actQueueSize = 1024
 eventQueueSize :: Int
 eventQueueSize = 2048
 
--- | Obtain the target name from a test Slug.
---
--- Use the magic target name "arbitrary" for randomly generated tests to avoid
--- unnecessarily polluting the build directory.
-slugTarget :: Slug -> String
-slugTarget (SlugTimestamp _          ) = "arbitrary"
-slugTarget (SlugNamed     "arbitrary") = undefined -- TODO: resolve name clash
-slugTarget (SlugNamed     n          ) = n
-
 -- | Compile an SSM program to a C program's string representation.
 doCompile :: Monad m => Slug -> Program -> QC.PropertyM m String
 doCompile slug program = do
   let cSrc = compile program True tickLimit
-  reportOnFail slug (slugTarget slug ++ ".c") cSrc
+  reportOnFail slug (show slug ++ ".c") cSrc
   return cSrc
 
 -- | Try to compile a C program using make.
@@ -63,7 +53,6 @@ doCompile slug program = do
 -- since we are already relying on stack test always executing there.
 --
 -- TODO: It's probably possible to just inspect the returncode here
--- TODO: pass in DEBUG flag here
 doMake :: Slug -> String -> (Int, Int) -> QC.PropertyM IO FilePath
 doMake slug cSrc (aQSize, eQSize) = do
   _   <- make "clean"
@@ -73,11 +62,11 @@ doMake slug cSrc (aQSize, eQSize) = do
   QC.run $ writeFile (execPath ++ ".c") cSrc
 
   _ <- make target
-  reportFileOnFail slug execPath (slugStr slug ++ ".exe")
+  reportFileOnFail slug execPath (show slug ++ ".exe")
 
   return execPath
  where
-  target = slugTarget slug
+  target = show slug
   mkArgs t = ["PLATFORM=" ++ buildPlatform, "SSM_ACT_QUEUE_SIZE=" ++ show aQSize, "SSM_EVENT_QUEUE_SIZE=" ++ show eQSize, t]
   make t = do
     (code, out, err) <- QC.run $ readProcessWithExitCode "make" (mkArgs t) ""
