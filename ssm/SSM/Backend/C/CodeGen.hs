@@ -302,9 +302,10 @@ genCase (After d (lvar, t) v) = do
       lhs = if lvar `elem` locs
         then [cexp|&$id:acts->$id:lvar|]
         else [cexp|$id:acts->$id:lvar|]
-      rhs = genExp locs v
-      -- | NOTE: we add `now` to the delay here.
-  return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
+  case t of
+    TEvent -> return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del);|]]
+    _ -> let rhs = genExp locs v in
+         return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
 genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts

@@ -214,6 +214,10 @@ true' = Exp $ Lit TBool $ LBool True
 false' :: Exp Bool
 false' = Exp $ Lit TBool $ LBool False
 
+-- | Event literal @()@
+event' :: Exp ()
+event' = Exp $ Lit TEvent LEvent
+
 -- | Dereference a reference and get an expression holding the result
 deref :: Ref a -> SSM (Exp a)
 deref (Ptr r) = do

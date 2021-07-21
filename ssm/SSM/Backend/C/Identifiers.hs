@@ -181,6 +181,7 @@ typeId TInt64  = "i64"
 typeId TUInt64 = "u64"
 typeId TUInt8  = "u8"
 typeId TBool   = "bool"
+typeId TEvent  = "event"
 typeId (Ref t) = typeId t
 
 -- | Obtain the name of the scheduled variable type for an SSM `Type`.
