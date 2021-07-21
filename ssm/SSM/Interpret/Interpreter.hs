@@ -82,9 +82,12 @@ run = tick >> runInstant
       p <- dequeue
       setCurrentProcess p
       tellEvent $ T.ActStepBegin $ procName p
+      traceVar
       microtick
       step
       runConts
+        where eventArgs f = return()
+
 
 {- | Run instructions of a process for the current instant.
 
@@ -103,7 +106,7 @@ step = do
         newRef n e
         continue
 
-      GetRef n t r -> do
+      GetRef n _ r -> do
         v <- readRef r
         newVar n v
         continue
@@ -112,7 +115,7 @@ step = do
         writeRef (fst r) e
         continue
 
-      SetLocal n t e2 -> do
+      SetLocal n _ e2 -> do
         writeRef (getVarName n) e2
         continue
 

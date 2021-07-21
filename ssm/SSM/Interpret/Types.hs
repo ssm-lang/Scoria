@@ -69,14 +69,7 @@ The components are
 type Var s
   = STRef
       s
-      ( -- Reference pointing to the actual value of the variable.
-       STRef s SSMExp, -- List of processes that are waiting for writes to this variable.
-                       Map.Map Int (Proc s), -- The time when this variable was last written to
-                                             Word64
-    -- The next time there's a scheduled event on this variable
-                                                   , Maybe Word64
-    -- The new value this variable will get at the next event time
-                                                                 , Maybe SSMExp)
+      (STRef s SSMExp, Map.Map Int (Proc s), Word64, Maybe Word64, Maybe SSMExp)
 
 -- | Process activation records.
 data Proc s = Proc

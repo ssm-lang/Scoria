@@ -7,6 +7,7 @@ module SSM.Interpret.Internal
   , crash
   , microtick
   , tellEvent
+  , traceVar
 
   -- * Interpreter state helpers
   , mkProc
@@ -78,7 +79,9 @@ import           Data.Int                       ( Int32
                                                 , Int64
                                                 )
 import qualified Data.IntMap                   as IntMap
-import           Data.List                      ( delete )
+import           Data.List                      ( delete
+                                                , sortOn
+                                                )
 import qualified Data.Map                      as Map
 import           Data.Maybe                     ( fromJust
                                                 , fromMaybe
@@ -185,6 +188,17 @@ getReferences p m = case Map.lookup (entry p) (funs p) of
         vars'      = filter (isJust . snd) vars
     in  map (second fromJust) vars'
   Nothing -> error "interpreter error - robert did something very wrong"
+
+-- | Log the state of all variables in the current process to the event trace.
+traceVar :: Interp s ()
+traceVar = do
+  mapM_ varEvent . sortOn fst . Map.toList . variables =<< currentProcess
+  mapM_ varEvent . sortOn fst . Map.toList . localrefs =<< currentProcess
+ where
+  varEvent (n, v) = do
+    (e, _, _, _, _) <- lift' $ readSTRef v
+    (t, v) <- getTypeConcreteVal <$> lift' (readSTRef e)
+    tellEvent $ T.ActVar $ T.VarVal n t v
 
 {-********** Time management **********-}
 
@@ -394,7 +408,7 @@ newVar n e = do
   ref <- createVar e
   p   <- gets process
   modify $ \st -> st
-    { process = p { variables = Map.insert (getVarName n) ref (variables p) }
+    { process = p { localrefs = Map.insert (getVarName n) ref (localrefs p) }
     }
 
 -- | Write a value to a variable.
@@ -750,3 +764,14 @@ is not an @Bool@. -}
 getBool :: SSMExp -> Bool
 getBool (Lit _ (LBool b)) = b
 getBool e                 = expTypeError "Bool" e
+
+-- | Obtain type and concrete representation of an expression; only works for
+-- literals.
+getTypeConcreteVal :: SSMExp -> (Type, T.ConcreteValue)
+getTypeConcreteVal (Lit t (LInt32  i    )) = (t, T.IntegralVal $ fromIntegral i)
+getTypeConcreteVal (Lit t (LInt64  i    )) = (t, T.IntegralVal $ fromIntegral i)
+getTypeConcreteVal (Lit t (LUInt8  i    )) = (t, T.IntegralVal $ fromIntegral i)
+getTypeConcreteVal (Lit t (LUInt64 i    )) = (t, T.IntegralVal $ fromIntegral i)
+getTypeConcreteVal (Lit t (LBool   True )) = (t, T.IntegralVal 1)
+getTypeConcreteVal (Lit t (LBool   False)) = (t, T.IntegralVal 0)
+getTypeConcreteVal e                       = expTypeError "Concrete" e

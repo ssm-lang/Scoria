@@ -19,6 +19,7 @@ module SSM.Backend.C.Identifiers
   , throw
   , exhausted_priority
   , now
+  , never
 
       -- * Type names recognized by the the C runtime system.
   , time_t
@@ -44,11 +45,11 @@ module SSM.Backend.C.Identifiers
       {- | Some identifiers need to be prefixed or suffixed with some type information,
       such as @later_int@, @later_bool@ etc. We create identifiers like these and others
       by using these functions. -}
-  , typeId
   , svt_
   , initialize_
   , assign_
   , later_
+  , basetype
 
     -- * Debug-/trace-specific macros
   , debug_microtick
@@ -57,11 +58,12 @@ module SSM.Backend.C.Identifiers
 
 import           SSM.Core.Syntax
 
-import           Language.C.Quote.GCC           ( cstm
-                                                , cexp
+import           Language.C.Quote.GCC           ( cexp
+                                                , cstm
                                                 , cty
                                                 )
 import qualified Language.C.Syntax             as C
+import           SSM.Backend.C.Types
 
 -- | Use snake_case for c literals
 {-# ANN module "HLint: ignore Use camelCase" #-}
@@ -108,6 +110,10 @@ unsched_event = "ssm_unschedule"
 -- | Name of routine that returns the current value of now.
 now :: CIdent
 now = "ssm_now"
+
+-- | Name of routine that returns the current value of now.
+never :: CIdent
+never = "SSM_NEVER"
 
 -- | Name of macro that throws an error.
 throw :: CIdent
@@ -172,32 +178,24 @@ trig_ i = "trig" ++ show i
 sv_t :: C.Type
 sv_t = [cty|struct sv|]
 
--- | Maps SSM `Type` to identifier of base type.
---
--- Note that this unwraps reference types and returns the base type.
-typeId :: Type -> CIdent
-typeId TInt32  = "i32"
-typeId TInt64  = "i64"
-typeId TUInt64 = "u64"
-typeId TUInt8  = "u8"
-typeId TBool   = "bool"
-typeId (Ref t) = typeId t
-
 -- | Obtain the name of the scheduled variable type for an SSM `Type`.
 svt_ :: Type -> C.Type
-svt_ ty = [cty|typename $id:("ssm_" ++ typeId ty ++ "_t")|]
+svt_ ty = [cty|typename $id:("ssm_" ++ baseTypeId ty ++ "_t")|]
+
+basetype :: Type -> C.Type
+basetype t = [cty|typename $id:(baseTypeId t)|]
 
 -- | Obtain the name of the initialize method for an SSM `Type`.
 initialize_ :: Type -> CIdent
-initialize_ ty = "ssm_initialize_" ++ typeId ty
+initialize_ ty = "ssm_initialize_" ++ baseTypeId ty
 
 -- | Obtain the name of the assign method for an SSM `Type`.
 assign_ :: Type -> CIdent
-assign_ ty = "ssm_assign_" ++ typeId ty
+assign_ ty = "ssm_assign_" ++ baseTypeId ty
 
 -- | Obtain the name of the later method for an SSM `Type`.
 later_ :: Type -> CIdent
-later_ ty = "ssm_later_" ++ typeId ty
+later_ ty = "ssm_later_" ++ baseTypeId ty
 
 debug_microtick :: CIdent
 debug_microtick = "SSM_DEBUG_MICROTICK"

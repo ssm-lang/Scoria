@@ -11,24 +11,12 @@ and at the beginning of each step function. The running microtick count persists
 between instants, so that it increases monotonically throughout the execution.
 -}
 
-module SSM.Interpret.Trace
-  ( Trace(..)
-  , Event(..)
-  , isTerminal
-  , isWellFormed
-  ) where
+module SSM.Interpret.Trace where
 
 import           Data.Word
-import SSM.Core.Syntax (SSMLit)
-
--- | A typed, concrete value. TODO: decouple this from Literals.
--- type ConcreteValue = SSMLit
-
--- | A variable name.
-type VarIdent = String
-
--- | The name of an activation record
-type ActIdent = String
+import           SSM.Core.Syntax                ( SSMLit
+                                                , Type
+                                                )
 
 -- | What transpired during the execution of an SSM program.
 type Trace = [Event]
@@ -40,25 +28,44 @@ data Event =
 
   -- | Enter/re-enter a step function.
   | ActStepBegin ActIdent
-  -- | Activate another process, in preparation for a fork.
-  -- If forking multiple processes, these events should appear in fork order.
-  | ActActivate ActIdent -- [ConcreteValue]
 
-{- TODO: the following, if they ever become necessary.
+  -- | Value of initialized variable (arguments + locals) in activation record.
+  --
+  -- Since each activation record maintains multiple variables, it is important
+  -- to discuss the expected order of these events here. Arguments appear first,
+  -- sorted by name, followed by local variables, also sorted by name. Any
+  -- uninitialized variable should not be reported.
+  --
+  -- ActVar events should appear after ActStepBegin, but before any other
+  -- computation in the step function (including the microtick).
+  | ActVar VarVal
+
+  -- | Activate another process, in preparation for a fork.
+  --
+  -- If forking multiple processes, these events should appear in fork order.
+  | ActActivate ActIdent
+
+  -- | Sensitize to a variable.
+  --
+  -- If sensitizing on multiple variables, these should appear in wait order
+  -- (although this does not have any operational significance).
+  | ActSensitize VarIdent
+
+{- TODO: include the following, if they ever become necessary.
   -- | Leave a step function because the process terminated.
   | ActStepEndLeave ActIdent
   -- | Leave a step function because the process forked other processes.
   | ActStepEndFork ActIdent
   -- | Leave a step function because the process started waiting.
   | ActStepEndWait ActIdent
-  -- | Value of variable in activation record.
-  | ActLocalVal VarIdent ConcreteValue
-  -- | Sensitize to a variable.
-  | ActSensitize VarIdent
 -}
+
   -- | Terminated gracefully.
   | TerminatedOk
   -- | Did not terminate within microtick limit.
+  --
+  -- Microtick should only appear after entering a process's step function,
+  -- i.e., after reporting process name and var values.
   | ExhaustedMicrotick
   -- | Tried to queue too many activation records in an instant.
   | ExhaustedActQueue
@@ -91,3 +98,40 @@ isTerminal _                    = False
 isWellFormed :: Trace -> Bool
 isWellFormed [] = False
 isWellFormed es = isTerminal (last es) && not (any isTerminal (init es))
+
+-- | A variable name.
+type VarIdent = String
+
+-- | The name of an activation record.
+type ActIdent = String
+
+-- | The trace representation indicating a variable, its type, and its value.
+--
+-- Even if the variable is a reference, VarVal should contain its base type
+-- (i.e., without the reference) and base value (i.e., dereferenced).
+data VarVal = VarVal VarIdent Type ConcreteValue
+  deriving (Show, Eq, Read)
+
+-- | An untyped, concrete value.
+--
+-- To make things easier for the parser, we use a representation that is more
+-- or less agnostic to the type of the value, i.e., integers.
+data ConcreteValue =
+    -- | A value represented as an integer.
+    --
+    -- Encompasses all Int and UInt types, as well as Bool {0,1}.
+    --
+    -- Use uninitalizedMagicIntegral to represent an uninitialized value.
+      IntegralVal Integer
+
+    -- | A placeholder "value"; should not appear in the concrete event trace.
+    --
+    -- Used for injecting formatters into a format string in codegen.
+    | IntegralFmt String
+    deriving (Eq, Read)
+
+-- | Override the default Show intance for @ConcreteVal@ so that shown
+-- formatters can be parsed as values.
+instance Show ConcreteValue where
+  show (IntegralVal i) = "(IntegralVal " ++ show i ++ ")"
+  show (IntegralFmt f) = "(IntegralVal " ++ f ++ ")"

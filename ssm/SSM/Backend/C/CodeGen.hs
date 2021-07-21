@@ -25,8 +25,10 @@ import qualified Data.Map                      as Map
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
 
+import           Data.List                      ( sortOn )
 import           SSM.Backend.C.Exp
 import           SSM.Backend.C.Identifiers
+import           SSM.Backend.C.Types
 import           SSM.Core.Syntax
 import qualified SSM.Interpret.Trace           as T
 
@@ -196,12 +198,12 @@ genEnter = do
  where
   -- | TODO: This only works because we don't have nested Refs (yet)
   param (n, Ref t) = [cparam|$ty:(svt_ t) *$id:n|]
-  param (n, t    ) = [cparam|typename $id:(typeId t) $id:n|]
+  param (n, t    ) = [cparam|$ty:(basetype t) $id:n|]
 
   initParam (n, Ref t) = [[cstm|$id:acts->$id:n = $id:n;|]]
   initParam (n, t) =
     [ [cstm|$id:(initialize_ t)(&$id:acts->$id:n);|]
-    , [cstm|$id:acts->$id:n.value = $id:n;|]
+    , [cstm|$id:(assign_ t)(&$id:acts->$id:n, $id:actg->priority, $id:n);|]
     ]
 
   initLocal (n, t) = [[cstm| $id:(initialize_ t)(&$id:acts->$id:n);|]]
@@ -220,22 +222,42 @@ genStep = do
   p     <- gets procedure
   _     <- nextCase -- Toss away 0th case
   cases <- concat <$> mapM genCase (body p)
-  refs  <- gets locals
+  locs  <- gets locals
   final <- nextCase
   let act           = [cty|typename $id:actt|]
       actt          = act_ $ name p -- hack to use this typename as expr in macros
       step          = step_ $ name p
+
       actStepBeginS = show $ T.ActStepBegin $ name p
+      actLocalVarS nt = show $ T.ActVar $ varFmt nt
+
+      debugLocal (n, t) =
+        [cstm|if ($exp:initialized) $id:debug_trace($exp:fmt, $exp:val);|]
+       where
+        initialized = [cexp|$id:acts->$id:n.sv.last_updated != $id:never|]
+        fmt         = [cexp|$string:(actLocalVarS (n, t))|]
+        val         = [cexp|$id:acts->$id:n.value|]
+
+      debugArg (n, t) = [cstm|$id:debug_trace($exp:eventFmt, $exp:val);|]
+       where
+        eventFmt = [cexp|$string:(actLocalVarS (n, t))|]
+        val      = case t of
+          Ref _ -> [cexp|$id:acts->$id:n->value|]
+          _     -> [cexp|$id:acts->$id:n.value|]
+
+
       dequeue (var, _) = [cstm|$id:unsched_event(&$id:acts->$id:var.sv);|]
   return
     ( [cedecl|void $id:step($ty:act_t *$id:actg);|]
     , [cedecl|
         void $id:step($ty:act_t *$id:actg) {
+          $ty:act *$id:acts = container_of($id:actg, $id:actt, act);
 
           $id:debug_trace($string:actStepBeginS);
+          $stms:(map debugArg $ sortOn fst $ arguments p)
+          $stms:(map debugLocal $ sortOn fst locs)
           $id:debug_microtick();
 
-          $ty:act *$id:acts = container_of($id:actg, $id:actt, act);
           switch ($id:actg->pc) {
           case 0:;
             $stms:cases
@@ -243,7 +265,7 @@ genStep = do
           default:
             break;
           }
-          $stms:(map dequeue refs)
+          $stms:(map dequeue locs)
           $id:act_leave($id:actg, sizeof($ty:act));
         }
       |]
