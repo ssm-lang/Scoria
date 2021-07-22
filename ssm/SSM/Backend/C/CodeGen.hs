@@ -325,7 +325,9 @@ genCase (After d (lvar, t) v) = do
         then [cexp|&$id:acts->$id:lvar|]
         else [cexp|$id:acts->$id:lvar|]
       rhs = genExp locs v
-      -- | NOTE: we add `now` to the delay here.
+      -- Note that the semantics of 'After' and 'later_' differ---the former
+      -- expects a relative time, whereas the latter takes an absolute time.
+      -- Thus we add now() in the code we generate.
   return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
 genCase (Wait ts) = do
   caseNum <- nextCase
@@ -333,7 +335,8 @@ genCase (Wait ts) = do
   locs <- map fst <$> gets locals
   let trigs = zip [1 ..] $ map (genTrig locs) ts
   return
-    $  fmap sensitizeTrig trigs
+    $ map getTrace ts
+    ++ map sensitizeTrig trigs
     ++ [ [cstm| $id:actg->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]
@@ -346,6 +349,8 @@ genCase (Wait ts) = do
   genTrig locs (trig, _) = if trig `elem` locs
     then [cexp|&$id:acts->$id:trig.sv|]
     else [cexp|&$id:acts->$id:trig->sv|]
+  getTrace (trig, _) = [cstm|$id:debug_trace($string:event);|]
+    where event = show $ T.ActSensitize trig
 genCase (Fork cs) = do
   locs    <- map fst <$> gets locals
   caseNum <- nextCase

@@ -140,6 +140,7 @@ step = do
         continue
 
       Wait refs -> do
+        forM_ refs $ \(r, _) -> tellEvent $ T.ActSensitize r
         wait refs
         yield
 
