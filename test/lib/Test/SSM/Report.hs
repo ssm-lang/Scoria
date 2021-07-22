@@ -45,7 +45,7 @@ data TestName = RandomTest | NamedTest String deriving (Show, Eq)
 data Slug = SlugGenerated Int | SlugNamed String deriving Eq
 
 instance Show Slug where
-  show (SlugGenerated i) = "Gen" ++ show i
+  show (SlugGenerated i) = "Arb" ++ show i
   show (SlugNamed     n) = n
 
 -- | Generate Slug from TestName, using the current POSIX time for timestamps.
