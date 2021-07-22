@@ -51,21 +51,9 @@ data Event =
   -- (although this does not have any operational significance).
   | ActSensitize VarIdent
 
-{- TODO: include the following, if they ever become necessary.
-  -- | Leave a step function because the process terminated.
-  | ActStepEndLeave ActIdent
-  -- | Leave a step function because the process forked other processes.
-  | ActStepEndFork ActIdent
-  -- | Leave a step function because the process started waiting.
-  | ActStepEndWait ActIdent
--}
-
   -- | Terminated gracefully.
   | TerminatedOk
   -- | Did not terminate within microtick limit.
-  --
-  -- Microtick should only appear after entering a process's step function,
-  -- i.e., after reporting process name and var values.
   | ExhaustedMicrotick
   -- | Tried to queue too many activation records in an instant.
   | ExhaustedActQueue
