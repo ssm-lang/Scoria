@@ -7,7 +7,7 @@ module SSM.Interpret.Internal
   , crash
   , microtick
   , tellEvent
-  , traceVar
+  , traceVars
 
   -- * Interpreter state helpers
   , mkProc
@@ -43,7 +43,6 @@ module SSM.Interpret.Internal
   , newRef
   , writeRef
   , readRef
-  , newVar
 
   -- * Wait, fork, and leave + helpers
   , wait
@@ -190,8 +189,8 @@ getReferences p m = case Map.lookup (entry p) (funs p) of
   Nothing -> error "interpreter error - robert did something very wrong"
 
 -- | Log the state of all variables in the current process to the event trace.
-traceVar :: Interp s ()
-traceVar = do
+traceVars :: Interp s ()
+traceVars = do
   mapM_ varEvent . sortOn fst . Map.toList . variables =<< currentProcess
   mapM_ varEvent . sortOn fst . Map.toList . localrefs =<< currentProcess
  where
@@ -389,22 +388,6 @@ is considered written to in that instant.
 -}
 newRef :: Name -> SSMExp -> Interp s ()
 newRef n e = do
-  ref <- createVar e
-  p   <- gets process
-  modify $ \st -> st
-    { process = p { localrefs = Map.insert (getVarName n) ref (localrefs p) }
-    }
-
-{- | Create a new variable with an initial value.
-
-Adds it to the current process's variable storage; when a variable is created it
-is considered written to in that instant.
-
-Note: This does the same thing as `NewRef`, but it adds the reference to the map
-containing expression variables & references supplied by a caller.
--}
-newVar :: Name -> SSMExp -> Interp s ()
-newVar n e = do
   ref <- createVar e
   p   <- gets process
   modify $ \st -> st
@@ -626,14 +609,18 @@ eval e = do
   case e of
     Var _ n -> case Map.lookup n (variables p) of
       Just r -> do
-        v <- lift $ lift $ (readSTRef . \(x, _, _, _, _) -> x) =<< readSTRef r
+        v <- lift' $ (readSTRef . \(x, _, _, _, _) -> x) =<< readSTRef r
         eval v
-      Nothing ->
-        crash
-          $  "Interpreter: in process '"
-          ++ procName p
-          ++ "', variable not found: "
-          ++ n
+      Nothing -> case Map.lookup n (localrefs p) of
+        Just r -> do
+          v <- lift' $ (readSTRef . \(x, _, _, _, _) -> x) =<< readSTRef r
+          eval v
+        Nothing ->
+          crash
+            $  "Interpreter (eval): in process '"
+            ++ procName p
+            ++ "', variable not found: "
+            ++ n
     Lit _ l     -> return e
     UOpR _ r op -> case op of
       Changed -> wasWritten $ fst r

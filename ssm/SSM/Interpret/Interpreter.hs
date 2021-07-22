@@ -82,7 +82,7 @@ run = tick >> runInstant
       p <- dequeue
       setCurrentProcess p
       tellEvent $ T.ActStepBegin $ procName p
-      traceVar
+      traceVars
       microtick
       step
       runConts
@@ -108,7 +108,7 @@ step = do
 
       GetRef n _ r -> do
         v <- readRef r
-        newVar n v
+        newRef n v
         continue
 
       SetRef r e -> do
