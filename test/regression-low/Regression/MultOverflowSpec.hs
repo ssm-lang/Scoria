@@ -15,34 +15,31 @@ p = Program
   { entry = "fun1"
   , args  = []
   , funs  = fromList
-              [ ( "fun1"
-                , Procedure
-                  { name      = "fun1"
-                  , arguments = []
-                  , body      = [ NewRef (Fresh "v0")
-                                         (Ref TInt32)
-                                         (Lit TInt32 (LInt32 999999))
-                                , If
-                                  (BOp
-                                    TBool
-                                    (Lit TInt32 (LInt32 0))
-                                    (BOp TInt32
-                                         (Var TInt32 "v0")
-                                         (Var TInt32 "v0")
-                                         OTimes
-                                    )
-                                    OLT
-                                  )
-                                  []
-                                  []
-                                , NewRef (Fresh "v3")
-                                         (Ref TInt32)
-                                         (Lit TInt32 (LInt32 0))
-                                , Wait [("v3", Ref TInt32)]
-                                ]
-                  }
-                )
-              ]
+    [ ( "fun1"
+      , Procedure
+        { name      = "fun1"
+        , arguments = []
+        , body      =
+          [ NewRef (Fresh "v0") (Ref TInt32) (Lit TInt32 (LInt32 999999))
+          , If
+            (BOp TBool
+                 (Lit TInt32 (LInt32 0))
+                 (BOp TInt32 (Var TInt32 "v0") (Var TInt32 "v0") OTimes)
+                 OLT
+            )
+            [ After (Lit TUInt64 (LUInt64 2))
+                    ("v0", Ref TInt32)
+                    (Lit TInt32 (LInt32 0))
+            ]
+            [ After (Lit TUInt64 (LUInt64 2))
+                    ("v0", Ref TInt32)
+                    (Lit TInt32 (LInt32 1))
+            ]
+          , Wait [("v0", Ref TInt32)]
+          ]
+        }
+      )
+    ]
   }
 
 spec :: H.Spec

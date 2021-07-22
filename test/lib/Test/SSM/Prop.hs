@@ -95,8 +95,8 @@ propCorrectWithSize tn program (aQSize, eQSize) = do
 correctSpec :: String -> Program -> H.Spec
 correctSpec name p = do
   once $ H.prop "compiles" $ propCompiles tn p
-  once $ H.prop "runs without memory errors" $ propValgrind tn p
-  once $ H.prop "runs according to interpreter" $ propCorrect tn p
+  once $ H.prop "no memory errors" $ propValgrind tn p
+  once $ H.prop "matches interpreter" $ propCorrect tn p
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name
@@ -105,11 +105,13 @@ correctSpec name p = do
 -- without memory errors, but behaves different from the interpreter.
 --
 -- Used to note discrepancies with the interpreter in the regression test suite.
+-- Note that the description is still "matches interpreter" so that we can use
+-- the same test name match clause (i.e., with HSpec's --match argument).
 semanticIncorrectSpec :: String -> Program -> H.Spec
 semanticIncorrectSpec name p = do
   once $ H.prop "compiles" $ propCompiles tn p
-  once $ H.prop "runs without memory errors" $ propValgrind tn p
-  once $ H.prop "does not match interpreter" $ QC.expectFailure $ propCorrect
+  once $ H.prop "no memory errors" $ propValgrind tn p
+  once $ H.prop "matches interpreter" $ QC.expectFailure $ propCorrect
     tn
     p
  where
