@@ -68,25 +68,25 @@ run = tick >> runInstant
         setNow n
         tick >> runInstant
 
-  -- | Applies all scheduled updates for the current instant, then 'runConts'.
+  -- | Apply all scheduled updates for current instant, then 'runProcs'.
   tick :: Interp s ()
   tick = do
     performEvents
-    nc <- contQueueSize
-    runConts
+    nc <- actQueueSize
+    runProcs
 
   -- | Pop and run processes from the ready queue until the queue is empty.
-  runConts :: Interp s ()
-  runConts = do
-    cs <- contQueueSize
-    unless (cs == 0) $ do
+  runProcs :: Interp s ()
+  runProcs = do
+    acts <- actQueueSize
+    unless (acts == 0) $ do
       p <- dequeue
       setCurrentProcess p
       tellEvent $ T.ActStepBegin $ procName p
       traceVars
       microtick
       step
-      runConts
+      runProcs
 
 {- | Run instructions of a process for the current instant.
 

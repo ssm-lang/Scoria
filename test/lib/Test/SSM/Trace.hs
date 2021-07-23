@@ -103,7 +103,7 @@ doInterpret slug program limit (actQueueSize, eventQueueSize) = do
 
   interpreted :: Tr.Trace
   interpreted = interpret
-    def { boundContQueueSize  = actQueueSize
+    def { boundActQueueSize   = actQueueSize
         , boundEventQueueSize = eventQueueSize
         }
     program

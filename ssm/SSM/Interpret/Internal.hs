@@ -30,7 +30,7 @@ module SSM.Interpret.Internal
   -- * Activation queue helpers
   , enqueue
   , dequeue
-  , contQueueSize
+  , actQueueSize
   , currentProcess
   , setCurrentProcess
 
@@ -262,32 +262,28 @@ performEvents = do
 -- | Enqueue a process in the ready queue, ordered by its priority
 enqueue :: Proc s -> Interp s ()
 enqueue p = do
-  nc   <- gets numconts
-  mcqs <- contqueueSize
+  nc   <- gets numacts
+  mcqs <- gets maxActQueueSize
   if nc >= mcqs
     then terminate T.ExhaustedActQueue
     else modify $ \st -> st
       { readyQueue = IntMap.insert (priority p) p (readyQueue st)
-      , numconts   = numconts st + 1
+      , numacts    = numacts st + 1
       }
 
 -- | Fetch the process with the lowest priority from the ready queue.
 dequeue :: Interp s (Proc s)
 dequeue = do
   st <- get
-  let conts = readyQueue st
-  when (IntMap.null conts)
+  let acts = readyQueue st
+  when (IntMap.null acts)
     $ crash "Interpreter error: dequeue called on empty readyqueue"
-  put $ st { readyQueue = IntMap.deleteMin conts, numconts = numconts st - 1 }
-  return $ snd $ IntMap.findMin conts
-
--- | Upper bound on the size of the ready queue.
-contqueueSize :: Interp s Int
-contqueueSize = gets maxContQueueSize
+  put $ st { readyQueue = IntMap.deleteMin acts, numacts = numacts st - 1 }
+  return $ snd $ IntMap.findMin acts
 
 -- | Size of the ready queue.
-contQueueSize :: Interp s Int
-contQueueSize = gets numconts
+actQueueSize :: Interp s Int
+actQueueSize = gets numacts
 
 -- | Set the current process.
 setCurrentProcess :: Proc s -> Interp s ()

@@ -152,7 +152,7 @@ data St s = St
     that are scheduled to be evaluated. -}
   , readyQueue        :: IntMap.IntMap (Proc s)
     -- | Number of processes in the readyqueue
-  , numconts          :: Int
+  , numacts           :: Int
     {- | Map that associates procedure names with procedure definitions. Used when we
     fork a procedure and we need to create an activation record. -}
   , procedures        :: Map.Map String Procedure
@@ -164,7 +164,7 @@ data St s = St
     -- | The number of microticks counted so far.
   , microticks        :: Int
   , microtickLimit    :: Int
-  , maxContQueueSize  :: Int
+  , maxActQueueSize   :: Int
   , maxEventQueueSize :: Int
   }
   deriving Eq
@@ -181,13 +181,13 @@ initState conf p startTime entryPoint = St
   , events            = Map.empty
   , numevents         = 0
   , readyQueue        = IntMap.singleton 0 entryPoint
-  , numconts          = 1
+  , numacts           = 1
   , procedures        = funs p
   , process           = entryPoint
   , inputargs         = getReferences p $ variableStorage entryPoint
   , microticks        = 0
   , microtickLimit    = boundMicrotick conf
-  , maxContQueueSize  = boundContQueueSize conf
+  , maxActQueueSize   = boundActQueueSize conf
   , maxEventQueueSize = boundEventQueueSize conf
   }
 
@@ -242,8 +242,8 @@ microtick = do
 interpret a program after loading this information into the interpretation state.
 I can hack this together on monday. -}
 data InterpretConfig = InterpretConfig
-  { -- | Size of continuation queue
-    boundContQueueSize  :: Int
+  { -- | Size of activation record queue
+    boundActQueueSize   :: Int
     -- | Size of event queue
   , boundEventQueueSize :: Int
     -- | Microtick limit
@@ -255,7 +255,7 @@ data InterpretConfig = InterpretConfig
   }
 
 instance Default InterpretConfig where
-  def = InterpretConfig { boundContQueueSize  = 1024
+  def = InterpretConfig { boundActQueueSize   = 1024
                         , boundEventQueueSize = 2048
                         , boundMicrotick      = 100000
                         , rootPriority        = 0
