@@ -46,6 +46,7 @@ module SSM.Frontend.Language
     , uint64
     , true'
     , false'
+    , event'
 
       -- ** Primitive statements
       {- | These are the primitive statements of the SSM language. Your procedure
