@@ -7,7 +7,7 @@ module Test.SSM.Prop
   , semanticIncorrectSpec
   ) where
 
-import           SSM.Core.Syntax                ( Program )
+import           SSM.Compile                    ( SSMProgram(..) )
 import           Test.SSM.QuickCheck.Generator  ( ) -- instance Arbitrary Program
 
 import qualified Test.Hspec                    as H
@@ -31,17 +31,18 @@ import           Test.SSM.Trace                 ( doCompareTraces
                                                 , doParseOutput
                                                 )
 
--- | List to store event queue sizes for testing
+-- | List of act and event queue sizes to test.
 queueSizes :: [(Int, Int)]
 queueSizes = [(32, 32), (256, 256), (2048, 2048)]
 
 -- | Tests that generated SSM programs compile successfully.
-propCompiles :: TestName -> Program -> QC.Property
+propCompiles :: SSMProgram p => TestName -> p -> QC.Property
 propCompiles tn program =
   QC.monadicIO $ mapM_ (propCompilesWithSize tn program) queueSizes
 
 -- | Tests that generated SSM programs compile successfully, given some size.
-propCompilesWithSize :: TestName -> Program -> (Int, Int) -> QC.PropertyM IO ()
+propCompilesWithSize
+  :: SSMProgram p => TestName -> p -> (Int, Int) -> QC.PropertyM IO ()
 propCompilesWithSize tn program (aQSize, eQSize) = do
   slug <- QC.run $ getSlug tn
   reportSlug slug
@@ -51,12 +52,13 @@ propCompilesWithSize tn program (aQSize, eQSize) = do
   return ()
 
 -- | Tests an SSM program by evaluating it under valgrind.
-propValgrind :: TestName -> Program -> QC.Property
+propValgrind :: SSMProgram p => TestName -> p -> QC.Property
 propValgrind tn program =
   QC.monadicIO $ mapM_ (propValgrindWithSize tn program) queueSizes
 
 -- | Tests an SSM program by evaluating it under valgrind, given some size
-propValgrindWithSize :: TestName -> Program -> (Int, Int) -> QC.PropertyM IO ()
+propValgrindWithSize
+  :: SSMProgram p => TestName -> p -> (Int, Int) -> QC.PropertyM IO ()
 propValgrindWithSize tn program (aQSize, eQSize) = do
   slug <- QC.run $ getSlug tn
   reportSlug slug
@@ -68,14 +70,15 @@ propValgrindWithSize tn program (aQSize, eQSize) = do
 
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
-propCorrect :: TestName -> Program -> QC.Property
+propCorrect :: SSMProgram p => TestName -> p -> QC.Property
 propCorrect tn program =
   QC.monadicIO $ mapM_ (propCorrectWithSize tn program) queueSizes
 
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
 -- Sizes are give as an argument
-propCorrectWithSize :: TestName -> Program -> (Int, Int) -> QC.PropertyM IO ()
+propCorrectWithSize
+  :: SSMProgram p => TestName -> p -> (Int, Int) -> QC.PropertyM IO ()
 propCorrectWithSize tn program (aQSize, eQSize) = do
   slug <- QC.run $ getSlug tn
   reportSlug slug
@@ -92,7 +95,7 @@ propCorrectWithSize tn program (aQSize, eQSize) = do
 -- without memory errors, and behaves the same as the interpreter.
 --
 -- Used to build passing integration tests.
-correctSpec :: String -> Program -> H.Spec
+correctSpec :: SSMProgram p => String -> p -> H.Spec
 correctSpec name p = do
   once $ H.prop "compiles" $ propCompiles tn p
   once $ H.prop "no memory errors" $ propValgrind tn p
@@ -107,13 +110,11 @@ correctSpec name p = do
 -- Used to note discrepancies with the interpreter in the regression test suite.
 -- Note that the description is still "matches interpreter" so that we can use
 -- the same test name match clause (i.e., with HSpec's --match argument).
-semanticIncorrectSpec :: String -> Program -> H.Spec
+semanticIncorrectSpec :: SSMProgram p => String -> p -> H.Spec
 semanticIncorrectSpec name p = do
   once $ H.prop "compiles" $ propCompiles tn p
   once $ H.prop "no memory errors" $ propValgrind tn p
-  once $ H.prop "matches interpreter" $ QC.expectFailure $ propCorrect
-    tn
-    p
+  once $ H.prop "matches interpreter" $ QC.expectFailure $ propCorrect tn p
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name

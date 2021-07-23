@@ -15,6 +15,7 @@ module SSM.Interpret.Types
       {- | The process activation record very closely resembles the corresponding C
       version, but jas a few differences. -}
   , Proc(..)
+  , mkProc
       -- ** Interpretation monad
       {- | This is interpretation monad that we use to interpret a program. It is a
       state+writer monad. -}
@@ -25,6 +26,7 @@ module SSM.Interpret.Types
       improving efficiency here, but by profiling the interpreter I don't see any
       immediate condidates. -}
   , St(..)
+  , initState
 
       -- ** Configuration object used to interpret programs
   , InterpretConfig(..)
@@ -38,12 +40,14 @@ module SSM.Interpret.Types
   , microtick
   ) where
 
+import           Data.Bifunctor                 ( second )
 import           Data.List
 import           Data.Maybe
 import           Data.STRef.Lazy
 import           Data.Word
 
 import           SSM.Core.Syntax
+import           SSM.Util.Default               ( Default(..) )
 import           SSM.Util.HughesList
 
 import           Control.Monad.ST.Lazy
@@ -100,6 +104,25 @@ data Proc s = Proc
   }
   deriving Eq
 
+-- | Create the initial process.
+mkProc
+  :: InterpretConfig          -- ^ Configuration
+  -> Program                  -- ^ Program
+  -> Procedure                -- ^ Entry point
+  -> Map.Map String (Var s)   -- ^ Parameters
+  -> Proc s
+mkProc conf p fun vars = Proc { procName        = entry p
+                              , priority        = rootPriority conf
+                              , depth           = rootDepth conf
+                              , runningChildren = 0
+                              , parent          = Nothing
+                              , variables       = vars
+                              , localrefs       = Map.empty
+                              , waitingOn       = Nothing
+                              , continuation    = body fun
+                              }
+
+
 {- | The show instance will only render the priority (this was initially
 implemented for debug purposes). -}
 instance Show (Proc s) where
@@ -146,6 +169,42 @@ data St s = St
   }
   deriving Eq
 
+-- | Create initial state for interpreter.
+initState
+  :: InterpretConfig -- ^ Configuration
+  -> Program         -- ^ Program
+  -> Word64          -- ^ Start time
+  -> Proc s          -- ^ Entry point
+  -> St s
+initState conf p startTime entryPoint = St
+  { now               = startTime
+  , events            = Map.empty
+  , numevents         = 0
+  , readyQueue        = IntMap.singleton 0 entryPoint
+  , numconts          = 1
+  , procedures        = funs p
+  , process           = entryPoint
+  , inputargs         = getReferences p $ variableStorage entryPoint
+  , microticks        = 0
+  , microtickLimit    = boundMicrotick conf
+  , maxContQueueSize  = boundContQueueSize conf
+  , maxEventQueueSize = boundEventQueueSize conf
+  }
+
+{- | Given a program and a map of a variable storage, return a list of
+@(name, variable)@ pairs that make up the references in the variable storage
+that appear as input parameters to the program.
+-}
+getReferences :: Program -> Map.Map String (Var s) -> [(String, Var s)]
+getReferences p m = case Map.lookup (entry p) (funs p) of
+  Just pr ->
+    let refparams  = filter (isReference . snd) $ arguments pr
+        paramnames = map fst refparams
+        vars       = map (\n -> (n, Map.lookup n m)) paramnames
+        vars'      = filter (isJust . snd) vars
+    in  map (second fromJust) vars'
+  Nothing -> error "interpreter error - robert did something very wrong"
+
 {- | Alias for getting the variable storage from a process, so we don't expose the
 internals of the @Proc s@ datatype. -}
 variableStorage :: Proc s -> Map.Map String (Var s)
@@ -189,6 +248,16 @@ data InterpretConfig = InterpretConfig
   , boundEventQueueSize :: Int
     -- | Microtick limit
   , boundMicrotick      :: Int
-    -- | Program to interpret
-  , program             :: Program
+  -- | Priority at root process/entry point
+  , rootPriority        :: Int
+  -- | Depth at root process/entry point
+  , rootDepth           :: Int
   }
+
+instance Default InterpretConfig where
+  def = InterpretConfig { boundContQueueSize  = 1024
+                        , boundEventQueueSize = 2048
+                        , boundMicrotick      = 100000
+                        , rootPriority        = 0
+                        , rootDepth           = 32
+                        }

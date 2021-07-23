@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 6004dc2537be4b8e05dd6a19f0a471c60b76cd9df356d99686a8f047394105f4
+-- hash: 77d010c9678c083185f6943e0f657691b99074ea1a9005418deeea8d2d00ebbb
 
 name:           ssm
 version:        0.1.0.0
@@ -45,6 +45,7 @@ library
       SSM.Language
       SSM.Pretty
       SSM.Pretty.Syntax
+      SSM.Util.Default
       SSM.Util.HughesList
       SSM.Util.Operators
   other-modules:

@@ -1,11 +1,14 @@
 module SSM.Interpret.Interpreter
   ( interpret
   , InterpretConfig(..)
+  , interpret_
+  , SSMProgram(..)
   ) where
 
 import           SSM.Core.Syntax
 import           SSM.Interpret.Internal
 import qualified SSM.Interpret.Trace           as T
+import           SSM.Util.Default               ( Default(def) )
 import           SSM.Util.HughesList     hiding ( (++) )
 import           SSM.Util.Operators             ( (<#>) )
 
@@ -17,7 +20,9 @@ import           Control.Monad.ST.Lazy
 import           Control.Monad.State.Lazy
 import           Control.Monad.Writer.Lazy
 
-import           Debug.Trace
+-- | Interpret an SSM program with the default configuration.
+interpret_ :: SSMProgram p => p -> T.Trace
+interpret_ = interpret def
 
 {-| Interpret an SSM program.
 
@@ -26,29 +31,25 @@ used by the testing machinery to evaluate the semantics of the interpreter.
 
 The interpreter itself is lazy, so it can handle non terminating programs without
 issue. What you do to get the output in that case is to ask it for a finite amount
-of output, such as @take 10000 (interpret program)@. After evaluating enough to give
-you @10000@ trace items, it will not evaluate more. -}
-interpret :: InterpretConfig -> T.Trace
-interpret config = runST interpret'
- where
-  p = program config
-
-  interpret' :: ST s T.Trace
-  interpret' = do
-      -- Fetch procedure body
-    fun <- case Map.lookup (entry p) (funs p) of
-      Just p' -> return p'
-      Nothing ->
-        error $ "Interpreter error: cannot find entry point: " ++ entry p
-
-    vars        <- params p
-
-    -- Run the interpret action and produce it's output
-    (_, events) <- runWriterT $ runStateT run $ initState config 0 $ mkProc
-      config
-      fun
-      vars
-    return $ fromHughes events
+of output, such as @take 10000 (interpret program)@. After evaluating enough to
+give you @10000@ trace items, it will not evaluate more.
+-}
+interpret :: SSMProgram p => InterpretConfig -> p -> T.Trace
+interpret config program = runST $ do
+  let p = toProgram program
+  -- Fetch procedure body
+  fun <- case Map.lookup (entry p) (funs p) of
+    Just p' -> return p'
+    Nothing ->
+      error $ "Interpreter error: cannot find entry point: " ++ entry p
+  vars        <- params p
+  -- Run the interpret action and produce it's output
+  (_, events) <- runWriterT $ runStateT run $ initState config p 0 $ mkProc
+    config
+    p
+    fun
+    vars
+  return $ fromHughes events
 
 -- | Run the interpreter, serving the role of the @main@ function.
 run :: Interp s ()
@@ -86,8 +87,6 @@ run = tick >> runInstant
       microtick
       step
       runConts
-        where eventArgs f = return()
-
 
 {- | Run instructions of a process for the current instant.
 

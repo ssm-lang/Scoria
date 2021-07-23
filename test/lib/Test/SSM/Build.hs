@@ -11,8 +11,9 @@ import           System.Directory               ( createDirectoryIfMissing )
 import           System.Exit                    ( ExitCode(..) )
 import           System.Process                 ( readProcessWithExitCode )
 
-import           SSM.Backend.C.Compile          ( compile )
-import           SSM.Core.Syntax                ( Program )
+import           SSM.Compile                    ( SSMProgram(..)
+                                                , toC
+                                                )
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
@@ -30,18 +31,10 @@ import           Test.SSM.Report                ( (</>)
 buildPlatform :: String
 buildPlatform = "trace"
 
--- | Size of the act queue
-actQueueSize :: Int
-actQueueSize = 1024
-
--- | Size of the act queue
-eventQueueSize :: Int
-eventQueueSize = 2048
-
 -- | Compile an SSM program to a C program's string representation.
-doCompile :: Monad m => Slug -> Program -> QC.PropertyM m String
+doCompile :: (Monad m, SSMProgram p) => Slug -> p -> QC.PropertyM m String
 doCompile slug program = do
-  let cSrc = compile program
+  let cSrc = toC program
   reportOnFail slug (show slug ++ ".c") cSrc
   return cSrc
 

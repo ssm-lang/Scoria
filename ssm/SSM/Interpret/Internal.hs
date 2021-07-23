@@ -15,7 +15,6 @@ module SSM.Interpret.Internal
   , variableStorage
   , initState
   , params
-  , getReferences
 
   -- * Model time helpers
   , getNow
@@ -73,7 +72,6 @@ import           Control.Monad.State.Lazy       ( MonadState(..)
                                                 , modify
                                                 , when
                                                 )
-import           Data.Bifunctor                 ( second )
 import           Data.Int                       ( Int32
                                                 , Int64
                                                 )
@@ -103,49 +101,12 @@ import           SSM.Interpret.Types
 
 {-********** Main interpret function helpers **********-}
 
--- | Create the initial process.
-
-mkProc
-  :: InterpretConfig          -- ^ Configuration
-  -> Procedure                -- ^ Entry point
-  -> Map.Map String (Var s)   -- ^ Parameters
-  -> Proc s
-mkProc conf fun vars = Proc { procName        = entry $ program conf
-                            , priority        = 0  -- TODO: don't hardcode
-                            , depth           = 32 -- TODO: ^^
-                            , runningChildren = 0
-                            , parent          = Nothing
-                            , variables       = vars
-                            , localrefs       = Map.empty
-                            , waitingOn       = Nothing
-                            , continuation    = body fun
-                            }
-
--- | Create initial state for interpreter.
-initState
-  :: InterpretConfig           -- ^ Configuration
-  -> Word64                    -- ^ Start time
-  -> Proc s                    -- ^ Entry point
-  -> St s
-initState conf startTime entryPoint = St
-  { now               = startTime
-  , events            = Map.empty
-  , numevents         = 0
-  , readyQueue        = IntMap.singleton 0 entryPoint
-  , numconts          = 1
-  , procedures        = funs $ program conf
-  , process           = entryPoint
-  , inputargs = getReferences (program conf) $ variableStorage entryPoint
-  , microticks        = 0
-  , microtickLimit    = boundMicrotick conf
-  , maxContQueueSize  = boundContQueueSize conf
-  , maxEventQueueSize = boundEventQueueSize conf
-  }
-
 {- | Creates the initial variable storage for a program.
 
 Expressions are just allocated in an @STRef@, while references are given
 a default value and then allocated in an @STRef@.
+
+TODO: coordinate with expected entry point signature
 -}
 params :: Program -> ST s (Map.Map String (Var s))
 params p = do
@@ -174,20 +135,6 @@ params p = do
     v <- newVar' (defaultValue $ dereference t) 0
     return (n, v)
 
-{- | Given a program and a map of a variable storage, return a list of
-@(name, variable)@ pairs that make up the references in the variable storage
-that appear as input parameters to the program.
--}
-getReferences :: Program -> Map.Map String (Var s) -> [(String, Var s)]
-getReferences p m = case Map.lookup (entry p) (funs p) of
-  Just pr ->
-    let refparams  = filter (isReference . snd) $ arguments pr
-        paramnames = map fst refparams
-        vars       = map (\n -> (n, Map.lookup n m)) paramnames
-        vars'      = filter (isJust . snd) vars
-    in  map (second fromJust) vars'
-  Nothing -> error "interpreter error - robert did something very wrong"
-
 -- | Log the state of all variables in the current process to the event trace.
 traceVars :: Interp s ()
 traceVars = do
@@ -196,7 +143,7 @@ traceVars = do
  where
   varEvent (n, v) = do
     (e, _, _, _, _) <- lift' $ readSTRef v
-    (t, v) <- getTypeConcreteVal <$> lift' (readSTRef e)
+    (t, v)          <- getTypeConcreteVal <$> lift' (readSTRef e)
     tellEvent $ T.ActVar $ T.VarVal n t v
 
 {-********** Time management **********-}

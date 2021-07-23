@@ -1,5 +1,11 @@
 -- | SSM EDSL compilation interface, for compiling to C code.
-module SSM.Compile where
+module SSM.Compile
+  ( SSMProgram(..)
+  , toC
+  , compileFile
+  , compileCli
+  , compileCli_
+  ) where
 import           Data.Maybe                     ( fromMaybe )
 import           System.Environment             ( getArgs
                                                 , getProgName
