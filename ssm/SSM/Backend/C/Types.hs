@@ -20,6 +20,7 @@ baseTypeId = typeId . baseType
   typeId TUInt64 = "u64"
   typeId TUInt8  = "u8"
   typeId TBool   = "bool"
+  typeId TEvent  = "event"
 
 -- | Obtain formatter to show given type's base type as an integer.
 intFmt :: Type -> String

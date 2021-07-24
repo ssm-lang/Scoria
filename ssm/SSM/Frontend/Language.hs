@@ -46,6 +46,7 @@ module SSM.Frontend.Language
     , uint64
     , true'
     , false'
+    , event'
 
       -- ** Primitive statements
       {- | These are the primitive statements of the SSM language. Your procedure
@@ -213,6 +214,10 @@ true' = Exp $ Lit TBool $ LBool True
 -- | Boolean literal @False@
 false' :: Exp Bool
 false' = Exp $ Lit TBool $ LBool False
+
+-- | Event literal @()@
+event' :: Exp ()
+event' = Exp $ Lit TEvent LEvent
 
 -- | Dereference a reference and get an expression holding the result
 deref :: Ref a -> SSM (Exp a)

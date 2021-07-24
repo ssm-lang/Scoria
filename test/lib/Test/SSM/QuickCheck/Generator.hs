@@ -32,10 +32,12 @@ instance Arbitrary Type where
                        , TInt64
                        , TBool
                        , TUInt64
+                       , TEvent
                        , Ref TInt32
                        , Ref TInt64
                        , Ref TUInt64
                        , Ref TBool
+                       , Ref TEvent
                        ]
 
 type Procedures = [(String, [(String, Type)], [Stm])]
@@ -200,6 +202,7 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
       TInt64 -> return  . Lit TInt64  . LInt64  =<< choose (-55050, 55050)
       TUInt64 -> return . Lit TUInt64 . LUInt64 =<< choose (0, 65500)
       TBool  -> return  . Lit TBool   . LBool   =<< arbitrary
+      TEvent -> return $ Lit TEvent LEvent
 
     -- | Generator that returns a randomly selected variable from the set of variables.
     varGen :: [Gen SSMExp]
