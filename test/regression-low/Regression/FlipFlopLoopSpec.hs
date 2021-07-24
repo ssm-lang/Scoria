@@ -16,26 +16,26 @@ p = Program
                   { name      = "fun0"
                   , arguments = []
                   , body      = [ NewRef (Fresh "ref2")
-                                         TUInt64
-                                         (Lit TUInt64 (LUInt64 1))
-                                , Fork [("fun1", [Right ("ref2", TUInt64)])]
+                                         TBool
+                                         (Lit TBool (LBool True))
+                                , Fork [("fun1", [Right ("ref2", TBool)])]
                                 ]
                   }
                 )
               , ( "fun1"
                 , Procedure
                   { name      = "fun1"
-                  , arguments = [("ref2", Ref TUInt64)]
+                  , arguments = [("ref2", Ref TBool)]
                   , body      = [ While
                                     (Lit TBool (LBool True))
                                     [ After (Lit TUInt64 (LUInt64 2))
-                                            ("ref2", Ref TUInt64)
-                                            (Lit TUInt64 (LUInt64 0))
-                                    , Wait [("ref2", Ref TUInt64)]
+                                            ("ref2", Ref TBool)
+                                            (Lit TBool (LBool False))
+                                    , Wait [("ref2", Ref TBool)]
                                     , After (Lit TUInt64 (LUInt64 2))
-                                            ("ref2", Ref TUInt64)
-                                            (Lit TUInt64 (LUInt64 1))
-                                    , Wait [("ref2", Ref TUInt64)]
+                                            ("ref2", Ref TBool)
+                                            (Lit TBool (LBool False))
+                                    , Wait [("ref2", Ref TBool)]
                                     ]
                                 ]
                   }
