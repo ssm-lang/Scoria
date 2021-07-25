@@ -49,6 +49,7 @@ library
       SSM.Util.Default
       SSM.Util.HughesList
       SSM.Util.Operators
+      SSM.Util.State
   other-modules:
       Paths_ssm
   hs-source-dirs:

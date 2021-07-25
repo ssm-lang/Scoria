@@ -42,7 +42,7 @@ compile_ program = (compUnit, includes)
  where
   compUnit = globals ++ preamble ++ decls ++ defns ++ entryPointSymbol
 
-  globals = genGlobals [] -- (global_vars program)
+  globals = genGlobals (global_references program)
 
   preamble = genPreamble
   (decls, defns) =
@@ -103,13 +103,13 @@ actm :: CIdent
 actm = "act"
 {- | Generate the declarations of global variables and the function that initializes
 them. These variables can be accessed without an activation record. -}
-genGlobals :: [(String, Type)] -> [C.Definition]
+genGlobals :: [(Ident, Type)] -> [C.Definition]
 genGlobals []      = []
 genGlobals globals = globalvars ++ [initglobals]
   where
     -- | The global variable declarations
     globalvars :: [C.Definition]
-    globalvars = map (\(n,t) -> [cedecl| $ty:(svt_ t) $id:n; |]) globals
+    globalvars = map (\(n,t) -> [cedecl| $ty:(svt_ t) $id:(identName n); |]) globals
 
     -- | The function which initializes them
     initglobals :: C.Definition
@@ -117,7 +117,7 @@ genGlobals globals = globalvars ++ [initglobals]
       where
         -- | The statements that initializes the variables
         stmts :: [C.BlockItem]
-        stmts = map (\(n,t) -> [citem| $id:(initialize_ t)(&$id:n); |]) globals
+        stmts = map (\(n,t) -> [citem| $id:(initialize_ t)(&$id:(identName n)); |]) globals
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]

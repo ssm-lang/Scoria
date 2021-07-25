@@ -38,7 +38,9 @@ module SSM.Core.Syntax
     , refIdent
     , renameRef
     , makeDynamicRef
+    , makeStaticRef
     , isDynamic
+    , isStatic
 
       -- ** Expressions
       {- | Expressions in the language are quite few at the moment. Adding support for
@@ -122,6 +124,10 @@ isReference _       = False
 makeDynamicRef :: Ident -> Type -> Reference
 makeDynamicRef name typ = Dynamic (name, typ)
 
+-- | Create a static reference
+makeStaticRef :: Ident -> Type -> Reference
+makeStaticRef name typ = Static (name, typ)
+
 {-| The class of Haskell types that can be marshalled to a representation
 in the SSM language. -}
 class SSMType a where
@@ -186,6 +192,10 @@ renameRef (Static (_,t)) n  = Static (n, t)
 isDynamic :: Reference -> Bool
 isDynamic (Dynamic _) = True
 isDynamic _           = False
+
+-- | Returns @True@ if a reference is a static reference
+isStatic :: Reference -> Bool
+isStatic = not . isDynamic
 
 -- Expressions
 
@@ -284,7 +294,10 @@ data Program = Program
     , args :: [Either SSMExp Reference]
       -- | Map that associates procedure names with their definitions.
     , funs :: Map.Map Ident Procedure
-    } deriving (Show, Read, Eq)
+      -- | Name and type of references that exist in the global scope.
+    , global_references :: [(Ident, Type)]
+    }
+    deriving (Show, Read, Eq)
 
 -- | Class of types that can be converted to a `Program`.
 class SSMProgram a where
