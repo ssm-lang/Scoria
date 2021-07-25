@@ -27,18 +27,11 @@ trace x = unsafePerformIO $ putStrLn (show x) >> return x
 for :: [a] -> (a -> b) -> [b]
 for = flip map
 
+basetypes :: [Type]
+basetypes = [TUInt8, TUInt64, TInt32, TInt64, TBool, TEvent]
+
 instance Arbitrary Type where
-  arbitrary = elements [ TInt32
-                       , TInt64
-                       , TBool
-                       , TUInt64
-                       , TEvent
-                       , Ref TInt32
-                       , Ref TInt64
-                       , Ref TUInt64
-                       , Ref TBool
-                       , Ref TEvent
-                       ]
+  arbitrary = elements $ basetypes ++ map Ref basetypes
 
 type Procedures = [(Ident, [(Ident, Type)], [Stm])]
 type Variable   = (Ident, Type)
@@ -61,6 +54,11 @@ instance Arbitrary Program where
     -- List of all functions.
     let funs = entry:[(Ident ("fun" ++ show i) Nothing, as) | (as,i) <- zip funTypes [1..]]
 
+    -- generate global references
+    globaltypes    <- genListOfLength (elements (map Ref basetypes)) =<< choose (0,5)
+    let globals    = [ (Ident ("glob" ++ show i) Nothing, t) | (t, i) <- zip globaltypes [0..] ]
+    let globalrefs = map (uncurry makeStaticRef) globals
+
     -- Generate type, args, and body for each procedure signature.
     tab <- mfix $ \tab -> sequence
         [ do let (refs, vars) = partition (isReference . fst) $ zip as [1..]
@@ -68,7 +66,7 @@ instance Arbitrary Program where
              let inpvars      = [(Ident ("var" ++ show i) Nothing, t) | (t,i) <- vars]
 
              -- generate a procedure body where the input parameters are in scope
-             (body,_)        <- arbProc tab inpvars inprefs 0 =<< choose (0, 15)
+             (body,_)        <- arbProc tab inpvars (inprefs ++ globalrefs) 0 =<< choose (0, 15)
 
              -- create (String, Type) pairs, representing the parameters to this procedure
              let params = [ (if isReference a
@@ -80,8 +78,10 @@ instance Arbitrary Program where
              return (f, params, body)
         | (f,as) <- funs]
 
-    return $ Program entryPoint entryArgs $ Map.fromList
-      [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
+    let procedures = Map.fromList
+          [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
+
+    return $ Program entryPoint entryArgs procedures globals
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program

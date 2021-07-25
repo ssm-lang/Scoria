@@ -106,7 +106,7 @@ import           SSM.Interpret.Types
 -- | Create initial global variable storage
 globals :: Program -> ST s (Map.Map Ident (Var s))
 globals p = do
-  vars <- forM undefined $ \(id,t) -> do
+  vars <- forM (global_references p) $ \(id,t) -> do
     let initval = defaultValue (dereference t)
     v <- newVar' initval 0
     return (id, v)
