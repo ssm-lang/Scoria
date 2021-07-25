@@ -268,9 +268,10 @@ instance S.SSMProgram (SSM ()) where
 
 -- compile monad
 
+-- | State maintained by the `Compile` monad
 data CompileSt = CompileSt
-    { compileCounter   :: Int
-    , generatedGlobals :: [(String, S.Type)]
+    { compileCounter   :: Int                 -- ^ Counter to generate fresh names
+    , generatedGlobals :: [(String, S.Type)]  -- ^ Names and types of global references
     }
 
 -- | Compile monad used to set up global variables before running a program
@@ -281,7 +282,7 @@ newtype Compile a = Compile (State CompileSt a)
   deriving (MonadState CompileSt) via State CompileSt
 
 {- | @IntState@ instance for `CompileSt` so that the `Compile` monad can generate
-fresh names. -}
+fresh names with the generic `SSM.Util.State.fresh` function.. -}
 instance IntState CompileSt where
   getInt = compileCounter
   setInt i st = st { compileCounter = i }
@@ -297,7 +298,7 @@ addGlobal name t = do
       st { generatedGlobals = generatedGlobals st ++ [(name, t)]}
 
 {- | Meant to be used in infix position, like @st1 `hasSameGlobalsAs` st2@. Returns
-@True@ if, as the same name, the two compile states has the same global references
+@True@ if, as the name suggests, the two compile states has the same global references
 declared. -}
 hasSameGlobalsAs :: CompileSt -> CompileSt -> Bool
 hasSameGlobalsAs st1 st2 = generatedGlobals st1 == generatedGlobals st2
@@ -305,7 +306,7 @@ hasSameGlobalsAs st1 st2 = generatedGlobals st1 == generatedGlobals st2
 {- | Rename the newst declared global reference by giving it the name that is supplied
 to this function.
 
-NOTE: This function is only meant to be called by the BinderAdd library. -}
+NOTE: This function is only meant to be called by the BinderAnn library. -}
 renameNewestGlobal :: String -> Compile ()
 renameNewestGlobal name = do
   st <- get
@@ -314,8 +315,8 @@ renameNewestGlobal name = do
     st { generatedGlobals = init (generatedGlobals st) ++ [(name, snd newest)] }
 
 {- | If you have a @Compile (SSM ())@ you have probably set up some global variables
-using the @Compile@ monad. This instance makes sure that you can something that is a
-program with these global variables. -}
+using the @Compile@ monad. This instance makes sure that you can compile and interpret
+something that is a program with such global variables. -}
 instance S.SSMProgram (Compile (SSM ())) where
   toProgram (Compile p) = let (a,s) = runState p (CompileSt 0 [])
                               (n,ar,f) = transpile a

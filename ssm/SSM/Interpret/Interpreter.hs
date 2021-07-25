@@ -49,7 +49,8 @@ interpret config = runST interpret'
           -- them in the main state record so that we can print their state afterwards.
           let actualrefs = getReferences p $ variableStorage process
 
-          globals <- createStaticVariables [] -- (global_references p)
+          -- create the variable storage for the global variables
+          globals <- createStaticVariables (global_references p)
           
           -- Run the interpret action and produce it's output
           outp <- execWriterT $ 
