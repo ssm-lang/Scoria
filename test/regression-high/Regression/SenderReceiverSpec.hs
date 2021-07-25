@@ -1,6 +1,4 @@
--- | Simple time keeper (for 10 seconds).
---
--- This is a modified version of runtime/examples/clock.c 
+-- | Simple demonstration of "unit" event types.
 module Regression.SenderReceiverSpec where
 
 import Data.Int
