@@ -226,8 +226,8 @@ genStep = do
       actt          = act_ $ name p -- hack to use this typename as expr in macros
       step          = step_ $ name p
       actStepBeginS = show $ T.ActStepBegin $ name p
-      dequeue (var, t) = case t of
-                         TEvent -> [cstm|$id:unsched_event(&$id:acts->$id:var);|]
+      dequeue (var, t) = case typeId t of
+                         "event" -> [cstm|$id:unsched_event(&$id:acts->$id:var);|]
                          _ -> [cstm|$id:unsched_event(&$id:acts->$id:var.sv);|]
   return
     ( [cedecl|void $id:step($ty:act_t *$id:actg);|]
@@ -263,8 +263,8 @@ genCase (NewRef n t v) = do
   let lvar = getVarName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
   addLocal lvar t
-  case t of
-    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
+  case typeId t of
+    "event" -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
     _ -> let rhs = genExp locs v in
          return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (GetRef n t (rvar, _)) = do
@@ -272,8 +272,8 @@ genCase (GetRef n t (rvar, _)) = do
   let lvar = getVarName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
   addLocal lvar t
-  case t of
-    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
+  case typeId t of
+    "event" -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
     _ -> let rhs = if rvar `elem` locs
                    then [cexp|$id:acts->$id:rvar.value|]
                    else [cexp|$id:acts->$id:rvar->value|] in
@@ -283,16 +283,16 @@ genCase (SetRef (lvar, t) e) = do
   let lhs = if lvar `elem` locs
         then [cexp|&$id:acts->$id:lvar|]
         else [cexp|$id:acts->$id:lvar|]
-  case t of
-    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
+  case typeId t of
+    "event" -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
     _ -> let rhs = genExp locs e in
          return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (SetLocal n t e) = do
   locs <- map fst <$> gets locals
   let lvar = getVarName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
-  case t of
-    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
+  case typeId t of
+    "event" -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
     _ -> let rhs = genExp locs e in
          return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (If c t e) = do
@@ -312,8 +312,8 @@ genCase (After d (lvar, t) v) = do
       lhs = if lvar `elem` locs
         then [cexp|&$id:acts->$id:lvar|]
         else [cexp|$id:acts->$id:lvar|]
-  case t of
-    TEvent -> return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del);|]]
+  case typeId t of
+    "event" -> return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del);|]]
     _ -> let rhs = genExp locs v in
          return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
 genCase (Wait ts) = do
@@ -333,12 +333,12 @@ genCase (Wait ts) = do
     [cstm|$id:sensitize($exp:trig, &$id:acts->$id:(trig_ i));|]
   desensitizeTrig (i, _) = [cstm|$id:desensitize(&$id:acts->$id:(trig_ i));|]
   genTrig locs (trig, t) = if trig `elem` locs
-    then case t of
-           TEvent -> [cexp|&$id:acts->$id:trig|]
+    then case typeId t of
+           "event" -> [cexp|&$id:acts->$id:trig|]
            _ -> [cexp|&$id:acts->$id:trig.sv|]
-    else case t of 
-           TEvent -> [cexp|$id:acts->$id:trig|] -- TODO(hans): is this right lol
-           _ -> [cexp|&$id:acts->$id:trig.sv|]
+    else case typeId t of 
+           "event" -> [cexp|$id:acts->$id:trig|]
+           _ -> [cexp|&$id:acts->$id:trig->sv|]
 genCase (Fork cs) = do
   locs    <- map fst <$> gets locals
   caseNum <- nextCase

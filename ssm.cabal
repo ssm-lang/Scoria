@@ -187,8 +187,8 @@ test-suite 3-regression-high
       Test.SSM.QuickCheck.Util
       Test.SSM.Report
       Test.SSM.Trace
-      Regression.ClockSpec
       Regression.RecurseForeverSpec
+      Regression.SenderReceiverSpec
       Paths_ssm
   hs-source-dirs:
       test/lib
