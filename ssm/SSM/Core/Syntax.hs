@@ -30,7 +30,9 @@ module SSM.Core.Syntax
     , refName
     , renameRef
     , makeDynamicRef
+    , makeStaticRef
     , isDynamic
+    , isStatic
 
       -- ** Expressions
       {- | Expressions in the language are quite few at the moment. Adding support for
@@ -155,10 +157,18 @@ renameRef (Static (_,t)) n  = Static (n, t)
 makeDynamicRef :: String -> Type -> Reference
 makeDynamicRef name typ = Dynamic (name, typ)
 
+-- | Create a static reference
+makeStaticRef :: String -> Type -> Reference
+makeStaticRef name typ = Static (name, typ)
+
 -- | Returns @True@ if a reference is a dynamic reference
 isDynamic :: Reference -> Bool
 isDynamic (Dynamic _) = True
 isDynamic _           = False
+
+-- | Returns @True@ if a reference is a static reference
+isStatic :: Reference -> Bool
+isStatic = not . isDynamic
 
 -- Expressions
 
@@ -272,7 +282,7 @@ data Program = Program
       -- | Map that associates procedure names with their definitions.
     , funs :: Map.Map String Procedure
       -- | Name and type of references that exist in the global scope.
---    , global_references :: [(Name, Type)]
+    , global_references :: [(String, Type)]
     }
     deriving (Show, Read, Eq)
 

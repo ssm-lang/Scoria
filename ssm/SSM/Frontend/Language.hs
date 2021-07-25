@@ -64,6 +64,9 @@ module SSM.Frontend.Language
       -- | These are statements that are derived from the language primitives.
     , waitAll
 
+      -- ** Global references
+      -- | Global references exist in the global scope and are always alive.
+    , global
     ) where
 
 import Data.Int
@@ -279,3 +282,40 @@ waitSingle = box "waitSingle" ["r"] $ \r -> wait [r]
 each. -}
 waitAll :: [Ref a] -> SSM ()
 waitAll refs = fork $ map waitSingle refs
+
+
+
+
+
+
+-- | Create a global reference
+global :: forall a . SSMType a => Compile (Ref a)
+global = do
+    n <- fresh
+    let t = mkReference $ typeOf $ Proxy @a
+    addGlobal n t
+    return $ Ptr $ makeStaticRef n t
+
+{- | If BinderAdd is enabled, we can grab the names declared in the source code instead
+of generating fresh named. -}
+instance AnnotatedM Compile (Ref a) where
+    annotateM ma info = do
+        -- get state before running the action
+        st1 <- get
+        ref <- ma
+        -- get state after running the action
+        st2 <- get
+
+        if st1 `hasSameGlobalsAs` st2
+            {- If ma didn't actually declare a new reference, just return the one the
+            action ma already returned. -}
+            then return ref
+            -- Otherwise, rename if with the source information, if any exist
+            else do SSM.Frontend.Language.renameNewestGlobal info
+                    return $ SSM.Frontend.Language.renameRef ref info
+
+{- | Rename the newest global reference according to the source information found
+in the first argument. -}
+renameNewestGlobal :: SrcInfo -> Compile ()
+renameNewestGlobal (Info (Just n) _) = SSM.Frontend.Syntax.renameNewestGlobal n
+renameNewestGlobal _                 = return ()

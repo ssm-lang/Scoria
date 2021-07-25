@@ -31,7 +31,7 @@ compile_ program = (compUnit, includes)
  where
   compUnit = globals ++ preamble ++ decls ++ defns
 
-  globals = genGlobals [] -- (global_vars program)
+  globals = genGlobals (global_references program)
 
   preamble = genPreamble
   (decls, defns) =

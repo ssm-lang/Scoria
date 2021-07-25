@@ -20,7 +20,7 @@ import SSM.Core.Syntax
       UnaryOpE(..),
       UnaryOpR(..),
       Procedure(body, name, arguments),
-      Program(funs, args, entry),
+      Program(funs, args, entry, global_references),
       Stm(..) )
 import SSM.Util.HughesList ( fromHughes, toHughes, Hughes )
 
@@ -58,7 +58,7 @@ prettyProgram' p = do
     indent $ emit $ prettyApp (entry p, args p)
     emit ""
     emit "global variables:"
-    prettyGlobals [] -- (global_Vars p)
+    prettyGlobals (global_references p)
     emit ""
     intercalateM (emit "") $ map prettyProcedure (Map.elems (funs p))
     return ()
