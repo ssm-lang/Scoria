@@ -25,7 +25,7 @@ import qualified Data.Map                      as Map
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
 
-import           Data.Bifunctor                 ( second )
+-- import           Data.Bifunctor                 ( second )
 import           Data.List                      ( sortOn )
 import           SSM.Backend.C.Exp
 import           SSM.Backend.C.Identifiers
@@ -239,8 +239,7 @@ genStep = do
       | otherwise
       = [cstm|if ($exp:initialized) $id:debug_trace($exp:fmt, $exp:val);|]
      where
-      initialized | baseType t == TEvent = [cexp|$id:acts->$id:n.last_updated != $id:never|]
-                  | otherwise = [cexp|$id:acts->$id:n.sv.last_updated != $id:never|]
+      initialized = [cexp|$id:acts->$id:n.sv.last_updated != $id:never|]
       fmt         = [cexp|$string:(actLocalVarS (n, t))|]
       val         = [cexp|$id:acts->$id:n.value|]
 
@@ -252,9 +251,7 @@ genStep = do
         Ref _ -> [cexp|$id:acts->$id:n->value|]
         _     -> [cexp|$id:acts->$id:n.value|]
 
-    dequeue (var, t)
-      | baseType t == TEvent = [cstm|$id:unsched_event(&$id:acts->$id:var);|]
-      | otherwise            = [cstm|$id:unsched_event(&$id:acts->$id:var.sv);|]
+    dequeue (var, t) = [cstm|$id:unsched_event(&$id:acts->$id:var.sv);|]
   return
     ( [cedecl|void $id:step($ty:act_t *$id:actg);|]
     , [cedecl|
@@ -353,7 +350,7 @@ genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts
   locs <- map fst <$> gets locals
-  let trigs = zip [1 ..] $ map (genTrig locs . second baseType) ts
+  let trigs = zip [1 ..] $ map (genTrig locs) ts
   return
     $  map getTrace      ts
     ++ map sensitizeTrig trigs
@@ -366,8 +363,6 @@ genCase (Wait ts) = do
   sensitizeTrig (i, trig) =
     [cstm|$id:sensitize($exp:trig, &$id:acts->$id:(trig_ i));|]
   desensitizeTrig (i, _) = [cstm|$id:desensitize(&$id:acts->$id:(trig_ i));|]
-  genTrig locs (trig, TEvent) | trig `elem` locs = [cexp|&$id:acts->$id:trig|]
-                              | otherwise        = [cexp|$id:acts->$id:trig|]
   genTrig locs (trig, _) | trig `elem` locs = [cexp|&$id:acts->$id:trig.sv|]
                          | otherwise        = [cexp|&$id:acts->$id:trig->sv|]
   getTrace (trig, _) = [cstm|$id:debug_trace($string:event);|]
