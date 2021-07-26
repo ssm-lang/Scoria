@@ -33,4 +33,5 @@ intFmt = fmt . baseType
   fmt TUInt8  = "%u"
 
 varFmt :: (String, Type) -> T.VarVal
-varFmt (n, t) = T.VarVal n (baseType t) $ T.IntegralFmt $ intFmt t
+varFmt (n, t) | baseType t == TEvent = T.VarVal n (baseType t) T.UnitType
+              | otherwise = T.VarVal n (baseType t) $ T.IntegralFmt $ intFmt t

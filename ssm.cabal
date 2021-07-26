@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4885b36febe00c47595806aacdb13780221d7b620f9de186d65b553486febc89
+-- hash: c93c89dd4a8690450940a6d9c7af772969bdd18659377d6890ff0b37510a8068
 
 name:           ssm
 version:        0.1.0.0
@@ -68,7 +68,55 @@ library
     , time
   default-language: Haskell2010
 
-test-suite 1-regression-low
+test-suite 1-regression-high
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Test.SSM.Build
+      Test.SSM.Prop
+      Test.SSM.QuickCheck.Generator
+      Test.SSM.QuickCheck.Shrink
+      Test.SSM.QuickCheck.Shrink.Expressions
+      Test.SSM.QuickCheck.Shrink.Fork
+      Test.SSM.QuickCheck.Shrink.GetRefs
+      Test.SSM.QuickCheck.Shrink.If
+      Test.SSM.QuickCheck.Shrink.ProcedureArity
+      Test.SSM.QuickCheck.Shrink.Procedures
+      Test.SSM.QuickCheck.Shrink.References
+      Test.SSM.QuickCheck.Shrink.Statements
+      Test.SSM.QuickCheck.Shrink.Wait
+      Test.SSM.QuickCheck.Util
+      Test.SSM.Report
+      Test.SSM.Trace
+      Regression.RecurseForeverSpec
+      Regression.SenderReceiverSpec
+      Paths_ssm
+  hs-source-dirs:
+      test/lib
+      test/regression-high
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      BinderAnn
+    , Diff
+    , QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , directory
+    , extra
+    , hspec
+    , language-c-quote
+    , mainland-pretty
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , process
+    , ssm
+    , text
+    , time
+  default-language: Haskell2010
+
+test-suite 2-regression-low
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -126,7 +174,7 @@ test-suite 1-regression-low
     , time
   default-language: Haskell2010
 
-test-suite 2-arbitrary
+test-suite 3-arbitrary
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -150,53 +198,6 @@ test-suite 2-arbitrary
   hs-source-dirs:
       test/lib
       test/arbitrary
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      BinderAnn
-    , Diff
-    , QuickCheck
-    , base >=4.7 && <5
-    , bytestring
-    , containers
-    , directory
-    , extra
-    , hspec
-    , language-c-quote
-    , mainland-pretty
-    , mtl
-    , parser-combinators
-    , prettyprinter
-    , process
-    , ssm
-    , text
-    , time
-  default-language: Haskell2010
-
-test-suite 3-regression-high
-  type: exitcode-stdio-1.0
-  main-is: Spec.hs
-  other-modules:
-      Test.SSM.Build
-      Test.SSM.Prop
-      Test.SSM.QuickCheck.Generator
-      Test.SSM.QuickCheck.Shrink
-      Test.SSM.QuickCheck.Shrink.Expressions
-      Test.SSM.QuickCheck.Shrink.Fork
-      Test.SSM.QuickCheck.Shrink.GetRefs
-      Test.SSM.QuickCheck.Shrink.If
-      Test.SSM.QuickCheck.Shrink.ProcedureArity
-      Test.SSM.QuickCheck.Shrink.Procedures
-      Test.SSM.QuickCheck.Shrink.References
-      Test.SSM.QuickCheck.Shrink.Statements
-      Test.SSM.QuickCheck.Shrink.Wait
-      Test.SSM.QuickCheck.Util
-      Test.SSM.Report
-      Test.SSM.Trace
-      Regression.RecurseForeverSpec
-      Paths_ssm
-  hs-source-dirs:
-      test/lib
-      test/regression-high
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
