@@ -1,3 +1,6 @@
+-- | A test that alternately assigns True and False to a bool reference.
+--
+-- Functionally equivalent to blink examples, useful for hardware testing.
 module Regression.FlipFlopLoopSpec where
 
 import           Data.Map                       ( fromList )
