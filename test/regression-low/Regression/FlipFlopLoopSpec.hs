@@ -1,4 +1,4 @@
--- | A test that alternately assigns True and False to a bool reference.
+-- | A test that alternately assigns True and False to a bool reference at 10Hz.
 --
 -- Functionally equivalent to blink examples, useful for hardware testing.
 module Regression.FlipFlopLoopSpec where
@@ -16,13 +16,11 @@ p = Program
   , funs  = fromList
               [ ( "fun0"
                 , Procedure
-                  { name      = "fun0"
+                  { name = "fun0"
                   , arguments = []
-                  , body      = [ NewRef (Fresh "ref2")
-                                         TBool
-                                         (Lit TBool (LBool True))
-                                , Fork [("fun1", [Right ("ref2", TBool)])]
-                                ]
+                  , body = [ NewRef (Fresh "ref2") TBool (Lit TBool (LBool True))
+                           , Fork [("fun1", [Right ("ref2", TBool)])]
+                           ]
                   }
                 )
               , ( "fun1"
@@ -31,13 +29,13 @@ p = Program
                   , arguments = [("ref2", Ref TBool)]
                   , body      = [ While
                                     (Lit TBool (LBool True))
-                                    [ After (Lit TUInt64 (LUInt64 2))
+                                    [ After (Lit TUInt64 (LUInt64 100))
                                             ("ref2", Ref TBool)
                                             (Lit TBool (LBool False))
                                     , Wait [("ref2", Ref TBool)]
-                                    , After (Lit TUInt64 (LUInt64 2))
+                                    , After (Lit TUInt64 (LUInt64 100))
                                             ("ref2", Ref TBool)
-                                            (Lit TBool (LBool False))
+                                            (Lit TBool (LBool True))
                                     , Wait [("ref2", Ref TBool)]
                                     ]
                                 ]
