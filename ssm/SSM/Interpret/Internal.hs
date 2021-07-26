@@ -704,4 +704,5 @@ getTypeConcreteVal (Lit t (LUInt8  i    )) = (t, T.IntegralVal $ fromIntegral i)
 getTypeConcreteVal (Lit t (LUInt64 i    )) = (t, T.IntegralVal $ fromIntegral i)
 getTypeConcreteVal (Lit t (LBool   True )) = (t, T.IntegralVal 1)
 getTypeConcreteVal (Lit t (LBool   False)) = (t, T.IntegralVal 0)
+getTypeConcreteVal (Lit t (LEvent))        = (t, T.UnitType)
 getTypeConcreteVal e                       = expTypeError "Concrete" e
