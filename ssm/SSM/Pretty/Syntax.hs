@@ -152,7 +152,7 @@ prettyLit l = case l of
     LInt64 i  -> show i
     LUInt64 i -> show i
     LBool b   -> show b
-    LEvent    -> "()"
+    LEvent    -> show ()
 
 prettySSMExp :: SSMExp -> String
 prettySSMExp e = case e of
