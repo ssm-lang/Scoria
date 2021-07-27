@@ -352,7 +352,7 @@ genCase (Wait ts) = do
   locs <- map fst <$> gets locals
   let trigs = zip [1 ..] $ map (genTrig locs) ts
   return
-    $  map getTrace      ts
+    $ map getTrace ts
     ++ map sensitizeTrig trigs
     ++ [ [cstm| $id:actg->pc = $int:caseNum; |]
        , [cstm| return; |]
