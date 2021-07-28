@@ -5,7 +5,7 @@ module SSM.TestProgram where
 -- NOTE: this file is only here to illustrate what a program using globals
 -- can look like. It will be removed before merge.
 
-import SSM.Interpret
+import SSM.Interpret -- so I can load this in the repl and try it out
 import SSM.Language
 
 import Data.Word
