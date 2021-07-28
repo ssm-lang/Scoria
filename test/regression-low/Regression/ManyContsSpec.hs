@@ -53,6 +53,7 @@ p = Program
         }
       )
     ]
+  , global_references = []
   }
 
 spec :: H.Spec

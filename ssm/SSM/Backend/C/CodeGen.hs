@@ -104,7 +104,6 @@ actm = "act"
 {- | Generate the declarations of global variables and the function that initializes
 them. These variables can be accessed without an activation record. -}
 genGlobals :: [(Ident, Type)] -> [C.Definition]
-genGlobals []      = []
 genGlobals globals = globalvars ++ [initglobals]
   where
     -- | The global variable declarations

@@ -86,7 +86,7 @@ instance Arbitrary Program where
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program
         -> [Variable]     -- ^ Variables in scope
-        -> [Reference]          -- ^ References in scope
+        -> [Reference]    -- ^ References in scope
         -> Int            -- ^ Fresh name generator
         -> Int            -- ^ Size parameter
         -> Gen ([Stm], Int)
@@ -200,8 +200,9 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
     -- | Generator of SSMExp literals.
     litGen :: Gen SSMExp
     litGen = case t of
-      TInt32 -> return  . Lit TInt32  . LInt32    =<< choose (0, 215)
-      TInt64 -> return  . Lit TInt64  . LInt64  =<< choose (-55050, 55050)
+      TInt32  -> return . Lit TInt32  . LInt32  =<< choose (0, 215)
+      TInt64  -> return . Lit TInt64  . LInt64  =<< choose (-55050, 55050)
+      TUInt8  -> return . Lit TUInt8  . LUInt8  =<< choose (0,80)
       TUInt64 -> return . Lit TUInt64 . LUInt64 =<< choose (0, 65500)
       TBool  -> return  . Lit TBool   . LBool   =<< arbitrary
       TEvent -> return $ Lit TEvent LEvent
