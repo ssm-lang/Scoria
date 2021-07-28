@@ -40,9 +40,10 @@ import qualified SSM.Interpret.Trace           as T
 compile_ :: Program -> ([C.Definition], [C.Definition])
 compile_ program = (compUnit, includes)
  where
-  compUnit = preamble ++ decls ++ defns ++ entryPointSymbol
+  compUnit = preamble ++ typedefs ++ decls ++ defns ++ entryPointSymbol
 
   preamble = genPreamble
+  typedefs = genTypedefs
   (decls, defns) =
     concat2 $ unzip $ map genProcedure $ Map.elems (funs program)
   concat2 (x, y) = (concat x, concat y)
@@ -118,6 +119,21 @@ includes :: [C.Definition]
 includes = [cunit|
 $esc:("#include \"ssm-platform.h\"")
 |]
+
+{- | FIXME: Generate typedefs, to be placed at the top of the generated C.
+
+Typedef 'event' type as a dummy type. This is because the C runtime does not
+define ssm_event_t to wrap a value like the other sv's do. The edsl uses ()
+as that wrapee type, effectively making ssm_event_t a unit type.
+
+Note that variables of this type will be ignored when 'assigning' to
+ssm_event_t's. They are simply used so there is a 'primitive' counterpart
+to ssm_event_t's. This hack will also allow for programs that test the equality
+of event types to compile while we flesh out the exact semantics of such an
+operation. In the meantime, all event 'literals' are just chars with value 0.
+-}
+genTypedefs :: [C.Definition]
+genTypedefs = [[cedecl|typedef char event;|]]
 
 {- | Generate definitions for an SSM 'Procedure'.
 
@@ -202,10 +218,12 @@ genEnter = do
   param (n, t    ) = [cparam|$ty:(basetype t) $id:n|]
 
   initParam (n, Ref t) = [[cstm|$id:acts->$id:n = $id:n;|]]
-  initParam (n, t) =
-    [ [cstm|$id:(initialize_ t)(&$id:acts->$id:n);|]
-    , [cstm|$id:(assign_ t)(&$id:acts->$id:n, $id:actg->priority, $id:n);|]
-    ]
+  initParam (n, t)
+    | baseType t == TEvent = [ [cstm|$id:(initialize_ t)(&$id:acts->$id:n);|],
+                               [cstm|$id:(assign_ t)(&$id:acts->$id:n, $id:actg->priority);|]]
+    | otherwise = [ [cstm|$id:(initialize_ t)(&$id:acts->$id:n);|],
+                    [cstm|$id:(assign_ t)(&$id:acts->$id:n, $id:actg->priority, $id:n);|]]
+
 
   initLocal (n, t) = [[cstm| $id:(initialize_ t)(&$id:acts->$id:n);|]]
 
