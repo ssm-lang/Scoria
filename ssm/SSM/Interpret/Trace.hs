@@ -241,7 +241,7 @@ pIdent = do
 pRes :: Parser SSMExp
 pRes = do
     -- add more variants here as we add more types
-    choice [pInt64, pUInt64, pInt, pBool]
+    choice [pInt64, pUInt8, pUInt64, pInt, pBool]
   where
       pInt :: Parser SSMExp
       pInt = do
@@ -254,6 +254,12 @@ pRes = do
           pSymbol "i64"
           num <- choice [ try (parens signed), signed]
           return $ Lit TInt64 $ LInt64 num
+
+      pUInt8 :: Parser SSMExp
+      pUInt8 = do
+          pSymbol "u8"
+          num <- choice [ try (parens signed), Lexer.decimal]
+          return $ Lit TUInt8 $ LUInt8 num
 
       pUInt64 :: Parser SSMExp
       pUInt64 = do

@@ -27,16 +27,11 @@ trace x = unsafePerformIO $ putStrLn (show x) >> return x
 for :: [a] -> (a -> b) -> [b]
 for = flip map
 
+basetypes :: [Type]
+basetypes = [TUInt8, TUInt64, TInt32, TInt64, TBool]
+
 instance Arbitrary Type where
-  arbitrary = elements [ TInt32
-                       , TInt64
-                       , TBool
-                       , TUInt64
-                       , Ref TInt32
-                       , Ref TInt64
-                       , Ref TUInt64
-                       , Ref TBool
-                       ]
+  arbitrary = elements $ basetypes ++ map Ref basetypes
 
 type Procedures = [(String, [(String, Type)], [Stm])]
 type Variable   = (Name, Type)
@@ -58,6 +53,11 @@ instance Arbitrary Program where
     -- pair them up with a function name
     let funs = [ ("fun" ++ show i, as) | (as,i) <- zip types [1..]]
 
+    -- generate global references
+    globaltypes    <- genListOfLength (elements (map Ref basetypes)) =<< choose (0,5)
+    let globals    = [ ("glob" ++ show i, t) | (t, i) <- zip globaltypes [0..] ]
+    let globalrefs = map (uncurry makeStaticRef) globals
+
     -- generate procedure bodies
     tab <- mfix $ \tab -> sequence
         [ do -- partition the types in the type sig into expressions and references
@@ -68,7 +68,8 @@ instance Arbitrary Program where
              let inpvars      = [ (Fresh $ "var" ++ show i, t)       | (t,i) <- vars]
 
              -- generate a procedure body where the input parameters are in scope
-             (body,_)        <- arbProc tab inpvars inprefs 0 =<< choose (0, 15)
+             (body,_)        <-
+               arbProc tab inpvars (inprefs ++ globalrefs) 0 =<< choose (0, 15)
 
              -- create (String, Type) pairs, representing the parameters to this procedure
              let params = [ (if isReference a
@@ -94,12 +95,12 @@ instance Arbitrary Program where
     
     {- return the program with the entrypoint, arguments to the entrypoint and the
     procedures -}
-    return $ Program entrypoint args funs
+    return $ Program entrypoint args funs globals
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program
         -> [Variable]     -- ^ Variables in scope
-        -> [Reference]          -- ^ References in scope
+        -> [Reference]    -- ^ References in scope
         -> Int            -- ^ Fresh name generator
         -> Int            -- ^ Size parameter
         -> Gen ([Stm], Int)
@@ -212,10 +213,11 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
     -- | Generator of SSMExp literals.
     litGen :: Gen SSMExp
     litGen = case t of
-      TInt32 -> return  . Lit TInt32  . LInt32    =<< choose (0, 215)
-      TInt64 -> return  . Lit TInt64  . LInt64  =<< choose (-55050, 55050)
+      TInt32  -> return . Lit TInt32  . LInt32  =<< choose (0, 215)
+      TInt64  -> return . Lit TInt64  . LInt64  =<< choose (-55050, 55050)
+      TUInt8  -> return . Lit TUInt8  . LUInt8  =<< choose (0,80)
       TUInt64 -> return . Lit TUInt64 . LUInt64 =<< choose (0, 65500)
-      TBool  -> return  . Lit TBool   . LBool   =<< arbitrary
+      TBool   -> return . Lit TBool   . LBool   =<< arbitrary
 
     -- | Generator that returns a randomly selected variable from the set of variables.
     varGen :: [Gen SSMExp]

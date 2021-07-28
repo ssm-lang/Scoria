@@ -77,7 +77,6 @@ maxWaits rs = modify $ \st -> st { numwaits = rs `max` numwaits st }
 {- | Generate the declarations of global variables and the function that initializes
 them. These variables can be accessed without an activation record. -}
 genGlobals :: [(String, Type)] -> [C.Definition]
-genGlobals []      = []
 genGlobals globals = globalvars ++ [initglobals]
   where
     -- | The global variable declarations
