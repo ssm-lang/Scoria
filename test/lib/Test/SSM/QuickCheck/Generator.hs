@@ -185,7 +185,7 @@ arbProc funs vars refs c n = frequency $
           in all (`elem` distinct) $ filter isReference $ map snd types
 
 -- | Generate a SSMExp.
-arbExp :: Type        -- ^ Type of expression to generate (oneof TInt32 or TBool)
+arbExp :: Type        -- ^ Type of expression to generate
        -> [Variable]  -- ^ Variables that are in scope that the expression can use
        -> [Reference] -- ^ References that are in scope that the expression can use
        -> Int         -- ^ Size parameter
@@ -222,6 +222,7 @@ arbExp t vars refs n = case t of
                         e2 <- arbExp typ vars refs (n `div` 2)
                         return $ BOp TBool e1 e2 OEQ
                    ]
+  TEvent -> return $ Lit TEvent LEvent
   t | t `elem` [TUInt8, TUInt64] -> do
       e1 <- arbExp t vars refs (n `div` 2)
       e2 <- arbExp t vars refs (n `div` 2)
