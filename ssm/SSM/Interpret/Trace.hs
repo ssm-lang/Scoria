@@ -126,4 +126,4 @@ data ConcreteValue =
 instance Show ConcreteValue where
   show (IntegralVal i) = "(IntegralVal " ++ show i ++ ")"
   show (IntegralFmt f) = "(IntegralVal " ++ f ++ ")"
-  show UnitType  = "UnitType"
+  show UnitType        = "UnitType"
