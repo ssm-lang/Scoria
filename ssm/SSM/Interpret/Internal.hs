@@ -429,7 +429,8 @@ writeRef r e = do
         -- static references can always be read from the global state
         else do globals <- gets global_variables
                 case Map.lookup (refName r) globals of
-                    Just ref -> eval e >>= \v -> writeVar ref v
+                    Just ref -> do v <- eval e
+                                   writeVar ref v
                     Nothing  -> error $ "interpreter error - can't find global variable :"
                                      ++ refName r
 
