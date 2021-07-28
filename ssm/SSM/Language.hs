@@ -5,6 +5,7 @@ module SSM.Language
     ( module SSM.Frontend.Language
     , module SSM.Frontend.Box
     , SSM
+    , Compile
 
     ) where
 
