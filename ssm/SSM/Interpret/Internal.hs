@@ -58,6 +58,7 @@ module SSM.Interpret.Internal
   , getUInt8
   , getUInt64
   , getBool
+  , applyUnit
   ) where
 
 
@@ -696,6 +697,16 @@ is not an @Bool@. -}
 getBool :: SSMExp -> Bool
 getBool (Lit _ (LBool b)) = b
 getBool e                 = expTypeError "Bool" e
+
+{- | Retrieve a Haskell @Word64@ from a SSMTimeUnit type.
+Note that SSM time is in microseconds. -}
+applyUnit :: Word64 -> SSMTimeUnit -> Word64
+applyUnit d SSMNanosecond = d `div` 1000
+applyUnit d SSMMicrosecond = d
+applyUnit d SSMMillisecond = d * 1000
+applyUnit d SSMSecond = d * 1000000
+applyUnit d SSMMinute = d * 60000000
+applyUnit d SSMHour = d * 3600000000
 
 -- | Obtain type and concrete representation of an expression; only works for
 -- literals.
