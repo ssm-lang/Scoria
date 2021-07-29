@@ -103,11 +103,14 @@ import Control.Monad.ST.Lazy
 -- | Creates the initial variable storage for a program. Expressions are just
 -- allocated in an @STRef@, while references are given a default value and then
 -- allocated in an @STRef@.
-params :: Program -> ST s (Map.Map String (Var s))
+params :: Program -> ST s (Map.Map Ident (Var s))
 params p = do
     process <- case Map.lookup (entry p) (funs p) of
         Just p' -> return p'
-        Nothing -> error $ concat ["interpreter error - can not find function ", entry p]
+        Nothing ->
+            error $ concat [ "interpreter error - can not find function "
+                           , identName $ entry p
+                           ]
     m <- flip mapM (zip (arguments process) (args p)) $ \((n,t), a) ->
         case a of
             Left e  -> do
@@ -130,7 +133,7 @@ params p = do
 {- | Given a program and a map of a variable storage, return a list of
 @(name, variable)@ pairs that make up the references in the variable storage
 that appear as input parameters to the program. -}
-getReferences :: Program -> Map.Map String (Var s) -> [(String, Var s)]
+getReferences :: Program -> Map.Map Ident (Var s) -> [(Ident, Var s)]
 getReferences p m = case Map.lookup (entry p) (funs p) of
     Just pr -> let refparams   = filter (\(_,t) -> isReference t) $ arguments pr
                    paramnames = fst $ unzip refparams
@@ -146,7 +149,7 @@ emitResult = do
     forM_ refs $ \(n,v) -> do
         (ref,_,_,_,_) <- lift' $ readSTRef v
         val <- lift' $ readSTRef ref
-        tell $ toHughes [T.Result n val]
+        tell $ toHughes [T.Result (identName n) val]
 
 
 
@@ -181,7 +184,7 @@ schedule_event :: Reference -> Word64 -> SSMExp -> Interp s ()
 schedule_event r thn val = do
     st <- get
 
-    e <- lookupRef (refName r)
+    e <- lookupRef (fst r)
     
     when (SSM.Interpret.Types.now st > thn) $ error "bad after"
 
@@ -379,25 +382,25 @@ createVar e = do
 variable storage. It is considered written to when it is created.
 
 Note: it is added to the map containing the local variables. -}
-newRef :: Name -> SSMExp -> Interp s ()
+newRef :: Ident -> SSMExp -> Interp s ()
 newRef n e = do
     ref <- createVar e
     p <- gets process
-    modify $ \st -> st { process = p { localrefs = Map.insert (getVarName n) ref (localrefs p) } }
+    modify $ \st -> st { process = p { localrefs = Map.insert n ref (localrefs p) } }
 
 {- | Create a new variable with an initial value, and adds it to the current process's
 variable storage. When a variable is created it is considered written to.
 
 Note: This does the same thing as `NewRef`, but it adds the reference to the map
 containing expression variables & references supplied by a caller. -}
-newVar :: Name -> SSMExp -> Interp s ()
+newVar :: Ident -> SSMExp -> Interp s ()
 newVar n e = do
     ref <- createVar e
     p <- gets process
-    modify $ \st -> st { process = p { variables = Map.insert (getVarName n) ref (variables p) } }
+    modify $ \st -> st { process = p { variables = Map.insert n ref (variables p) } }
 
 -- | Write a value to a variable.
-writeRef :: String -> SSMExp -> Interp s ()
+writeRef :: Ident -> SSMExp -> Interp s ()
 writeRef r e = do
     p <- gets process
     case Map.lookup r (variables p) of
@@ -406,18 +409,19 @@ writeRef r e = do
         Nothing  -> case Map.lookup r (localrefs p) of
             Just ref -> do v <- eval e
                            writeVar ref v
-            Nothing -> error $ "interpreter error - can not find variable " ++ r
+            Nothing ->
+                error $ "interpreter error - can not find variable " ++ identName r
 
 -- | Read the value of a reference
 readRef :: Reference -> Interp s SSMExp
 readRef r = do
-    r <- lookupRef (refName r)
+    r <- lookupRef (fst r)
     (vr,_,_,_,_) <- lift' $ readSTRef r
     lift' $ readSTRef vr
 
 {- | This function returns @True@ if variable was written in this instant, and otherwise
 @False@. -}
-wasWritten :: String -> Interp s SSMExp
+wasWritten :: Ident -> Interp s SSMExp
 wasWritten r = do
     p <- gets process
     n <- SSM.Interpret.Internal.now
@@ -427,7 +431,8 @@ wasWritten r = do
         Nothing -> case Map.lookup r (localrefs p) of
             Just v  -> do (_,_,t,_,_) <- lift' $ readSTRef v
                           return $ Lit TBool $ LBool $ t == n
-            Nothing -> error $ "interpreter error - can not find variable " ++ r
+            Nothing ->
+                error $ "interpreter error - can not find variable " ++ identName r
 
 -- | Creates a new `Var s` with an initial value.
 newVar' :: SSMExp -> Word64 -> ST s (Var s)
@@ -471,17 +476,18 @@ writeVar_ ref e prio = do
           enqueue $ p { waitingOn = Nothing }
 
 -- | Look up a variable in the current process's variable store.
-lookupRef :: String -> Interp s (Var s)
+lookupRef :: Ident -> Interp s (Var s)
 lookupRef r = do
     p <- gets process
     case Map.lookup r (variables p) of
       Just ref -> return ref
       Nothing  -> case Map.lookup r (localrefs p) of
           Just ref -> return ref
-          Nothing -> error $ "interpreter error - can not find variable " ++ r
+          Nothing ->
+              error $ "interpreter error - can not find variable " ++ identName r
 
 -- | Make a procedure wait for writes to the variable identified by the name @v@.
-sensitize :: String -> Interp s ()
+sensitize :: Ident -> Interp s ()
 sensitize v = do
     p <- gets process
     r <- lookupRef v
@@ -544,7 +550,7 @@ addressToSelf = do
     lift' $ newSTRef p
 
 -- | Fork a new process.
-fork :: (String, [Either SSMExp Reference])  -- ^ Procedure to fork (name and arguments)
+fork :: (Ident, [Either SSMExp Reference])   -- ^ Procedure to fork (name and arguments)
      -> Int                                  -- ^ Priority of the new process
      -> Int                                  -- ^ Depth of the new process
      -> STRef s (Proc s)                     -- ^ Reference to the parent process
@@ -556,7 +562,7 @@ fork (n,args) prio dep par = do
   where
       -- | Return an initial variable storage for the new process. Expression arguments are turned into
       -- new STRefs while reference arguments are passed from the calling processes variable storage.
-      params :: [String] -> Interp s (Map.Map String (Var s))
+      params :: [Ident] -> Interp s (Map.Map Ident (Var s))
       params names = do
           st <- gets process
           currenttime <- SSM.Interpret.Internal.now
@@ -571,7 +577,7 @@ fork (n,args) prio dep par = do
 
       -- | Simple lookup function that throws an error if the desired procedure does not exist in
       -- the procedure storage.
-      lookupProcedure :: String -> Interp s Procedure
+      lookupProcedure :: Ident -> Interp s Procedure
       lookupProcedure n = do
           st <- get
           case Map.lookup n (procedures st) of
@@ -638,7 +644,11 @@ eval e = do
             Just r -> do 
                 v <- lift $ lift $ (readSTRef . \(x,_,_,_,_) -> x) =<< readSTRef r
                 eval v
-            Nothing -> error $ "interpreter error - variable " ++ n ++ " not found in current process"
+            Nothing ->
+                error $ concat [ "interpreter error - variable "
+                               , identName n
+                               , " not found in current process"
+                               ]
         Lit _ l -> return e
         UOpR _ r op -> case op of
             Changed -> wasWritten $ fst r

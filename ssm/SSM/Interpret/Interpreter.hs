@@ -36,7 +36,9 @@ interpret config = runST interpret'
           -- Fetch procedure body
           fun <- case Map.lookup (entry p) (funs p) of
               Just p'  -> return p'
-              Nothing  -> error $ concat ["interpreter error - can not find function ", entry p]
+              Nothing  -> error $ concat [ "interpreter error - can not find function "
+                                         , identName $ entry p
+                                         ]
           
           -- Set up initial activation record
           process <- mkProc 0 32 0 Nothing
@@ -131,7 +133,7 @@ step = do
                 writeRef (fst r) e
                 next
             SetLocal n t e2 -> do
-                writeRef (getVarName n) e2
+                writeRef n e2
                 next
             If c thn els    -> do
                 b <- getBool <$> eval c
@@ -156,7 +158,7 @@ step = do
                 yield
 
             Fork procs      -> do
-                tell $ toHughes [T.Fork $ map fst procs]
+                tell $ toHughes [T.Fork $ map (identName . fst) procs]
 
                 setRunningChildren (length procs)
                 parent <- addressToSelf

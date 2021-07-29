@@ -120,7 +120,7 @@ module SSM.Frontend.Box
     , Res(..)
     ) where
 
-import SSM.Frontend.Syntax ( SSM, SSMStm(Procedure, Result), emit )
+import SSM.Frontend.Syntax ( SSM, SSMStm(Procedure, Result), emit, Ident(..) )
 
 -- | The class of types that can appear as arguments to our procedures
 class Arg a where
@@ -144,7 +144,7 @@ class Res b where
 
 -- | Possible results of SSM procedures (they can't return anything)
 instance Res () where
-    result name () = emit $ Result name
+    result name () = emit $ Result (Ident name Nothing)
 
 -- | Class of types that can be boxed (turned into a procedure)
 class Box b where
@@ -178,7 +178,7 @@ the head of the list, and inserts a Result constructor at the end. This makes it
 unambiguous where a procedure begins and where it ends. -}
 instance Res b => Box (SSM b) where
     box name xs f = \x -> do
-        emit $ Procedure name
+        emit $ Procedure (Ident name Nothing)
         (x',_) <- arg name xs x
         y'     <- f x'
         result name y'

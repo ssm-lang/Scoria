@@ -6,6 +6,14 @@ pretty printer etc). -}
 module SSM.Core.Syntax
     ( -- * SSM Core Syntax
 
+      -- ** Identifiers
+      {- | Some elements in the core syntax are named, and those names are represented
+      by these identifiers. In some places information is grabbed from the Haskell
+      source file and added to the identifier. -}
+      Ident(..)
+    , SrcInformation(..)
+    , identName
+
       -- ** Types
       {- | These are the types that are valid in the SSM language, and some simple
       functions to manipulate them. The `dereference` & `mkReference` functions just
@@ -14,7 +22,7 @@ module SSM.Core.Syntax
       The type class `SSMType` is there so that we can marshal some Haskell types into
       their corresponding `Type` representation.
       -}
-      Type(..)
+    , Type(..)
     , dereference
     , mkReference
     , isReference
@@ -40,10 +48,6 @@ module SSM.Core.Syntax
     , BinOp(..)
     , expType
 
-      -- ** Names
-    , Name(..)
-    , getVarName
-
       -- ** Statements
       {- | Statements that make up an SSM program take any of these forms. A program
       is made up of a list of these statements.-}
@@ -68,6 +72,28 @@ import Data.Word
 import qualified Data.Map as Map
 import Control.Monad.State.Lazy
     ( forM, modify, runState, MonadState(put, get), State )
+
+-- Identifiers
+
+-- | Data type of Identifiers
+data Ident =
+  Ident
+    String                  -- ^ Name of the identifiers
+    (Maybe SrcInformation)  -- ^ Possible source information
+  deriving (Show, Read)
+
+instance Eq Ident where
+  Ident n _ == Ident m _ = n == m
+
+instance Ord Ident where
+  Ident n _ <= Ident m _ = n <= m
+
+-- | Source information (File, Line, Column)
+type SrcInformation = (String, Int, Int)
+
+-- | Fetch the actual name of an identifier and return the string representation
+identName :: Ident -> String
+identName (Ident n _) = n
 
 -- Types
 
@@ -121,22 +147,22 @@ instance SSMType Bool where
 
 -- | References in our language have a name and a type
 type Reference
-    = (String, Type)
+    = (Ident, Type)
 
 -- | Type of a reference
 refType :: Reference -> Type
 refType (_,t) = t
 
 -- | Name of a reference
+-- FIXME: make this return `Ident`
 refName :: Reference -> String
-refName (n,_) = n
-
+refName (n,_) = identName n
 
 -- Expressions
 
 -- | Expressions in the language take any of these forms
 data SSMExp
-    = Var Type String               -- ^ Variables
+    = Var Type Ident                -- ^ Variables
     | Lit Type SSMLit               -- ^ Literals
     | UOpE Type SSMExp UnaryOpE     -- ^ Unary operators on expressions
     | UOpR Type Reference UnaryOpR  -- ^ Unary operators on references
@@ -180,21 +206,6 @@ expType (UOpR t _ _)  = t
 expType (BOp t _ _ _) = t
 
 
--- Names of variables
-
--- | Names in the language can either be freshly generated or captured by the source.
-data Name
-    = Fresh String  -- ^ Freshly generated name
-    -- ^ Name that's been captured from the source. (Filename, line, column) name.
-    | Captured (String,Int,Int) String
-    deriving (Show, Eq, Read)
-
--- | Get the String version of a Name
-getVarName :: Name -> String
-getVarName (Fresh n)      = n
-getVarName (Captured _ n) = n
-
-
 -- Programs
 
 {- | A lower level representation of the statements that make up the body of
@@ -202,14 +213,14 @@ an SSM program. -}
 data Stm
     {-| Create a new reference with the given name, which references a value of the
     given type, with the initial value specified by the expression. -}
-    = NewRef Name Type SSMExp
+    = NewRef Ident Type SSMExp
     {-| Dereference an expression and put the result in a variable with the given name &
     with the given type.-}
-    | GetRef Name Type Reference
+    | GetRef Ident Type Reference
     | SetRef Reference SSMExp  -- ^ Set the value of a reference
     {-| Set the value of a local expression specified by the name, with the given type,
     with the new value specified by the expression. -}
-    | SetLocal Name Type SSMExp
+    | SetLocal Ident Type SSMExp
 
     | If SSMExp [Stm] [Stm]  -- ^ Conditional execution
     | While SSMExp [Stm]     -- ^ Loop construct
@@ -221,28 +232,28 @@ data Stm
     | Wait [Reference]  -- ^ Wait for any of the references to be written to
     {-| Fork procedures. The procedures are now identified by their name, and the fork
     site contains only that name and the arguments to apply the function to. -}
-    | Fork [(String, [Either SSMExp Reference])]
+    | Fork [(Ident, [Either SSMExp Reference])]
     deriving (Show, Eq, Read)
 
 -- | A procedure has a name, parameter names & types and a body.
 data Procedure = Procedure
     { -- | Name of the procedure.
-      name      :: String
+      name       :: Ident
       -- | Parameter names and types of the procedure.
-     , arguments :: [(String, Type)]
+     , arguments :: [(Ident, Type)]
       -- | Statements that make up this procedure.
-    , body      :: [Stm]
+    , body       :: [Stm]
     } deriving (Eq, Show, Read)
 
 {- | A program has an entry point, arguments to that entry point and a map that maps
 procedure names to their definitions. -}
 data Program = Program
     { -- | Name of the procedure that is the program entrypoint.
-      entry :: String
+      entry :: Ident
       -- | Arguments the entrypoint was applied to.
     , args :: [Either SSMExp Reference]
       -- | Map that associates procedure names with their definitions.
-    , funs :: Map.Map String Procedure
+    , funs :: Map.Map Ident Procedure
     } deriving (Show, Read, Eq)
 
 -- | Class of types that can be converted to a `Program`.

@@ -91,12 +91,12 @@ data Proc s = Proc
     {- | This is a variable storage. The variables found in this map are the
     expressions or variables that are passed to the process as arguments from
     a parent. -}
-  , variables       :: Map.Map String (Var s)
+  , variables       :: Map.Map Ident (Var s)
     {- | Variables found in this map are those that are local to this process, aka
     those that are created by the `SSM.Core.Syntax.NewRef` constructor. We need to
     put them in a separate map so that we can quickly deschedule any outstanding events
     on them when a process is terminating. -}
-  , localrefs       :: Map.Map String (Var s)
+  , localrefs       :: Map.Map Ident (Var s)
     -- | Variables this process is waiting for, if any
   , waitingOn       :: Maybe [Var s]
     -- | The work left to do for this process
@@ -136,10 +136,10 @@ data St s = St
   , numconts   :: Int
     {- | Map that associates procedure names with procedure definitions. Used when we
     fork a procedure and we need to create an activation record. -}
-  , procedures :: Map.Map String Procedure
+  , procedures :: Map.Map Ident Procedure
     {- | Argment-references given to the entrypoint. Will probably be removed, depending
     on how we end up managing input/output in SSM programs. -}
-  , inputargs  :: [(String, Var s)]
+  , inputargs  :: [(Ident, Var s)]
     -- | The process that is currently being evaluated
   , process    :: Proc s
   , maxContQueueSize :: Int
@@ -153,8 +153,8 @@ mkProc :: Int                       -- ^ Priority
        -> Int                       -- ^ Depth
        -> Int                       -- ^ #Running children
        -> Maybe (STRef s (Proc s))  -- ^ Reference to parent, if any
-       -> Map.Map String (Var s)    -- ^ Variable storage
-       -> Map.Map String (Var s)    -- ^ Local reference storage
+       -> Map.Map Ident (Var s)    -- ^ Variable storage
+       -> Map.Map Ident (Var s)    -- ^ Local reference storage
        -> Maybe [Var s]             -- ^ Variables to wait for
        -> [Stm]                     -- ^ Continuation
        -> Proc s
@@ -162,7 +162,7 @@ mkProc = Proc
 
 {- | Alias for getting the variable storage from a process, so we don't expose the
 internals of the @Proc s@ datatype. -}
-variableStorage :: Proc s -> Map.Map String (Var s)
+variableStorage :: Proc s -> Map.Map Ident (Var s)
 variableStorage = variables
 
 {- | Alias for creating the interpretation state, so that we don't expose the internals
@@ -172,8 +172,8 @@ interpState :: Word64                    -- ^ Now
             -> Int                       -- ^ #numevents
             -> IntMap.IntMap (Proc s)    -- ^ Ready queue
             -> Int                       -- ^ #numcontinuations
-            -> Map.Map String Procedure  -- ^ Procedures
-            -> [(String, Var s)]         -- ^ Input references
+            -> Map.Map Ident Procedure  -- ^ Procedures
+            -> [(Ident, Var s)]         -- ^ Input references
             -> Proc s                    -- ^ Current process
             -> Int                       -- ^ Max continuation queue size
             -> Int                       -- ^ Max event queue size
