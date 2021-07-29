@@ -1,6 +1,13 @@
 module SSM.Core.TypeCheck where
 
-import SSM.Core.Syntax 
+import SSM.Core.Syntax
+    ( Program(..),
+      Procedure(..),
+      Stm(..),
+      SSMLit(..),
+      SSMExp(..),
+      Reference,
+      Type(..) ) 
 import qualified Data.Map as Map
 import System.IO ()
 
@@ -23,14 +30,18 @@ expMatchRef (s, ty) expr =
                               Right actualTy -> actualTy == ty
 
 -- | Typechecks a program
-typeCheckProgram :: Program -> Bool 
-typeCheckProgram Program {entry=e, args=as, funs=fs} = False 
+typeCheckProgram :: Program -> Maybe TypeError
+typeCheckProgram Program {entry=e, args=as, funs=fs} = 
+    case typeCheckArgs as of Nothing -> typeCheckFuns fs
+                             te -> te
 
 -- | Checks whether a list of arguments all have the correct type
-typeCheckArgs :: [Either SSMExp Reference] -> Bool 
-typeCheckArgs [] = True 
-typeCheckArgs (Left expr : t) = undefined 
-typeCheckArgs (Right ref : t) = undefined 
+typeCheckArgs :: [Either SSMExp Reference] -> Maybe TypeError
+typeCheckArgs [] = Nothing 
+typeCheckArgs (Left expr : t) = 
+    case typeCheckExp expr of Left te -> Just te
+                              Right ty -> typeCheckArgs t
+typeCheckArgs (Right ref : t) = typeCheckArgs t
 
 -- | Typechecks a procedure
 typeCheckFunction :: Procedure -> Maybe TypeError
@@ -92,7 +103,7 @@ typeCheckStm (After exp1 ref exp2) =
             Just TypeError {expected=typeCheckRef ref, 
                             actual=unwrapExpRes (typeCheckExp exp1), msg="Expression type doesn't match the reference"}
     else 
-        Just TypeError {expected=undefined, actual=undefined, msg="The time parameter is not an int"}
+        Just TypeError {expected=TInt32, actual=unwrapExpRes (typeCheckExp exp1), msg="The time parameter is not an int"}
 typeCheckStm (Wait refs) = Nothing 
 typeCheckStm (While expr stms) = 
     if unwrapExpRes (typeCheckExp expr) == TBool then 
@@ -104,7 +115,7 @@ typeCheckStm (If expr stms1 stms2) =
         typeCheckStmLst (stms1 ++ stms2)
     else
         Just TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr), msg="Condition variable is not a bool"}
-typeCheckStm (Fork procs) = undefined 
+typeCheckStm (Fork procs) = typeCheckForkProcs procs
 typeCheckStm (SetLocal name ty expr) = 
     if actualTy == ty then 
         Nothing 
