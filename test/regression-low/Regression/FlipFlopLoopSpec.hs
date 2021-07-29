@@ -11,32 +11,23 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = "fun0"
-  , args  = []
+  { entry = Ident "fun1" Nothing
+  , args  = [Right (Ident "ref2" Nothing, Ref TUInt64)]
   , funs  = fromList
-              [ ( "fun0"
+              [ ( Ident "fun1" Nothing
                 , Procedure
-                  { name = "fun0"
-                  , arguments = []
-                  , body = [ NewRef (Fresh "ref2") TBool (Lit TBool (LBool True))
-                           , Fork [("fun1", [Right ("ref2", TBool)])]
-                           ]
-                  }
-                )
-              , ( "fun1"
-                , Procedure
-                  { name      = "fun1"
-                  , arguments = [("ref2", Ref TBool)]
+                  { name      = Ident "fun1" Nothing
+                  , arguments = [(Ident "ref2" Nothing, Ref TUInt64)]
                   , body      = [ While
                                     (Lit TBool (LBool True))
-                                    [ After (Lit TUInt64 (LUInt64 100))
-                                            ("ref2", Ref TBool)
-                                            (Lit TBool (LBool False))
-                                    , Wait [("ref2", Ref TBool)]
-                                    , After (Lit TUInt64 (LUInt64 100))
-                                            ("ref2", Ref TBool)
-                                            (Lit TBool (LBool True))
-                                    , Wait [("ref2", Ref TBool)]
+                                    [ After (Lit TUInt64 (LUInt64 2))
+                                            (Ident "ref2" Nothing, Ref TUInt64)
+                                            (Lit TUInt64 (LUInt64 0))
+                                    , Wait [(Ident "ref2" Nothing, Ref TUInt64)]
+                                    , After (Lit TUInt64 (LUInt64 2))
+                                            (Ident "ref2" Nothing, Ref TUInt64)
+                                            (Lit TUInt64 (LUInt64 1))
+                                    , Wait [(Ident "ref2" Nothing, Ref TUInt64)]
                                     ]
                                 ]
                   }
