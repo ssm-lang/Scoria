@@ -350,9 +350,10 @@ genCase (While c b) = do
   let cnd = genExp locs c
   bod <- concat <$> mapM genCase b
   return [[cstm| while ($exp:cnd) { $id:debug_microtick(); $stms:bod }|]]
-genCase (After d (lvar, t) v) = do
+genCase (After (SSMTime d u) (lvar, t) v) = do
   locs <- map fst <$> gets locals
-  let del = genTime locs d
+  let del = genExp locs d
+      units = units_ u
       lhs | lvar `elem` locs = [cexp|&$id:acts->$id:lvar|]
           | otherwise        = [cexp|$id:acts->$id:lvar|]
       rhs = genExp locs v
@@ -360,10 +361,9 @@ genCase (After d (lvar, t) v) = do
   -- expects a relative time, whereas the latter takes an absolute time.
   -- Thus we add now() in the code we generate.
   case baseType t of
-    TEvent -> return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del);|]]
+    TEvent -> return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + ($id:units * $exp:del));|]]
     _      -> return
-      [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
- where genTime lcls (SSMTime dur units) = genExp lcls dur
+      [[cstm| $id:(later_ t)($exp:lhs, $id:now() + ($id:units * $exp:del), $exp:rhs);|]]
 genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts
