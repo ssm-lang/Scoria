@@ -8,23 +8,23 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = "fun1"
-  , args  = [Right ("ref2", Ref TUInt64)]
+  { entry = Ident "fun1" Nothing
+  , args  = [Right (Ident "ref2" Nothing, Ref TUInt64)]
   , funs  = fromList
-              [ ( "fun1"
+              [ ( Ident "fun1" Nothing
                 , Procedure
-                  { name      = "fun1"
-                  , arguments = [("ref2", Ref TUInt64)]
+                  { name      = Ident "fun1" Nothing
+                  , arguments = [(Ident "ref2" Nothing, Ref TUInt64)]
                   , body      = [ While
                                     (Lit TBool (LBool True))
                                     [ After (Lit TUInt64 (LUInt64 2))
-                                            ("ref2", Ref TUInt64)
+                                            (Ident "ref2" Nothing, Ref TUInt64)
                                             (Lit TUInt64 (LUInt64 0))
-                                    , Wait [("ref2", Ref TUInt64)]
+                                    , Wait [(Ident "ref2" Nothing, Ref TUInt64)]
                                     , After (Lit TUInt64 (LUInt64 2))
-                                            ("ref2", Ref TUInt64)
+                                            (Ident "ref2" Nothing, Ref TUInt64)
                                             (Lit TUInt64 (LUInt64 1))
-                                    , Wait [("ref2", Ref TUInt64)]
+                                    , Wait [(Ident "ref2" Nothing, Ref TUInt64)]
                                     ]
                                 ]
                   }

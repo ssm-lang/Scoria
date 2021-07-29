@@ -8,32 +8,32 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = "fun1"
-  , args  = [ Right ("ref2", Ref TUInt64)
+  { entry = Ident "fun1" Nothing
+  , args  = [ Right (Ident "Ref2" Nothing, Ref TUInt64)
             ]
   , funs  = fromList
-    [ ( "fun1"
+    [ ( Ident "fun1" Nothing
       , Procedure
-        { name      = "fun1"
-        , arguments = [ ("ref2", Ref TUInt64)
+        { name      = Ident "fun1" Nothing
+        , arguments = [ (Ident "Ref2" Nothing, Ref TUInt64)
                       ]
         , body      =
           [ After
             (Lit TUInt64 (LUInt64 2))
-            ("ref2", Ref TUInt64)
+            (Ident "Ref2" Nothing, Ref TUInt64)
             (Lit TUInt64 (LUInt64 2))
-          , Wait [("ref2", Ref TUInt64)]
+          , Wait [(Ident "Ref2" Nothing, Ref TUInt64)]
           , Fork
-            [ ( "fun1"
-              , [ Right ("ref2", Ref TUInt64)
+            [ ( Ident "fun1" Nothing
+              , [ Right (Ident "Ref2" Nothing, Ref TUInt64)
                 ]
               )
-            , ( "fun1"
-              , [ Right ("ref2", Ref TUInt64)
+            , ( Ident "fun1" Nothing
+              , [ Right (Ident "Ref2" Nothing, Ref TUInt64)
                 ]
               )
-            , ( "fun1"
-              , [ Right ("ref2", Ref TUInt64)
+            , ( Ident "fun1" Nothing
+              , [ Right (Ident "Ref2" Nothing, Ref TUInt64)
                 ]
               )
             ]
