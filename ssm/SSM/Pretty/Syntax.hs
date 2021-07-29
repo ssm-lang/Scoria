@@ -15,6 +15,7 @@ import SSM.Core.Syntax
       Reference,
       SSMExp(..),
       SSMLit(..),
+      SSMTime(..),
       Type(..),
       UnaryOpE(..),
       UnaryOpR(..),
@@ -103,13 +104,14 @@ prettyStm stm = case stm of
         indent $ mapM_ prettyStm bdy
         emit $ "}"
     Skip           -> return ()
-    After d r v    -> emit $ concat [ "after "
-                                    , prettySSMExp d
-                                    , " then "
-                                    , fst r
-                                    , " = "
-                                    , prettySSMExp v
-                                    ]
+    After (SSMTime dur units) r v -> emit $ concat [ "after ("
+                                                   , prettySSMExp dur
+                                                   , show units
+                                                   , ") then "
+                                                   , fst r
+                                                   , " = "
+                                                   , prettySSMExp v
+                                                   ]
     Wait refs      -> emit $ concat [ "wait ["
                                     , intercalate ", " (map fst refs)
                                     , "]"

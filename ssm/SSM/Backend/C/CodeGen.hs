@@ -352,7 +352,7 @@ genCase (While c b) = do
   return [[cstm| while ($exp:cnd) { $id:debug_microtick(); $stms:bod }|]]
 genCase (After d (lvar, t) v) = do
   locs <- map fst <$> gets locals
-  let del = genExp locs d
+  let del = genTime locs d
       lhs | lvar `elem` locs = [cexp|&$id:acts->$id:lvar|]
           | otherwise        = [cexp|$id:acts->$id:lvar|]
       rhs = genExp locs v
@@ -363,6 +363,7 @@ genCase (After d (lvar, t) v) = do
     TEvent -> return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del);|]]
     _      -> return
       [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
+ where genTime lcls (SSMTime dur units) = genExp lcls dur
 genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts

@@ -219,6 +219,32 @@ false' = Exp $ Lit TBool $ LBool False
 event' :: Exp ()
 event' = Exp $ Lit TEvent LEvent
 
+-- Time wrappers for use in stmts/expressions that expect time values.
+
+-- | Specify @e@ has units of nanoseconds. 
+nsecs :: Exp Word64 -> SSMTime
+nsecs (Exp e) = SSMTime e SSMNanosecond
+
+-- | Specify @e@ has units of microseconds. 
+usecs :: Exp Word64 -> SSMTime
+usecs (Exp e) = SSMTime e SSMMicrosecond
+
+-- | Specify @e@ has units of milliseconds. 
+msecs :: Exp Word64 -> SSMTime
+msecs (Exp e) = SSMTime e SSMMillisecond
+
+-- | Specify @e@ has units of seconds. 
+secs :: Exp Word64 -> SSMTime
+secs (Exp e) = SSMTime e SSMSecond
+
+-- | Specify @e@ has units of minutes. 
+mins :: Exp Word64 -> SSMTime
+mins (Exp e) = SSMTime e SSMMinute
+
+-- | Specify @e@ has units of hours. 
+hrs :: Exp Word64 -> SSMTime
+hrs (Exp e) = SSMTime e SSMHour
+
 -- | Dereference a reference and get an expression holding the result
 deref :: Ref a -> SSM (Exp a)
 deref (Ptr r) = do
@@ -238,10 +264,10 @@ var (Exp e) = do
 wait :: [Ref a] -> SSM ()
 wait r = emit $ Wait (map (\(Ptr r') -> r') r)
 
-{- | Scheduled assignment. @after d r v@ means that after @a@ units of time, the
+{- | Scheduled assignment. @after d r v@ means that after @d@ units of time, the
 reference @r@ should receive the value @v@. -}
 after :: Exp Word64 -> Ref a -> Exp a -> SSM ()
-after (Exp e) (Ptr r) (Exp v) = emit $ After e r v
+after (Exp e) (Ptr r) (Exp v) = emit $ After (secs $ Exp e) r v
 
 -- | Fork one or more procedures.
 fork :: [SSM ()] -> SSM ()
