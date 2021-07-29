@@ -48,6 +48,9 @@ module SSM.Frontend.Language
     , false'
     , event'
 
+    --- *** Time wrappers
+    , secs
+
       -- ** Primitive statements
       {- | These are the primitive statements of the SSM language. Your procedure
       body is constructed by using these functions. The language is sequential, so the

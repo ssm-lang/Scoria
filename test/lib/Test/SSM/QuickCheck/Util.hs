@@ -119,10 +119,10 @@ removeVars = go
 
         Skip           -> Skip : go invalid validrefs xs
 
-        After d r v    ->
+        After (SSMTime d units) r v ->
             if not $ (refName r, refType r) `elem` validrefs
                 then Skip : go invalid validrefs xs
-                else After (rewriteExp d invalid validrefs)
+                else After (SSMTime (rewriteExp d invalid validrefs) units)
                            r
                            (rewriteExp v invalid validrefs) :
                      go invalid validrefs xs

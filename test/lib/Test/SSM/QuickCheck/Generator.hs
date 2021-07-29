@@ -148,7 +148,7 @@ arbProc funs vars refs c n = frequency $
                v        <- choose (0,3) >>= arbExp (dereference t) vars refs
                delay    <- Lit TUInt64 . LUInt64 <$> choose (1, 5000)
                (rest,c') <- arbProc funs vars refs c (n-1)
-               let stm   = After delay r v
+               let stm   = After (SSMTime delay SSMSecond) r v
                return (stm:rest, c')
         )
       , (1, do refs'  <- sublistOf refs `suchThat` (not . null)
