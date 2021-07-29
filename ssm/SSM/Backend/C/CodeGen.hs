@@ -40,10 +40,9 @@ import qualified SSM.Interpret.Trace           as T
 compile_ :: Program -> ([C.Definition], [C.Definition])
 compile_ program = (compUnit, includes)
  where
-  compUnit = preamble ++ typedefs ++ decls ++ defns ++ entryPointSymbol
+  compUnit = preamble ++ decls ++ defns ++ entryPointSymbol
 
   preamble = genPreamble
-  typedefs = genTypedefs
   (decls, defns) =
     concat2 $ unzip $ map genProcedure $ Map.elems (funs program)
   concat2 (x, y) = (concat x, concat y)
@@ -106,6 +105,21 @@ genPreamble :: [C.Definition]
 genPreamble = [cunit|
 
 /**
+ * FIXME: Generate typedefs, to be placed at the top of the generated C.
+ * Typedef 'event' type as a dummy type. This is because the C runtime does not
+ * define ssm_event_t to wrap a value like the other sv's do. The edsl uses ()
+ * as that wrapee type, effectively making ssm_event_t a unit type.
+ *
+ * Note that variables of this type will be ignored when 'assigning' to
+ * ssm_event_t's. They are simply used so there is a 'primitive' counterpart
+ * to ssm_event_t's. This hack will also allow for programs that test the
+ * equality of event types to compile while we flesh out the exact semantics of
+ * such an operation. In the meantime, all event 'literals' are just chars with
+ * value 0.
+ */
+typedef char event;
+
+/**
  * Circumvent optimizations that take advantage of C's undefined signed
  * integer wraparound behavior. FIXME: remove this hack, which is probably not
  * robust anyway if C is aggressive about inlining.
@@ -119,21 +133,6 @@ includes :: [C.Definition]
 includes = [cunit|
 $esc:("#include \"ssm-platform.h\"")
 |]
-
-{- | FIXME: Generate typedefs, to be placed at the top of the generated C.
-
-Typedef 'event' type as a dummy type. This is because the C runtime does not
-define ssm_event_t to wrap a value like the other sv's do. The edsl uses ()
-as that wrapee type, effectively making ssm_event_t a unit type.
-
-Note that variables of this type will be ignored when 'assigning' to
-ssm_event_t's. They are simply used so there is a 'primitive' counterpart
-to ssm_event_t's. This hack will also allow for programs that test the equality
-of event types to compile while we flesh out the exact semantics of such an
-operation. In the meantime, all event 'literals' are just chars with value 0.
--}
-genTypedefs :: [C.Definition]
-genTypedefs = [[cedecl|typedef char event;|]]
 
 {- | Generate definitions for an SSM 'Procedure'.
 

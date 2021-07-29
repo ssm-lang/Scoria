@@ -217,7 +217,7 @@ arbExp t vars refs n = case t of
   TBool -> oneof $ [ do e1 <- arbExp TInt32 vars refs (n `div` 2)
                         e2 <- arbExp TInt32 vars refs (n `div` 2)
                         return $ BOp t e1 e2 OLT
-                   , do typ <- elements [TInt32, TBool]
+                   , do typ <- elements [TInt32, TInt32, TUInt64, TBool, TEvent]
                         e1 <- arbExp typ vars refs (n `div` 2)
                         e2 <- arbExp typ vars refs (n `div` 2)
                         return $ BOp TBool e1 e2 OEQ
