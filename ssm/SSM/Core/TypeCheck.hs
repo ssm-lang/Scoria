@@ -30,30 +30,30 @@ expMatchRef (s, ty) expr =
                               Right actualTy -> actualTy == ty
 
 -- | Typechecks a program
-typeCheckProgram :: Program -> Maybe TypeError
-typeCheckProgram Program {entry=e, args=as, funs=fs} = 
-    case typeCheckArgs as of Nothing -> typeCheckFuns fs
-                             te -> te
-
+typeCheckProgram :: Program -> Either TypeError ()
+typeCheckProgram Program {entry=e, args=as, funs=fs} = do
+    res <- typeCheckArgs as
+    typeCheckFuns fs
+    
 -- | Checks whether a list of arguments all have the correct type
-typeCheckArgs :: [Either SSMExp Reference] -> Maybe TypeError
-typeCheckArgs [] = Nothing 
-typeCheckArgs (Left expr : t) = 
-    case typeCheckExp expr of Left te -> Just te
-                              Right ty -> typeCheckArgs t
+typeCheckArgs :: [Either SSMExp Reference] -> Either TypeError ()
+typeCheckArgs [] = Right ()
+typeCheckArgs (Left expr : t) = do
+    res <- typeCheckExp expr
+    typeCheckArgs t
 typeCheckArgs (Right ref : t) = typeCheckArgs t
 
 -- | Typechecks a procedure
-typeCheckFunction :: Procedure -> Maybe TypeError
+typeCheckFunction :: Procedure -> Either TypeError ()
 typeCheckFunction Procedure {name=n, arguments=params, body=b} = 
     typeCheckStmLst b
 
 -- | Checks the functions in a String-Procedure map all have the corret type
-typeCheckFuns :: Map.Map String Procedure -> Maybe TypeError
+typeCheckFuns :: Map.Map String Procedure -> Either TypeError ()
 typeCheckFuns = 
-    Map.foldr f Nothing  
+    Map.foldr f (Right ())
     where
-        f func Nothing = typeCheckFunction func
+        f func (Right ()) = typeCheckFunction func
         f func te = te
 
 -- | Typechecks an expression
@@ -82,63 +82,69 @@ typeCheckExp (BOp ty e1 e2 op) =
 data TypeError = TypeError {expected::Type, actual::Type, msg::String}
 
 -- | Typechecks a list of statements
-typeCheckStmLst :: [Stm] -> Maybe TypeError
-typeCheckStmLst [] = Nothing 
-typeCheckStmLst (h:t) = 
-    case typeCheckStm h of Nothing -> typeCheckStmLst t
-                           te -> te
+typeCheckStmLst :: [Stm] -> Either TypeError ()
+typeCheckStmLst [] = Right ()
+typeCheckStmLst (h:t) = do
+    res <- typeCheckStm h
+    typeCheckStmLst t
 
-typeCheckForkProcs :: [(String, [Either SSMExp Reference])] -> Maybe TypeError
-typeCheckForkProcs [] = Nothing
-typeCheckForkProcs ((name, exprOrRef):t) = Nothing  
+-- | Typechecks the arguments of a forked procedure
+typeCheckForkProcArg :: [Either SSMExp Reference] -> Either TypeError ()
+typeCheckForkProcArg [] = Right ()
+typeCheckForkProcArg ((Left expr):t) = do
+    res <- typeCheckExp expr
+    typeCheckForkProcArg t
+typeCheckForkProcArg ((Right ref):t) = typeCheckForkProcArg t
+
+-- | Typechecks forked procedures
+typeCheckForkProcs :: [(String, [Either SSMExp Reference])] -> Either TypeError ()
+typeCheckForkProcs [] = Right ()
+typeCheckForkProcs ((name, expOrRefs):t) = do
+    res <- typeCheckForkProcArg expOrRefs
+    typeCheckForkProcs t
 
 -- | Typechecks a statement
-typeCheckStm :: Stm -> Maybe TypeError
-typeCheckStm Skip = Nothing 
-typeCheckStm (After exp1 ref exp2) = 
-    if isInt (unwrapExpRes (typeCheckExp exp1)) then 
-        if expMatchRef ref exp2 then
-            Nothing 
+typeCheckStm :: Stm -> Either TypeError ()
+typeCheckStm Skip = Right ()
+typeCheckStm (After exp1 ref exp2) 
+    | isInt (unwrapExpRes (typeCheckExp exp1)) =
+        if expMatchRef ref exp2 then Right ()
         else
-            Just TypeError {expected=typeCheckRef ref, 
+            Left TypeError {expected=typeCheckRef ref, 
                             actual=unwrapExpRes (typeCheckExp exp1), msg="Expression type doesn't match the reference"}
-    else 
-        Just TypeError {expected=TInt32, actual=unwrapExpRes (typeCheckExp exp1), msg="The time parameter is not an int"}
-typeCheckStm (Wait refs) = Nothing 
-typeCheckStm (While expr stms) = 
-    if unwrapExpRes (typeCheckExp expr) == TBool then 
+    | otherwise =
+        Left TypeError {expected=TInt32, actual=unwrapExpRes (typeCheckExp exp1), msg="The time parameter is not an int"}
+typeCheckStm (Wait refs) = Right ()
+typeCheckStm (While expr stms) 
+    | unwrapExpRes (typeCheckExp expr) == TBool =
         typeCheckStmLst stms
-    else
-        Just TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr), msg="Condition variable is not a bool"}
-typeCheckStm (If expr stms1 stms2) = 
-    if unwrapExpRes (typeCheckExp expr) == TBool then 
+    | otherwise =
+        Left TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr), msg="Condition variable is not a bool"}
+typeCheckStm (If expr stms1 stms2) 
+    | unwrapExpRes (typeCheckExp expr) == TBool =
         typeCheckStmLst (stms1 ++ stms2)
-    else
-        Just TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr), msg="Condition variable is not a bool"}
+    | otherwise =
+        Left TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr), msg="Condition variable is not a bool"}
 typeCheckStm (Fork procs) = typeCheckForkProcs procs
-typeCheckStm (SetLocal name ty expr) = 
-    if actualTy == ty then 
-        Nothing 
-    else
-        Just TypeError {expected=ty, actual=actualTy, msg="Expression doesn't match the type of the local variable"}
+typeCheckStm (SetLocal name ty expr) 
+    | actualTy == ty = Right ()
+    | otherwise =
+        Left TypeError {expected=ty, actual=actualTy, msg="Expression doesn't match the type of the local variable"}
     where
         actualTy = unwrapExpRes (typeCheckExp expr)
-typeCheckStm (GetRef name ty ref) = 
-    if ty == typeCheckRef ref then
-        Nothing 
-    else 
-        Just TypeError {expected=typeCheckRef ref, actual=ty, msg="Reference type doesn't match the claimed type"}
-typeCheckStm (SetRef ref expr) = 
-    if expMatchRef ref expr then
-            Nothing 
-        else
-            Just TypeError {expected=typeCheckRef ref, 
-                            actual=unwrapExpRes (typeCheckExp expr), msg="Expression type doesn't match the reference"}
-typeCheckStm (NewRef name ty expr) = 
-    if actualTy == ty then
-        Nothing 
-    else
-        Just TypeError {expected=ty, actual=actualTy, msg="Expression type doesn't match the reference"}
+typeCheckStm (GetRef name ty ref) 
+    | ty == typeCheckRef ref = Right ()
+    | otherwise =
+        Left TypeError {expected=typeCheckRef ref, actual=ty, msg="Reference type doesn't match the claimed type"}
+typeCheckStm (SetRef ref expr) 
+    | expMatchRef ref expr = Right ()
+    | otherwise =
+        Left TypeError {expected=typeCheckRef ref, 
+                        actual=unwrapExpRes (typeCheckExp expr), msg="Expression type doesn't match the reference"}
+typeCheckStm (NewRef name ty expr) 
+    | actualTy == ty = Right ()
+    | otherwise =
+        Left TypeError {expected=ty, actual=actualTy, msg="Expression type doesn't match the reference"}
     where
         actualTy = unwrapExpRes (typeCheckExp expr)
 
