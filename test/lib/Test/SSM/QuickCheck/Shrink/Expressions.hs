@@ -49,8 +49,8 @@ shrinkExpInStatement shrinkexp stm = case stm of
 
       {- | Shrink a procedure call into many procedure calls, where at most one proedure
       call has been shrunk per resulting call. -}
-      shrinkCall :: (String, [Either SSMExp Reference])
-                 -> [(String, [Either SSMExp Reference])]
+      shrinkCall :: (Ident, [Either SSMExp Reference])
+                 -> [(Ident, [Either SSMExp Reference])]
       shrinkCall (fun, args) = [ (fun, args') | args' <- shrinkArgs args ]
 
       {- | Shrink one list of arguments into many list of arguments, where at most one

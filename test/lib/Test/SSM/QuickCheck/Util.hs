@@ -69,39 +69,39 @@ it is removed. The second list contains those references that are still valid an
 possible to use.
 
 -}
-removeVars :: [String] -> [(String, Type)] -> [Stm] -> [Stm]
+removeVars :: [Ident] -> [(Ident, Type)] -> [Stm] -> [Stm]
 removeVars = go
   where
       -- | Transforms a procedure body to contain no reference of the invalid identifiers
-      go :: [String]          -- ^ Names of invalid identifiers
-         -> [(String, Type)]  -- ^ Names & Types of valid references
-         -> [Stm]             -- ^ Statements to transform
+      go :: [Ident]          -- ^ Names of invalid identifiers
+         -> [(Ident, Type)]  -- ^ Names & Types of valid references
+         -> [Stm]            -- ^ Statements to transform
          -> [Stm]
       go _ _ []           = []
       go invalid validrefs (x:xs) = case x of
 
         NewRef n t e   ->
-            if getVarName n `elem` invalid
+            if n `elem` invalid
                 then Skip : go invalid validrefs xs
                 else NewRef n t (rewriteExp e invalid validrefs) :
-                     go invalid ((getVarName n, t):validrefs) xs
+                     go invalid ((n, t):validrefs) xs
 
         GetRef n t r   ->
-            if getVarName n `elem` invalid
+            if n `elem` invalid
                 then Skip : go invalid validrefs xs
                 else
-            if not $ (refName r, refType r) `elem` validrefs
-                then Skip : go (getVarName n:invalid) validrefs xs
+            if not $ (fst r, refType r) `elem` validrefs
+                then Skip : go (n:invalid) validrefs xs
                 else x : go invalid validrefs xs
 
         SetRef r e     ->
-            if not $ (refName r, refType r) `elem` validrefs
+            if not $ (fst r, refType r) `elem` validrefs
                 then Skip : go invalid validrefs xs
                 else SetRef r (rewriteExp e invalid validrefs) :
                      go invalid validrefs xs
 
         SetLocal n t e ->
-            if getVarName n `elem` invalid
+            if n `elem` invalid
                 then Skip : go invalid validrefs xs
                 else SetLocal n t (rewriteExp e invalid validrefs) :
                      go invalid validrefs xs
@@ -120,7 +120,7 @@ removeVars = go
         Skip           -> Skip : go invalid validrefs xs
 
         After d r v    ->
-            if not $ (refName r, refType r) `elem` validrefs
+            if not $ (fst r, refType r) `elem` validrefs
                 then Skip : go invalid validrefs xs
                 else After (rewriteExp d invalid validrefs)
                            r
@@ -128,7 +128,7 @@ removeVars = go
                      go invalid validrefs xs
 
         Wait refs      ->
-            let refs' = filter (\r -> (refName r, refType r) `elem` validrefs) refs
+            let refs' = filter (\r -> (fst r, refType r) `elem` validrefs) refs
             in if null refs'
                 then Skip : go invalid validrefs xs
                 else Wait refs' : go invalid validrefs xs
@@ -144,7 +144,7 @@ removeVars = go
 
       {- | Rewrite an expression by replacing invalid expressions with fresh literals
       and my replacing invalid references with a `True` literal. -}
-      rewriteExp :: SSMExp -> [String] -> [(String, Type)] -> SSMExp
+      rewriteExp :: SSMExp -> [Ident] -> [(Ident, Type)] -> SSMExp
       rewriteExp e invalid validrefs = case e of
           Var t n        -> if n `elem` invalid
               then defaultExp t
@@ -153,7 +153,7 @@ removeVars = go
           UOpE t e op    -> case op of
               Neg -> UOpE t (rewriteExp e invalid validrefs) Neg
           UOpR t r op    -> case op of
-              Changed -> if (refName r, refType r) `elem` validrefs
+              Changed -> if (fst r, refType r) `elem` validrefs
                   then UOpR t r Changed
                   else Lit TBool (LBool True)
           BOp t e1 e2 op ->
@@ -175,8 +175,8 @@ removeVars = go
       that's no longer valid that can't be replaced with a reference of the same type,
       that specific procedure call can't be left in the program. -}
       rewriteCall :: [Either SSMExp Reference]
-                  -> [String]
-                  -> [(String, Type)]
+                  -> [Ident]
+                  -> [(Ident, Type)]
                   -> Maybe [Either SSMExp Reference]
       rewriteCall [] _ _                         = Just []
 
@@ -186,14 +186,14 @@ removeVars = go
 
       rewriteCall (Right r:xs) invalid validrefs = do
           xs' <- rewriteCall xs invalid validrefs
-          if (refName r, refType r) `elem` validrefs
+          if (fst r, refType r) `elem` validrefs
               then return $ Right r : xs'
               else do r' <- replacementRef r validrefs
                       return $ Right r' : xs'
 
       {- | If there's a ref of the same type in scope, return one of them. Otherwise,
       return Nothing. -}
-      replacementRef :: Reference -> [(String, Type)] -> Maybe Reference
+      replacementRef :: Reference -> [(Ident, Type)] -> Maybe Reference
       replacementRef r refs =
           let refs' = filter (\(_,t) -> refType r == t) refs
           in if null refs' then Nothing else Just (head refs')
