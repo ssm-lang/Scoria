@@ -32,15 +32,15 @@ getrefs p = concat
 
 {- | Need to write this explicitly rather than using distributeMutate, as the
 mutation is not local to just the GetRef statement itself. -}
-shrinkProcedureBody :: [(String, Type)] -> [Stm] -> [[Stm]]
+shrinkProcedureBody :: [(Ident, Type)] -> [Stm] -> [[Stm]]
 shrinkProcedureBody validrefs xs = go (emptyHughes, xs, validrefs)
   where
-      go :: (Hughes Stm, [Stm], [(String, Type)]) -> [[Stm]]
+      go :: (Hughes Stm, [Stm], [(Ident, Type)]) -> [[Stm]]
       go (_, [], _)                   = []
       go (current, (x:xs), validrefs) = case x of
-          NewRef n t e -> go (snoc current x, xs, (getVarName n, t):validrefs)
+          NewRef n t e -> go (snoc current x, xs, (n, t):validrefs)
           GetRef n t r ->
-              let rest = removeVars [getVarName n] validrefs (x:xs)
+              let rest = removeVars [n] validrefs (x:xs)
               in (fromHughes current <> rest) :
                  go (snoc current x, xs, validrefs)
           If c thn els ->
