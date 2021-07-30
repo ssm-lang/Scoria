@@ -40,6 +40,15 @@ instance Arbitrary Type where
                        , Ref TEvent
                        ]
 
+instance Arbitrary SSMTimeUnit where
+    arbitrary = elements [ SSMNanosecond
+                         , SSMMicrosecond
+                         , SSMMillisecond
+                         , SSMSecond
+                         , SSMMinute
+                         , SSMHour
+                         ]
+
 type Procedures = [(String, [(String, Type)], [Stm])]
 type Variable   = (Name, Type)
 type Ref        = (String, Type)
@@ -146,9 +155,9 @@ arbProc funs vars refs c n = frequency $
       
       , (1, do r@(_,t)  <- elements refs
                v        <- choose (0,3) >>= arbExp (dereference t) vars refs
-               delay    <- Lit TUInt64 . LUInt64 <$> choose (1, 5000)
                (rest,c') <- arbProc funs vars refs c (n-1)
-               let stm   = After (SSMTime delay SSMSecond) r v
+               delay     <- genDelay
+               let stm   = After delay r v
                return (stm:rest, c')
         )
       , (1, do refs'  <- sublistOf refs `suchThat` (not . null)
@@ -175,6 +184,12 @@ arbProc funs vars refs c n = frequency $
                       Right <$> elements okrefs
               else Left <$> (choose (0,3) >>= arbExp t vars refs)
           return (n, args)
+
+      -- | Generate a delay.
+      genDelay :: Gen SSMTime
+      genDelay = do
+          delay <- Lit TUInt64 . LUInt64 <$> choose (1, 5000)
+          return . SSMTime delay =<< arbitrary
 
       -- | Predicate that returns True if the given procedure can be forked.
       -- What determines this is what references we have in scope. If the procedure
