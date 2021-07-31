@@ -8,19 +8,26 @@ module SSM.Backend.C.Exp
 
 import SSM.Core.Syntax
 import SSM.Backend.C.Identifiers
+import SSM.Backend.C.Types
 
 import Language.C.Quote.GCC ( cexp )
 import qualified Language.C.Syntax             as C
 
 -- | Generate C expression from 'SSMExp' and a list of local variables.
 genExp :: [String] -> SSMExp -> C.Exp
-genExp _  (Var _ n              ) = [cexp|acts->$id:n.value|]
+genExp _  (Var t n              )
+{- FIXME: event 'literals' are just typedef'd chars with value 0. Either this
+value is ignored or it used to make equality tests compile (which will always
+yield true while we figure out equality semantics of ssm_event_t). -}
+  | baseType t == TEvent = [cexp|0|]
+  | otherwise = [cexp|acts->$id:n.value|]
 genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
 genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
 genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename i64) $int:i|]
 genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename u64) $int:i|]
 genExp _  (Lit _ (LBool   True )) = [cexp|true|]
 genExp _  (Lit _ (LBool   False)) = [cexp|false|]
+genExp _  (Lit _ (LEvent       )) = [cexp|0|]
 genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
 genExp ls (UOpR _ (n, _) Changed)
   | n `elem` ls = [cexp|$id:event_on(&acts->$id:n.sv)|]

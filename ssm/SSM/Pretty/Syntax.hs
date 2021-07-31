@@ -142,6 +142,7 @@ prettyType t = case t of
     TInt64  -> "int64"
     TUInt64 -> "uint64"
     TBool   -> "bool"
+    TEvent  -> "event"
     Ref t   -> "*" ++ prettyType t
 
 prettyLit :: SSMLit -> String
@@ -151,6 +152,7 @@ prettyLit l = case l of
     LInt64 i  -> show i
     LUInt64 i -> show i
     LBool b   -> show b
+    LEvent    -> show ()
 
 prettySSMExp :: SSMExp -> String
 prettySSMExp e = case e of

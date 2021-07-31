@@ -25,6 +25,7 @@ import qualified Data.Map                      as Map
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
 
+-- import           Data.Bifunctor                 ( second )
 import           Data.List                      ( sortOn )
 import           SSM.Backend.C.Exp
 import           SSM.Backend.C.Identifiers
@@ -102,6 +103,21 @@ actm = "act"
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]
 genPreamble = [cunit|
+
+/**
+ * FIXME: Generate typedefs, to be placed at the top of the generated C.
+ * Typedef 'event' type as a dummy type. This is because the C runtime does not
+ * define ssm_event_t to wrap a value like the other sv's do. The edsl uses ()
+ * as that wrapee type, effectively making ssm_event_t a unit type.
+ *
+ * Note that variables of this type will be ignored when 'assigning' to
+ * ssm_event_t's. They are simply used so there is a 'primitive' counterpart
+ * to ssm_event_t's. This hack will also allow for programs that test the
+ * equality of event types to compile while we flesh out the exact semantics of
+ * such an operation. In the meantime, all event 'literals' are just chars with
+ * value 0.
+ */
+typedef char event;
 
 /**
  * Circumvent optimizations that take advantage of C's undefined signed
@@ -201,10 +217,12 @@ genEnter = do
   param (n, t    ) = [cparam|$ty:(basetype t) $id:n|]
 
   initParam (n, Ref t) = [[cstm|$id:acts->$id:n = $id:n;|]]
-  initParam (n, t) =
-    [ [cstm|$id:(initialize_ t)(&$id:acts->$id:n);|]
-    , [cstm|$id:(assign_ t)(&$id:acts->$id:n, $id:actg->priority, $id:n);|]
-    ]
+  initParam (n, t)
+    | baseType t == TEvent = [ [cstm|$id:(initialize_ t)(&$id:acts->$id:n);|],
+                               [cstm|$id:(assign_ t)(&$id:acts->$id:n, $id:actg->priority);|]]
+    | otherwise = [ [cstm|$id:(initialize_ t)(&$id:acts->$id:n);|],
+                    [cstm|$id:(assign_ t)(&$id:acts->$id:n, $id:actg->priority, $id:n);|]]
+
 
   initLocal (n, t) = [[cstm| $id:(initialize_ t)(&$id:acts->$id:n);|]]
 
@@ -224,29 +242,33 @@ genStep = do
   cases <- concat <$> mapM genCase (body p)
   locs  <- gets locals
   final <- nextCase
-  let act           = [cty|typename $id:actt|]
-      actt          = act_ $ name p -- hack to use this typename as expr in macros
-      step          = step_ $ name p
+  let
+    act           = [cty|typename $id:actt|]
+    actt          = act_ $ name p -- hack to use this typename as expr in macros
+    step          = step_ $ name p
 
-      actStepBeginS = show $ T.ActStepBegin $ name p
-      actLocalVarS nt = show $ T.ActVar $ varFmt nt
+    actStepBeginS = show $ T.ActStepBegin $ name p
+    actLocalVarS nt = show $ T.ActVar $ varFmt nt
 
-      debugLocal (n, t) =
-        [cstm|if ($exp:initialized) $id:debug_trace($exp:fmt, $exp:val);|]
-       where
-        initialized = [cexp|$id:acts->$id:n.sv.last_updated != $id:never|]
-        fmt         = [cexp|$string:(actLocalVarS (n, t))|]
-        val         = [cexp|$id:acts->$id:n.value|]
+    debugLocal (n, t)
+      | baseType t == TEvent
+      = [cstm|if ($exp:initialized) $id:debug_trace($exp:fmt);|]
+      | otherwise
+      = [cstm|if ($exp:initialized) $id:debug_trace($exp:fmt, $exp:val);|]
+     where
+      initialized = [cexp|$id:acts->$id:n.sv.last_updated != $id:never|]
+      fmt         = [cexp|$string:(actLocalVarS (n, t))|]
+      val         = [cexp|$id:acts->$id:n.value|]
 
-      debugArg (n, t) = [cstm|$id:debug_trace($exp:eventFmt, $exp:val);|]
-       where
-        eventFmt = [cexp|$string:(actLocalVarS (n, t))|]
-        val      = case t of
-          Ref _ -> [cexp|$id:acts->$id:n->value|]
-          _     -> [cexp|$id:acts->$id:n.value|]
+    debugArg (n, t) | baseType t == TEvent = [cstm|$id:debug_trace($exp:fmt);|]
+                    | otherwise = [cstm|$id:debug_trace($exp:fmt, $exp:val);|]
+     where
+      fmt = [cexp|$string:(actLocalVarS (n, t))|]
+      val = case t of
+        Ref _ -> [cexp|$id:acts->$id:n->value|]
+        _     -> [cexp|$id:acts->$id:n.value|]
 
-
-      dequeue (var, _) = [cstm|$id:unsched_event(&$id:acts->$id:var.sv);|]
+    dequeue (var, t) = [cstm|$id:unsched_event(&$id:acts->$id:var.sv);|]
   return
     ( [cedecl|void $id:step($ty:act_t *$id:actg);|]
     , [cedecl|
@@ -284,29 +306,39 @@ genCase (NewRef n t v) = do
       lhs  = [cexp|&$id:acts->$id:lvar|]
       rhs  = genExp locs v
   addLocal lvar t
-  return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
+  case baseType t of
+    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
+    _ ->
+      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (GetRef n t (rvar, _)) = do
   locs <- map fst <$> gets locals
   let lvar = getVarName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
-      rhs  = if rvar `elem` locs
-        then [cexp|$id:acts->$id:rvar.value|]
-        else [cexp|$id:acts->$id:rvar->value|]
+      rhs | rvar `elem` locs = [cexp|$id:acts->$id:rvar.value|]
+          | otherwise        = [cexp|$id:acts->$id:rvar->value|]
   addLocal lvar t
-  return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
+  case baseType t of
+    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
+    _ ->
+      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (SetRef (lvar, t) e) = do
   locs <- map fst <$> gets locals
-  let lhs = if lvar `elem` locs
-        then [cexp|&$id:acts->$id:lvar|]
-        else [cexp|$id:acts->$id:lvar|]
+  let lhs | lvar `elem` locs = [cexp|&$id:acts->$id:lvar|]
+          | otherwise        = [cexp|$id:acts->$id:lvar|]
       rhs = genExp locs e
-  return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
+  case baseType t of
+    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
+    _ ->
+      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (SetLocal n t e) = do
   locs <- map fst <$> gets locals
   let lvar = getVarName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
       rhs  = genExp locs e
-  return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
+  case baseType t of
+    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
+    _ ->
+      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (If c t e) = do
   locs <- map fst <$> gets locals
   let cnd = genExp locs c
@@ -321,14 +353,16 @@ genCase (While c b) = do
 genCase (After d (lvar, t) v) = do
   locs <- map fst <$> gets locals
   let del = genExp locs d
-      lhs = if lvar `elem` locs
-        then [cexp|&$id:acts->$id:lvar|]
-        else [cexp|$id:acts->$id:lvar|]
+      lhs | lvar `elem` locs = [cexp|&$id:acts->$id:lvar|]
+          | otherwise        = [cexp|$id:acts->$id:lvar|]
       rhs = genExp locs v
-      -- Note that the semantics of 'After' and 'later_' differ---the former
-      -- expects a relative time, whereas the latter takes an absolute time.
-      -- Thus we add now() in the code we generate.
-  return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
+  -- Note that the semantics of 'After' and 'later_' differ---the former
+  -- expects a relative time, whereas the latter takes an absolute time.
+  -- Thus we add now() in the code we generate.
+  case baseType t of
+    TEvent -> return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del);|]]
+    _      -> return
+      [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
 genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts
@@ -346,9 +380,8 @@ genCase (Wait ts) = do
   sensitizeTrig (i, trig) =
     [cstm|$id:sensitize($exp:trig, &$id:acts->$id:(trig_ i));|]
   desensitizeTrig (i, _) = [cstm|$id:desensitize(&$id:acts->$id:(trig_ i));|]
-  genTrig locs (trig, _) = if trig `elem` locs
-    then [cexp|&$id:acts->$id:trig.sv|]
-    else [cexp|&$id:acts->$id:trig->sv|]
+  genTrig locs (trig, _) | trig `elem` locs = [cexp|&$id:acts->$id:trig.sv|]
+                         | otherwise        = [cexp|&$id:acts->$id:trig->sv|]
   getTrace (trig, _) = [cstm|$id:debug_trace($string:event);|]
     where event = show $ T.ActSensitize trig
 genCase (Fork cs) = do
@@ -374,10 +407,9 @@ genCase (Fork cs) = do
             , newDepth
             ]
             ++ map genArg as
-        genArg (Left  e     ) = genExp locs e
-        genArg (Right (r, _)) = if r `elem` locs
-          then [cexp|&$id:acts->$id:r|]
-          else [cexp|$id:acts->$id:r|]
+        genArg (Left e) = genExp locs e
+        genArg (Right (r, _)) | r `elem` locs = [cexp|&$id:acts->$id:r|]
+                              | otherwise     = [cexp|$id:acts->$id:r|]
   return
     $  checkNewDepth
     :  map genTrace cs

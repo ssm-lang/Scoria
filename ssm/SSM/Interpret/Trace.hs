@@ -116,6 +116,9 @@ data ConcreteValue =
     --
     -- Used for injecting formatters into a format string in codegen.
     | IntegralFmt String
+
+    -- | A "value" that inhabits a singleton type (such as Event).
+    | UnitType
     deriving (Eq, Read)
 
 -- | Override the default Show intance for @ConcreteVal@ so that shown
@@ -123,3 +126,4 @@ data ConcreteValue =
 instance Show ConcreteValue where
   show (IntegralVal i) = "(IntegralVal " ++ show i ++ ")"
   show (IntegralFmt f) = "(IntegralVal " ++ f ++ ")"
+  show UnitType        = "UnitType"

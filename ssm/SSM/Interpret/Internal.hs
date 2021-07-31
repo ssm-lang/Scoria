@@ -627,6 +627,8 @@ equals (Lit _ (LInt64  i1)) (Lit _ (LInt64  i2)) = Lit TBool $ LBool $ i1 == i2
 equals (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TBool $ LBool $ i1 == i2
 equals (Lit _ (LUInt8  i1)) (Lit _ (LUInt8  i2)) = Lit TBool $ LBool $ i1 == i2
 equals (Lit _ (LBool   b1)) (Lit _ (LBool   b2)) = Lit TBool $ LBool $ b1 == b2
+-- FIXME: We haven't fully fleshed out equality semantics of TEvent yet.
+equals (Lit _ LEvent      ) (Lit _ LEvent      ) = Lit TBool $ LBool True
 equals le re = expOpTypeError "compare" le re
 
 -- | Add two expressions
@@ -704,4 +706,5 @@ getTypeConcreteVal (Lit t (LUInt8  i    )) = (t, T.IntegralVal $ fromIntegral i)
 getTypeConcreteVal (Lit t (LUInt64 i    )) = (t, T.IntegralVal $ fromIntegral i)
 getTypeConcreteVal (Lit t (LBool   True )) = (t, T.IntegralVal 1)
 getTypeConcreteVal (Lit t (LBool   False)) = (t, T.IntegralVal 0)
+getTypeConcreteVal (Lit t LEvent         ) = (t, T.UnitType)
 getTypeConcreteVal e                       = expTypeError "Concrete" e

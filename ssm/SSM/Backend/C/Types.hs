@@ -20,6 +20,7 @@ baseTypeId = typeId . baseType
   typeId TUInt64 = "u64"
   typeId TUInt8  = "u8"
   typeId TBool   = "bool"
+  typeId TEvent  = "event"
 
 -- | Obtain formatter to show given type's base type as an integer.
 intFmt :: Type -> String
@@ -32,4 +33,5 @@ intFmt = fmt . baseType
   fmt TUInt8  = "%u"
 
 varFmt :: (String, Type) -> T.VarVal
-varFmt (n, t) = T.VarVal n (baseType t) $ T.IntegralFmt $ intFmt t
+varFmt (n, t) | baseType t == TEvent = T.VarVal n (baseType t) T.UnitType
+              | otherwise = T.VarVal n (baseType t) $ T.IntegralFmt $ intFmt t

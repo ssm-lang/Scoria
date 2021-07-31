@@ -32,10 +32,12 @@ instance Arbitrary Type where
                        , TInt64
                        , TBool
                        , TUInt64
+                       , TEvent
                        , Ref TInt32
                        , Ref TInt64
                        , Ref TUInt64
                        , Ref TBool
+                       , Ref TEvent
                        ]
 
 type Procedures = [(String, [(String, Type)], [Stm])]
@@ -183,7 +185,7 @@ arbProc funs vars refs c n = frequency $
           in all (`elem` distinct) $ filter isReference $ map snd types
 
 -- | Generate a SSMExp.
-arbExp :: Type        -- ^ Type of expression to generate (oneof TInt32 or TBool)
+arbExp :: Type        -- ^ Type of expression to generate
        -> [Variable]  -- ^ Variables that are in scope that the expression can use
        -> [Reference] -- ^ References that are in scope that the expression can use
        -> Int         -- ^ Size parameter
@@ -200,6 +202,7 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
       TInt64 -> return  . Lit TInt64  . LInt64  =<< choose (-55050, 55050)
       TUInt64 -> return . Lit TUInt64 . LUInt64 =<< choose (0, 65500)
       TBool  -> return  . Lit TBool   . LBool   =<< arbitrary
+      TEvent -> return $ Lit TEvent LEvent
 
     -- | Generator that returns a randomly selected variable from the set of variables.
     varGen :: [Gen SSMExp]
@@ -214,11 +217,12 @@ arbExp t vars refs n = case t of
   TBool -> oneof $ [ do e1 <- arbExp TInt32 vars refs (n `div` 2)
                         e2 <- arbExp TInt32 vars refs (n `div` 2)
                         return $ BOp t e1 e2 OLT
-                   , do typ <- elements [TInt32, TBool]
+                   , do typ <- elements [TInt32, TInt32, TUInt64, TBool, TEvent]
                         e1 <- arbExp typ vars refs (n `div` 2)
                         e2 <- arbExp typ vars refs (n `div` 2)
                         return $ BOp TBool e1 e2 OEQ
                    ]
+  TEvent -> return $ Lit TEvent LEvent
   t | t `elem` [TUInt8, TUInt64] -> do
       e1 <- arbExp t vars refs (n `div` 2)
       e2 <- arbExp t vars refs (n `div` 2)
