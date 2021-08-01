@@ -48,7 +48,7 @@ instance Assignable (Ref a) (Exp a) where
 ```
 Two operators for comparing expressions. I am not sure we can use the regular `Eq` or `Ord` instances here. E.g `(==) :: a -> a -> Bool` would in our case be `(==) :: Exp a -> Exp a -> Bool`, meaning that to implement this function we would need to go from our expression language to a normal `Bool` in the Haskell language. We can not do this until we are interpreting an expression, unless the expression only contains literals (which we don't know at this point).
 ```Haskell
-(<.)  :: SSMType a => Exp a -> Exp a -> Exp Bool
+(<.)  :: (Num a, SSMType a) => Exp a -> Exp a -> Exp Bool
 (==.) :: SSMType a => Exp a -> Exp a -> Exp Bool
 ```
 We can negate numeric expressions. Here we can (but we don't right now) use an additional constraint to specify that only signed integer types can be negated. This is very trivial to add.
@@ -66,6 +66,10 @@ Boolean literals.
 ```Haskell
 true'      :: Exp Bool
 false'     :: Exp Bool
+```
+Event literal.
+```Haskell
+event'     :: Exp ()
 ```
 Now, when we are writing our programs we need to be able to collect the sequence of statements that make up a program. We use a custom monad to do this, `SSM a`. The frontend is designed such that a user will not have to care anything about this monad, only use its monad instance, `return` & `(>>=)`. Internally this monad maintains a list of statements collected so far, a counter used to generate fresh names and so on.
 

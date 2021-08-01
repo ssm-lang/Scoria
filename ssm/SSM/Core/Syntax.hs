@@ -78,6 +78,7 @@ data Type
     | TInt32    -- ^ Signed 32-bit integer
     | TInt64    -- ^ Signed 64-bit integer
     | TBool     -- ^ Boolean type
+    | TEvent    -- ^ Event type
     | Ref Type  -- ^ A reference to another type
     deriving (Eq, Show, Read)
 
@@ -116,6 +117,9 @@ instance SSMType Int64 where
 instance SSMType Bool where
     typeOf _ = TBool
 
+instance SSMType () where
+    typeOf _ = TEvent
+
 
 -- References
 
@@ -150,6 +154,7 @@ data SSMLit
     | LInt64 Int64    -- ^ 64bit integer literals
     | LUInt64 Word64  -- ^ 64bit unsigned integer literals
     | LBool Bool      -- ^ Boolean literals
+    | LEvent          -- ^ Event literal
     deriving (Eq, Show, Read)
 
 -- | Expressions of unary operators on expressions
