@@ -350,10 +350,10 @@ genCase (While c b) = do
   let cnd = genExp locs c
   bod <- concat <$> mapM genCase b
   return [[cstm| while ($exp:cnd) { $id:debug_microtick(); $stms:bod }|]]
-genCase (After (SSMTime d u) (lvar, t) v) = do
+genCase (After d (lvar, t) v) = do
   locs <- map fst <$> gets locals
-  let del = genExp locs d
-      units = units_ u
+  let del = genExp locs $ timeValue d
+      units = units_ $ timeUnit d
       lhs | lvar `elem` locs = [cexp|&$id:acts->$id:lvar|]
           | otherwise        = [cexp|$id:acts->$id:lvar|]
       rhs = genExp locs v

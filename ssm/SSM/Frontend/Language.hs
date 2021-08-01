@@ -244,7 +244,7 @@ secs (Exp e) = SSMTime e SSMSecond
 mins :: Exp Word64 -> SSMTime
 mins (Exp e) = SSMTime e SSMMinute
 
--- | Specify @e@ has units of hours. 
+-- | Specify @e@ has units of hours.
 hrs :: Exp Word64 -> SSMTime
 hrs (Exp e) = SSMTime e SSMHour
 

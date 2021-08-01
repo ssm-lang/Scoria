@@ -131,11 +131,11 @@ step = do
 
       Skip        -> continue
 
-      After (SSMTime d u) r v -> do
-        d' <- getUInt64 <$> eval d
+      After d r v -> do
+        d' <- getUInt64 <$> eval (timeValue d)
         v' <- eval v
         n' <- getNow
-        scheduleEvent r (n' + applyUnit d' u) v'
+        scheduleEvent r (n' + applyUnit d' (timeUnit d)) v'
         continue
 
       Wait refs -> do

@@ -36,6 +36,8 @@ module SSM.Frontend.Syntax
       -- * Time
     , S.SSMTimeUnit(..)
     , S.SSMTime(..)
+    , S.timeValue
+    , S.timeUnit
 
       -- * Names
     , S.Name(..)

@@ -44,6 +44,8 @@ module SSM.Core.Syntax
       {- Exposes units of time to wrap Word64 expressions. -}
     , SSMTimeUnit(..)
     , SSMTime(..)
+    , timeValue
+    , timeUnit
 
       -- ** Names
     , Name(..)
@@ -190,6 +192,8 @@ expType (UOpR t _ _)  = t
 expType (BOp t _ _ _) = t
 
 -- Time
+
+-- | Units of time supported by SSM.
 data SSMTimeUnit
     = SSMNanosecond
     | SSMMicrosecond
@@ -202,6 +206,14 @@ data SSMTimeUnit
 -- | Time values with units to be resolved by CodeGen. Used in `after` stmts.
 data SSMTime = SSMTime SSMExp SSMTimeUnit
     deriving (Eq, Show, Read)
+
+-- | Get the unit of a SSMTime
+timeUnit :: SSMTime -> SSMTimeUnit
+timeUnit (SSMTime _ u) = u
+
+-- | Get the value of a SSMTime
+timeValue :: SSMTime -> SSMExp
+timeValue (SSMTime v _) = v
 
 -- Names of variables
 
