@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d9c32b968dbac4fb9139977332b295231237fae76160ee30d8a251e407eefcb5
+-- hash: d5aae9166f5822f02c1cbbc38a97c6c0b268072826f23dfd8dd147c4d9a2fdaa
 
 name:           ssm
 version:        0.1.0.0
@@ -69,7 +69,7 @@ library
     , time
   default-language: Haskell2010
 
-test-suite 1-regression-high
+test-suite 1-regression-low
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -93,7 +93,6 @@ test-suite 1-regression-high
       Regression.FiveForkerSpec
       Regression.FlipFlopLoopSpec
       Regression.LaterAssignOverwriteSpec
-      Regression.LaterWaitSpec
       Regression.ManyContsSpec
       Regression.MultOverflowIndirectSpec
       Regression.MultOverflowSpec
@@ -112,16 +111,17 @@ test-suite 1-regression-high
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
-    , Diff
     , QuickCheck
     , base >=4.7 && <5
     , bytestring
     , containers
+    , deepseq
     , directory
     , extra
     , hspec
     , language-c-quote
     , mainland-pretty
+    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
@@ -131,7 +131,7 @@ test-suite 1-regression-high
     , time
   default-language: Haskell2010
 
-test-suite 3-arbitrary
+test-suite 2-arbitrary
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -158,16 +158,17 @@ test-suite 3-arbitrary
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
-    , Diff
     , QuickCheck
     , base >=4.7 && <5
     , bytestring
     , containers
+    , deepseq
     , directory
     , extra
     , hspec
     , language-c-quote
     , mainland-pretty
+    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
