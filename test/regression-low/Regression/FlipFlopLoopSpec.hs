@@ -9,25 +9,36 @@ import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 
+import SSM.Compile
+
 p :: Program
 p = Program
-  { entry = Ident "fun1" Nothing
-  , args  = [Right (Ident "ref2" Nothing, Ref TUInt64)]
+  { entry = Ident "fun0" Nothing
+  , args  = []
   , funs  = fromList
-              [ ( Ident "fun1" Nothing
+              [ ( Ident "fun0" Nothing
+                , Procedure
+                  { name = Ident "fun0" Nothing
+                  , arguments = []
+                  , body = [ NewRef (Ident "ref2" Nothing) TBool (Lit TBool (LBool True))
+                           , Fork [(Ident "fun1" Nothing, [Right (Ident "ref2" Nothing, TBool)])]
+                           ]
+                  }
+                )
+              , ( Ident "fun1" Nothing
                 , Procedure
                   { name      = Ident "fun1" Nothing
-                  , arguments = [(Ident "ref2" Nothing, Ref TUInt64)]
+                  , arguments = [(Ident "ref2" Nothing, Ref TBool)]
                   , body      = [ While
                                     (Lit TBool (LBool True))
                                     [ After (Lit TUInt64 (LUInt64 2))
-                                            (Ident "ref2" Nothing, Ref TUInt64)
-                                            (Lit TUInt64 (LUInt64 0))
-                                    , Wait [(Ident "ref2" Nothing, Ref TUInt64)]
+                                            (Ident "ref2" Nothing, Ref TBool)
+                                            (Lit TBool (LBool False))
+                                    , Wait [(Ident "ref2" Nothing, Ref TBool)]
                                     , After (Lit TUInt64 (LUInt64 2))
-                                            (Ident "ref2" Nothing, Ref TUInt64)
-                                            (Lit TUInt64 (LUInt64 1))
-                                    , Wait [(Ident "ref2" Nothing, Ref TUInt64)]
+                                            (Ident "ref2" Nothing, Ref TBool)
+                                            (Lit TBool (LBool True))
+                                    , Wait [(Ident "ref2" Nothing, Ref TBool)]
                                     ]
                                 ]
                   }

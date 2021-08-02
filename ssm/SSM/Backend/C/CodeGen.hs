@@ -231,7 +231,7 @@ genEnter = do
 
   initLocal (n, t) =
     [ [cstm| $id:(initialize_ t)(&acts->$id:(identName n));|]
-    , [cstm| DEBUG_SV_SET_VAR_NAME(acts->$id:(identName n).sv.debug, $string:(identName n)); |]
+--    , [cstm| DEBUG_SV_SET_VAR_NAME(acts->$id:(identName n).sv.debug, $string:(identName n)); |]
     ]
 
   initTrig i = [cstm| $id:acts->$id:trig.act = $id:actg;|]

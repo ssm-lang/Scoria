@@ -9,18 +9,18 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = "fun0"
+  { entry = Ident "fun0" Nothing
   , args  = []
   , funs  = fromList
-              [ ( "fun0"
+              [ ( Ident "fun0" Nothing
                 , Procedure
-                  { name = "fun0"
+                  { name = Ident "fun0" Nothing
                   , arguments = []
-                  , body = [ NewRef (Fresh "v0")
+                  , body = [ NewRef (Ident "v0" Nothing)
                                     (Ref TInt32)
                                     (Lit TInt32 (LInt32 0))
                            , After (Lit TUInt64 (LUInt64 2))
-                                   ("v0", Ref TInt32)
+                                   (Ident "v0" Nothing, Ref TInt32)
                                    (Lit TInt32 (LInt32 1))
                            ]
                   }

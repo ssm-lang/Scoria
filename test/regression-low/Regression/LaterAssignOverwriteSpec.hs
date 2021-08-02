@@ -17,10 +17,22 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = Ident "fun1" Nothing
-  , args  = [Right (Ident "ref1" Nothing, Ref TBool), Right (Ident "ref3" Nothing, Ref TInt32)]
+  { entry = Ident "fun0" Nothing
+  , args  = []
   , funs  = fromList
-              [ ( Ident "fun1" Nothing
+              [ ( Ident "fun0" Nothing
+                , Procedure
+                  { name      = Ident "fun0" Nothing
+                  , arguments = []
+                  , body      =
+                    [ NewRef (Ident "ref1" Nothing) (Ref TBool)  (Lit TBool (LBool True))
+                    , NewRef (Ident "ref3" Nothing) (Ref TInt32) (Lit TInt32 (LInt32 0))
+                    , Fork
+                      [(Ident "fun1" Nothing, [Right (Ident "ref1" Nothing, Ref TBool), Right (Ident "ref3" Nothing, Ref TInt32)])]
+                    ]
+                  }
+                )
+              , ( Ident "fun1" Nothing
                 , Procedure
                   { name = Ident "fun1" Nothing
                   , arguments = [(Ident "ref1" Nothing, Ref TBool), (Ident "ref3" Nothing, Ref TInt32)]
