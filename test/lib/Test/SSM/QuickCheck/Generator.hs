@@ -188,8 +188,17 @@ arbProc funs vars refs c n = frequency $
       -- | Generate a delay.
       genDelay :: Gen SSMTime
       genDelay = do
-          delay <- Lit TUInt64 . LUInt64 <$> choose (1, 5000)
-          return . SSMTime delay =<< arbitrary
+          unit' <- arbitrary
+          delay <- Lit TUInt64 . LUInt64 <$> arbDelay unit'
+          return $ SSMTime delay unit'
+            where
+              arbDelay :: SSMTimeUnit -> Gen Word64
+              arbDelay SSMHour        = choose (1, 3)
+              arbDelay SSMMinute      = choose (1, 180)
+              arbDelay SSMSecond      = choose (1, 10800)
+              arbDelay SSMMillisecond = choose (1, 10800000)
+              arbDelay SSMMicrosecond = choose (1, 10800000000)
+              arbDelay SSMNanosecond  = choose (1, 10800000000000)
 
       -- | Predicate that returns True if the given procedure can be forked.
       -- What determines this is what references we have in scope. If the procedure
