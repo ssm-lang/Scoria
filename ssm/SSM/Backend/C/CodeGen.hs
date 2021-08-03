@@ -230,9 +230,7 @@ genEnter = do
       ]
 
   initLocal (n, t) =
-    [ [cstm| $id:(initialize_ t)(&acts->$id:(identName n));|]
---    , [cstm| DEBUG_SV_SET_VAR_NAME(acts->$id:(identName n).sv.debug, $string:(identName n)); |]
-    ]
+    [ [cstm| $id:(initialize_ t)(&acts->$id:(identName n));|] ]
 
   initTrig i = [cstm| $id:acts->$id:trig.act = $id:actg;|]
     where trig = "trig" ++ show i
@@ -253,8 +251,8 @@ genStep = do
   let
     actname       = identName $ name p
     act           = [cty|typename $id:actt|]
-    actt          = act_ $ actname -- hack to use this typename as expr in macros
-    step          = step_ $ actname
+    actt          = act_ actname -- hack to use this typename as expr in macros
+    step          = step_ actname
 
     actStepBeginS = show $ T.ActStepBegin $ actname
     actLocalVarS nt = show $ T.ActVar $ varFmt nt
@@ -273,7 +271,7 @@ genStep = do
                | otherwise = [cstm|$id:debug_trace($exp:fmt, $exp:val);|]
      where
       fmt = [cexp|$string:(actLocalVarS (refName r, refType r))|]
-      val = case (refType r) of
+      val = case refType r of
         Ref _ -> [cexp|$id:acts->$id:(refName r)->value|]
         _     -> [cexp|$id:acts->$id:(refName r).value|]
 
