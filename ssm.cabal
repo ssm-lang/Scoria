@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e4ae0356ebdbf942d586b9745ba489b7225ef3651337dc7a437dd0fccd633830
+-- hash: 07bedb46249668fa18b7aeee0ab7b56237e26ccdb268801770846b11da7130f1
 
 name:           ssm
 version:        0.1.0.0
@@ -31,6 +31,7 @@ library
       SSM.Backend.C.Compile
       SSM.Backend.C.Exp
       SSM.Backend.C.Identifiers
+      SSM.Backend.C.MainLoop
       SSM.Backend.C.Types
       SSM.Compile
       SSM.Core.Syntax
@@ -73,7 +74,6 @@ test-suite 1-regression-high
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Compile
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
@@ -122,7 +122,6 @@ test-suite 2-regression-low
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Compile
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
@@ -181,7 +180,6 @@ test-suite 3-arbitrary
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Compile
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink

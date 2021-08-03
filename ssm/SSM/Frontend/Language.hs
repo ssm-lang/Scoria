@@ -99,8 +99,8 @@ instance AnnotatedM SSM (Ref a) where
 renameStmt :: SSMStm -> SrcInfo -> SSMStm
 renameStmt s (Info Nothing _)               = s
 renameStmt s (Info _ Nothing)               = s
-renameStmt s (Info (Just n) (Just (f,x,y))) =
-    let srcinfo = Captured (f,x,y) n
+renameStmt s (Info (Just n) info) =
+    let srcinfo = Ident n info
     in case s of
         NewRef n e  -> NewRef srcinfo e
         GetRef n r  -> GetRef srcinfo r
@@ -109,14 +109,14 @@ renameStmt s (Info (Just n) (Just (f,x,y))) =
 renameExp :: Exp a -> SrcInfo -> Exp a
 renameExp e (Info Nothing _) = e
 renameExp e (Info _ Nothing) = e
-renameExp e (Info (Just n) _) = case e of
-    Exp (Var t _) -> Exp $ Var t n
+renameExp e (Info (Just n) info) = case e of
+    Exp (Var t _) -> Exp $ Var t (Ident n info)
     _             -> e
 
 renameRef :: Ref a -> SrcInfo -> Ref a
 renameRef e (Info Nothing _) = e
 renameRef e (Info _ Nothing) = e
-renameRef (Ptr (_,t)) (Info (Just n) _) = Ptr $ (n, t)
+renameRef (Ptr (_,t)) (Info (Just n) info) = Ptr $ (Ident n info, t)
 
 newtype Ref a = Ptr Reference -- references that are shared, (variable name, ref to value)
   deriving Show
@@ -153,19 +153,19 @@ instance (Num a, FromLiteral a, SSMType a) => Num (Exp a) where
 instance Arg (Exp a) where
     arg _ [] _              = error "No more parameter names"
     arg name (x:xs) (Exp b) = do
-        emit $ Argument name x (Left b)
-        return $ (Exp (Var (expType b) x), xs)
+        emit $ Argument (Ident name Nothing) (Ident x Nothing) (Left b)
+        return $ (Exp (Var (expType b) (Ident x Nothing)), xs)
 
 instance Arg (Ref a) where
     arg _ [] _                  = error "No more parameter names"
     arg name (x:xs) (Ptr (e,t)) = do
-        emit $ Argument name x (Right (e,t))
-        return (Ptr (x, t), xs)
+        emit $ Argument (Ident name Nothing) (Ident x Nothing) (Right (e,t))
+        return (Ptr ((Ident x Nothing), t), xs)
 
 -- | When interpreting or compiling a SSM program that requires input references,
 -- supply this value instead.
 inputref :: forall a. SSMType a => Ref a
-inputref = Ptr ("dummy", Ref (typeOf (Proxy @a)))
+inputref = Ptr (Ident "dummy" Nothing, Ref (typeOf (Proxy @a)))
 
 class Assignable a b where
     -- | Immediate assignment
@@ -223,16 +223,18 @@ event' = Exp $ Lit TEvent LEvent
 deref :: Ref a -> SSM (Exp a)
 deref (Ptr r) = do
     n <- fresh
-    emit $ GetRef (Fresh n) r
-    return $ Exp $ Var (dereference (snd r)) n
+    let id = Ident n Nothing
+    emit $ GetRef id r
+    return $ Exp $ Var (dereference (snd r)) id
 
 {- | Create a new, local reference. This reference is deallocated when the procedure
 it was created in terminates. -}
 var :: Exp a -> SSM (Ref a)
 var (Exp e) = do
     n <- fresh
-    emit $ NewRef (Fresh n) e
-    return $ Ptr $ (n, mkReference (expType e))
+    let id = Ident n Nothing
+    emit $ NewRef id e
+    return $ Ptr $ (id, mkReference (expType e))
 
 -- | Block until any of the references in the input list are be written to.
 wait :: [Ref a] -> SSM ()

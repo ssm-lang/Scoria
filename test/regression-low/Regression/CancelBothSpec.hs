@@ -10,23 +10,23 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = "fun0"
+  { entry = Ident "fun0" Nothing
   , args  = []
   , funs  = fromList
-    [ ( "fun0"
+    [ ( Ident "fun0" Nothing
       , Procedure
-        { name      = "fun0"
+        { name      = Ident "fun0" Nothing
         , arguments = []
         , body      =
-          [ NewRef (Fresh "v0") (Ref TBool) (Lit TBool (LBool False))
+          [ NewRef (Ident "v0" Nothing) (Ref TBool) (Lit TBool (LBool False))
           , After (Lit TUInt64 (LUInt64 1))
-                  ("v0", Ref TBool)
+                  (Ident "v0" Nothing, Ref TBool)
                   (Lit TBool (LBool True))
-          , NewRef (Fresh "v1")
+          , NewRef (Ident "v1" Nothing)
                    (Ref TBool)
-                   (UOpR TBool ("v0", Ref TBool) Changed)
+                   (UOpR TBool (Ident "v0" Nothing, Ref TBool) Changed)
           , After (Lit TUInt64 (LUInt64 3872))
-                  ("v1", Ref TBool)
+                  (Ident "v1" Nothing, Ref TBool)
                   (Lit TBool (LBool False))
           ]
         }

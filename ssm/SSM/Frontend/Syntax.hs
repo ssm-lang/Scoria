@@ -33,9 +33,8 @@ module SSM.Frontend.Syntax
     , S.BinOp(..)
     , S.expType
 
-      -- * Names
-    , S.Name(..)
-    , S.getVarName
+      -- * Identifiers
+    , S.Ident(..)
 
       -- * Statements
     , SSMStm(..)
@@ -65,8 +64,8 @@ of the sparse synchronous model-domain. It is very similar to the abstract synat
 in "SSM.Core.Syntax", but with some changes (@Fork@, @If@, @While@, most notably). -}
 data SSMStm
     -- | Variable/Stream operations
-    = NewRef S.Name S.SSMExp       -- ^ Create a new named reference with an initial value
-    | GetRef S.Name S.Reference    -- ^ Dereference a reference, place the result in a var
+    = NewRef S.Ident S.SSMExp       -- ^ Create a new named reference with an initial value
+    | GetRef S.Ident S.Reference    -- ^ Dereference a reference, place the result in a var
     | SetRef S.Reference S.SSMExp  -- ^ Set a reference
     {-| Set a local variable. Expression variables can currently only be created when
     they are given to a procedure as an argument, or by dereferencing a reference. -}
@@ -82,10 +81,10 @@ data SSMStm
     | Fork [SSM ()]                        -- ^ Fork a list of procedures
 
     -- | Procedure construction
-    | Procedure String  -- ^ Marks the start of a procedure
+    | Procedure S.Ident  -- ^ Marks the start of a procedure
     {-| Records the name an argument has and what value the procedure was applied to -}
-    | Argument String String (Either S.SSMExp S.Reference)
-    | Result String  -- ^ Mark the end of a procedure
+    | Argument S.Ident S.Ident (Either S.SSMExp S.Reference)
+    | Result S.Ident  -- ^ Mark the end of a procedure
 
 {- | The state maintained by the SSM monad. A counter for generating fresh names and
 a list of statements that make up the program. -}
@@ -121,7 +120,7 @@ fresh = do
 
 {- | Get the name of a procedure, where the procedure is represented by a list of
 statements that make up its body. -}
-getProcedureName :: [SSMStm] -> String
+getProcedureName :: [SSMStm] -> S.Ident
 getProcedureName (Procedure n:_) = n
 getProcedureName _               = error "not a procedure"
 
@@ -141,14 +140,14 @@ type Transpile a = State TranspileState a
 -- | Transpilation state
 data TranspileState = TranspileState
     { -- | Map that associate procedure names with their Procedure definition.
-      procedures  :: Map.Map String S.Procedure
+      procedures  :: Map.Map S.Ident S.Procedure
       -- | List of procedure names that have already been seen.
-    , generated   :: [String]
+    , generated   :: [S.Ident]
       {- | Name of the procedure that was the program entrypoint?
       This is the first that that will be populated in the state during execution. -}
-    , mainname    :: Maybe String
+    , mainname    :: Maybe S.Ident
       -- | Parameter names and types of the program entrypoint.
-    , mainargs    :: [(String, S.Type)]
+    , mainargs    :: [(S.Ident, S.Type)]
       -- | What values were the program entrypoint applied to?
     , mainargvals :: [Either S.SSMExp S.Reference]
     }
@@ -175,7 +174,7 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
     NewRef n e     -> return $ [S.NewRef n (S.expType e) e]
     GetRef n r     -> return $ [S.GetRef n (S.dereference (S.refType r)) r]
     SetRef r e     -> return $ [S.SetRef r e]
-    SetLocal (S.Var t n) e2 -> return $ [S.SetLocal (S.Fresh n) t e2]
+    SetLocal (S.Var t n) e2 -> return $ [S.SetLocal n t e2]
     SetLocal _ _ -> error "Trying to set a local variable that is not a variable"
 
     If c thn els -> do
@@ -211,7 +210,7 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       {- | Converts a `SSM ()` computation to a description of the call, and if necessary,
       this function will also update the environment to contain a mapping from the argument
       procedure to it's body. -}
-      getCall :: SSM () -> Transpile (String, [Either S.SSMExp S.Reference])
+      getCall :: SSM () -> Transpile (S.Ident, [Either S.SSMExp S.Reference])
       getCall ssm = do
           let stmts           = runSSM ssm
           let name            = getProcedureName stmts
@@ -241,10 +240,10 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
 
       {-| Return a tuple where the first component contains information about name
       and type about the arguments, and the second compoment is a list of the actual arguments. -}
-      getArgs :: [SSMStm] -> [((String, S.Type), Either S.SSMExp S.Reference)]
+      getArgs :: [SSMStm] -> [((S.Ident, S.Type), Either S.SSMExp S.Reference)]
       getArgs []                    = []
-      getArgs (Procedure _: xs)   = getArgs xs
-      getArgs (Argument _ x a:xs) = ((x, either S.expType S.refType a), a) : getArgs xs
+      getArgs (Procedure _: xs)     = getArgs xs
+      getArgs (Argument _ x a:xs)   = ((x, either S.expType S.refType a), a) : getArgs xs
       getArgs _                     = []
 
 {- | Instance of `SSM.Core.Syntax.SSMProgram`, so that the compiler knows how to turn

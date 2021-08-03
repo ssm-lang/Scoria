@@ -40,9 +40,9 @@ instance Arbitrary Type where
                        , Ref TEvent
                        ]
 
-type Procedures = [(String, [(String, Type)], [Stm])]
-type Variable   = (Name, Type)
-type Ref        = (String, Type)
+type Procedures = [(Ident, [(Ident, Type)], [Stm])]
+type Variable   = (Ident, Type)
+type Ref        = (Ident, Type)
 
 genListOfLength :: Gen a -> Int -> Gen [a]
 genListOfLength ga 0 = return []
@@ -57,22 +57,22 @@ instance Arbitrary Program where
     funTypes <- genListOfLength typesiggen =<< choose (0,5)
 
     -- Designate entrypoint procedure, with no arguments.
-    let entry@(entryPoint, entryArgs) = ("fun0", [])
+    let entry@(entryPoint, entryArgs) = (Ident "fun0" Nothing, [])
 
     -- List of all functions.
-    let funs = entry:[("fun" ++ show i, as) | (as,i) <- zip funTypes [1..]]
+    let funs = entry:[(Ident ("fun" ++ show i) Nothing, as) | (as,i) <- zip funTypes [1..]]
 
     -- Generate type, args, and body for each procedure signature.
     tab <- mfix $ \tab -> sequence
         [ do let (refs, vars) = partition (isReference . fst) $ zip as [1..]
-             let inprefs      = [ ("ref" ++ show i        , t) | (t,i) <- refs]
-             let inpvars      = [ (Fresh $ "var" ++ show i, t) | (t,i) <- vars]
+             let inprefs      = [ (Ident ("ref" ++ show i) Nothing, t) | (t,i) <- refs]
+             let inpvars      = [ (Ident ("var" ++ show i) Nothing, t) | (t,i) <- vars]
 
              (body,_)        <- arbProc tab inpvars inprefs 0 =<< choose (0, 15)
 
              let params = [ (if isReference a
-                             then "ref"  ++ show i
-                             else "var"  ++ show i
+                             then Ident ("ref" ++ show i) Nothing
+                             else Ident ("var" ++ show i) Nothing
                             , a) 
                           | (a,i) <- zip as [1..]]
              return (f, params, body)
@@ -95,7 +95,7 @@ arbProc funs vars refs c n = frequency $
                (name,c1) <- fresh c
                let rt     = mkReference t
                let stm    = NewRef name rt e
-               let ref    = (getVarName name, rt)
+               let ref    = (name, rt)
                (rest, c2) <- arbProc funs vars (ref:refs) c1 (n-1)
                return (stm:rest, c2)
         )
@@ -159,15 +159,15 @@ arbProc funs vars refs c n = frequency $
       ])
   where
       -- | Generate a fresh name.
-      fresh :: Monad m => Int -> m (Name, Int)
-      fresh c = return $ (Fresh ("v" ++ show c), c+1)
+      fresh :: Monad m => Int -> m (Ident, Int)
+      fresh c = return $ (Ident ("v" ++ show c) Nothing, c+1)
 
       -- | Take a procedure that should be forked and return the application of
       -- that procedure to randomly generated arguments.
       applyFork :: [Variable]
                 -> [Ref]
-                -> (String, [(String, Type)], [Stm])
-                -> Gen (String, [Either SSMExp Reference])
+                -> (Ident, [(Ident, Type)], [Stm])
+                -> Gen (Ident, [Either SSMExp Reference])
       applyFork vars refs (n, types, _) = do
           args <- forM types $ \(_,t) ->
             if isReference t
@@ -179,7 +179,7 @@ arbProc funs vars refs c n = frequency $
       -- | Predicate that returns True if the given procedure can be forked.
       -- What determines this is what references we have in scope. If the procedure
       -- requires a reference parameter that we do not have, we can not fork it.
-      canBeCalled :: [Ref] -> (String, [(String, Type)], [Stm]) -> Bool
+      canBeCalled :: [Ref] -> (Ident, [(Ident, Type)], [Stm]) -> Bool
       canBeCalled inscope (_, types, _) =
           let distinct = nub $ filter isReference $ map snd inscope
           in all (`elem` distinct) $ filter isReference $ map snd types
@@ -206,7 +206,7 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
 
     -- | Generator that returns a randomly selected variable from the set of variables.
     varGen :: [Gen SSMExp]
-    varGen = [ return (Var t' (getVarName n)) | (n,t') <- vars, t == t']
+    varGen = [ return (Var t' n) | (n,t') <- vars, t == t']
 
     changedGen :: [Gen SSMExp]
     changedGen = if null refs

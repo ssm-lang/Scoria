@@ -91,12 +91,12 @@ data Proc s = Proc
     {- | This is a variable storage. The variables found in this map are the
     expressions or variables that are passed to the process as arguments from
     a parent. -}
-  , variables       :: Map.Map String (Var s)
+  , variables       :: Map.Map Ident (Var s)
     {- | Variables found in this map are those that are local to this process, aka
     those that are created by the `SSM.Core.Syntax.NewRef` constructor. We need to
     put them in a separate map so that we can quickly deschedule any outstanding events
     on them when a process is terminating. -}
-  , localrefs       :: Map.Map String (Var s)
+  , localrefs       :: Map.Map Ident (Var s)
     -- | Variables this process is waiting for, if any
   , waitingOn       :: Maybe [Var s]
     -- | The work left to do for this process
@@ -109,9 +109,9 @@ mkProc
   :: InterpretConfig          -- ^ Configuration
   -> Program                  -- ^ Program
   -> Procedure                -- ^ Entry point
-  -> Map.Map String (Var s)   -- ^ Parameters
+  -> Map.Map Ident (Var s)   -- ^ Parameters
   -> Proc s
-mkProc conf p fun vars = Proc { procName        = entry p
+mkProc conf p fun vars = Proc { procName        = identName $ entry p
                               , priority        = rootPriority conf
                               , depth           = rootDepth conf
                               , runningChildren = 0
@@ -155,10 +155,10 @@ data St s = St
   , numacts           :: Int
     {- | Map that associates procedure names with procedure definitions. Used when we
     fork a procedure and we need to create an activation record. -}
-  , procedures        :: Map.Map String Procedure
+  , procedures        :: Map.Map Ident Procedure
     {- | Argment-references given to the entrypoint. Will probably be removed, depending
     on how we end up managing input/output in SSM programs. -}
-  , inputargs         :: [(String, Var s)]
+  , inputargs         :: [(Ident, Var s)]
     -- | The process that is currently being evaluated
   , process           :: Proc s
     -- | The number of microticks counted so far.
@@ -195,7 +195,7 @@ initState conf p startTime entryPoint = St
 @(name, variable)@ pairs that make up the references in the variable storage
 that appear as input parameters to the program.
 -}
-getReferences :: Program -> Map.Map String (Var s) -> [(String, Var s)]
+getReferences :: Program -> Map.Map Ident (Var s) -> [(Ident, Var s)]
 getReferences p m = case Map.lookup (entry p) (funs p) of
   Just pr ->
     let refparams  = filter (isReference . snd) $ arguments pr
@@ -207,7 +207,7 @@ getReferences p m = case Map.lookup (entry p) (funs p) of
 
 {- | Alias for getting the variable storage from a process, so we don't expose the
 internals of the @Proc s@ datatype. -}
-variableStorage :: Proc s -> Map.Map String (Var s)
+variableStorage :: Proc s -> Map.Map Ident (Var s)
 variableStorage = variables
 
 -- | Interpretation monad

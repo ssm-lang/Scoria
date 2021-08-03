@@ -17,38 +17,38 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = "fun0"
+  { entry = Ident "fun0" Nothing
   , args  = []
   , funs  = fromList
-    [ ( "fun0"
-      , Procedure
-        { name      = "fun0"
-        , arguments = []
-        , body      =
-          [ NewRef (Fresh "ref1") (Ref TBool)  (Lit TBool (LBool True))
-          , NewRef (Fresh "ref3") (Ref TInt32) (Lit TInt32 (LInt32 0))
-          , Fork
-            [("fun1", [Right ("ref1", Ref TBool), Right ("ref3", Ref TInt32)])]
-          ]
-        }
-      )
-    , ( "fun1"
-      , Procedure
-        { name      = "fun1"
-        , arguments = [("ref1", Ref TBool), ("ref3", Ref TInt32)]
-        , body      = [ After (Lit TUInt64 (LUInt64 2))
-                              ("ref1", Ref TBool)
-                              (Lit TBool (LBool True))
-                      , After (Lit TUInt64 (LUInt64 1))
-                              ("ref3", Ref TInt32)
-                              (Lit TInt32 (LInt32 3))
-                      , SetRef ("ref3", Ref TInt32) (Lit TInt32 (LInt32 4))
-                      , Wait [("ref1", Ref TBool)]
-                      , Wait [("ref3", Ref TInt32)]
-                      ]
-        }
-      )
-    ]
+              [ ( Ident "fun0" Nothing
+                , Procedure
+                  { name      = Ident "fun0" Nothing
+                  , arguments = []
+                  , body      =
+                    [ NewRef (Ident "ref1" Nothing) (Ref TBool)  (Lit TBool (LBool True))
+                    , NewRef (Ident "ref3" Nothing) (Ref TInt32) (Lit TInt32 (LInt32 0))
+                    , Fork
+                      [(Ident "fun1" Nothing, [Right (Ident "ref1" Nothing, Ref TBool), Right (Ident "ref3" Nothing, Ref TInt32)])]
+                    ]
+                  }
+                )
+              , ( Ident "fun1" Nothing
+                , Procedure
+                  { name = Ident "fun1" Nothing
+                  , arguments = [(Ident "ref1" Nothing, Ref TBool), (Ident "ref3" Nothing, Ref TInt32)]
+                  , body = [ After (Lit TUInt64 (LUInt64 2))
+                                   (Ident "ref1" Nothing, Ref TBool)
+                                   (Lit TBool (LBool True))
+                           , After (Lit TUInt64 (LUInt64 1))
+                                   (Ident "ref3" Nothing, Ref TInt32)
+                                   (Lit TInt32 (LInt32 3))
+                           , SetRef (Ident "ref3" Nothing, Ref TInt32) (Lit TInt32 (LInt32 4))
+                           , Wait [(Ident "ref1" Nothing, Ref TBool)]
+                           , Wait [(Ident "ref3" Nothing, Ref TInt32)]
+                           ]
+                  }
+                )
+              ]
   }
 
 spec :: H.Spec

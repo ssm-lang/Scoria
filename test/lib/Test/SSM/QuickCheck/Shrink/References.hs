@@ -20,9 +20,9 @@ removeRefs :: Procedure -> [Reference] -> [Procedure]
 removeRefs p refs = 
   let ps = for refs $ \ref -> do
         -- references given to the procedure as an argument are in scope in the procedure
-        let initialrefs = map (\r -> (refName r, refType r)) $ filter (isReference . snd) $ arguments p
+        let initialrefs = map (\r -> (fst r, refType r)) $ filter (isReference . snd) $ arguments p
         -- rewrite the procedure body & update the procedure
-            body'           = removeVars [refName ref] initialrefs (body p) --removeRef' ref [] initialrefs (body p)
+            body'           = removeVars [fst ref] initialrefs (body p) --removeRef' ref [] initialrefs (body p)
         return $ p { body = body' }
       
       -- filter out the successful shrinkings and return them
@@ -30,12 +30,12 @@ removeRefs p refs =
   in map fromJust ps'
 
 -- | All declared references in a program (expect procedure arguments)
-allRefs :: Procedure -> [(String, Type)]
+allRefs :: Procedure -> [(Ident, Type)]
 allRefs p = refs $ body p
   where
-    refs :: [Stm] -> [(String, Type)]
+    refs :: [Stm] -> [(Ident, Type)]
     refs xs = concat $ for xs $ \x -> case x of
-      NewRef n t e -> [(getVarName n,t)]
+      NewRef n t e -> [(n,t)]
       If _ thn els -> refs thn ++ refs els
       While _ bdy  -> refs bdy
       _            -> []
