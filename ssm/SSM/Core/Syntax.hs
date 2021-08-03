@@ -12,7 +12,6 @@ module SSM.Core.Syntax
       source file and added to the identifier. -}
       Ident(..)
     , SrcInformation(..)
-    , identName
 
       -- ** Types
       {- | These are the types that are valid in the SSM language, and some simple
@@ -76,10 +75,7 @@ import Control.Monad.State.Lazy
 -- Identifiers
 
 -- | Data type of Identifiers
-data Ident =
-  Ident
-    String                  -- ^ Name of the identifiers
-    (Maybe SrcInformation)  -- ^ Possible source information
+data Ident = Ident { identName :: String, identSrcInfo :: Maybe SrcInformation}
   deriving (Show, Read)
 
 instance Eq Ident where
@@ -90,10 +86,6 @@ instance Ord Ident where
 
 -- | Source information (File, Line, Column)
 type SrcInformation = (String, Int, Int)
-
--- | Fetch the actual name of an identifier and return the string representation
-identName :: Ident -> String
-identName (Ident n _) = n
 
 -- Types
 

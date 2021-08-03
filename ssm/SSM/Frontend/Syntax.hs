@@ -35,7 +35,6 @@ module SSM.Frontend.Syntax
 
       -- * Identifiers
     , S.Ident(..)
-    , S.identName
 
       -- * Statements
     , SSMStm(..)
