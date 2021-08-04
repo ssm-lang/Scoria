@@ -71,7 +71,7 @@ import           Language.C.Quote.GCC           ( cexp
                                                 )
 import qualified Language.C.Syntax             as C
 import           SSM.Backend.C.Types
-import Debug.Trace
+
 -- | Use snake_case for c literals
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
