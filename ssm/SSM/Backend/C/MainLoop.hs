@@ -22,8 +22,6 @@ genMain program tickLimit =
   , [cedecl| void $id:top_return($ty:act_t *act) { return; } |]
   , [cedecl|
       int main(void) {
-        initialize_global_variables();
-        
         $ty:act_t top = { .step = $id:top_return };
 
         /* Initialize variables to be passed to the main SSM procedure */

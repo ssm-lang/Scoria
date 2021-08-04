@@ -42,11 +42,14 @@ compile_ program = (compUnit, includes)
  where
   -- | The file to generate, minus include statements
   compUnit :: [C.Definition]
-  compUnit = globals ++ preamble ++ decls ++ defns ++ entryPointSymbol
+  compUnit = globals ++ preamble ++ decls ++ defns ++ initProg ++ entryPointSymbol
 
-  -- | Global references
+  -- | Global reference declarations
   globals :: [C.Definition]
   globals = genGlobals (global_references program)
+
+  initProg :: [C.Definition]
+  initProg = genInitProgram program
 
   -- | Preamble, macros etc
   preamble :: [C.Definition]
@@ -65,7 +68,7 @@ compile_ program = (compUnit, includes)
   entryPointSymbol :: [C.Definition]
   entryPointSymbol = [cunit|
     $ty:act_t *(*$id:entry_point)($ty:act_t *, $ty:priority_t, $ty:depth_t) =
-      $id:(enter_ $ identName $ entry program);
+      $id:initializeProgram;
   |]
 
 {- | State maintained while compiling a 'Procedure'.
@@ -116,22 +119,42 @@ acts = "acts"
 -- | Identifier for act member in act struct.
 actm :: CIdent
 actm = "act"
+
 {- | Generate the declarations of global variables and the function that initializes
 them. These variables can be accessed without an activation record. -}
 genGlobals :: [(Ident, Type)] -> [C.Definition]
-genGlobals globals = globalvars ++ [initglobals]
+genGlobals globals = globalvars
   where
     -- | The global variable declarations
     globalvars :: [C.Definition]
     globalvars = map (\(n,t) -> [cedecl| $ty:(svt_ t) $id:(identName n); |]) globals
 
-    -- | The function which initializes them
-    initglobals :: C.Definition
-    initglobals = [cedecl| void initialize_global_variables() { $items:stmts } |]
+-- | Generate the entry point of a program - the first thing to be ran.
+genInitProgram :: Program -> [C.Definition]
+genInitProgram p = [cunit|
+
+  $ty:act_t *$id:initializeProgram( $params:genParams ){
+    $items:initGlobals
+    $stm:callEntry
+  }
+
+  |]
+
+  where
+    -- | Parameters to the programs entry point
+    genParams :: [C.Param]
+    genParams = [cparams|$ty:act_t *caller, $ty:priority_t priority, $ty:depth_t depth|]
+
+    -- | Initialize the global references, if any exist
+    initGlobals :: [C.BlockItem]
+    initGlobals =
+      map (\(n,t) -> [citem| $id:(initialize_ t)(&$id:(identName n)); |]) (global_references p)
+
+    -- | Call the entry function of the first procedure to run
+    callEntry :: C.Stm
+    callEntry = [cstm| return $id:(enter_ entryName)(caller, priority, depth); |]
       where
-        -- | The statements that initializes the variables
-        stmts :: [C.BlockItem]
-        stmts = map (\(n,t) -> [citem| $id:(initialize_ t)(&$id:(identName n)); |]) globals
+        entryName = identName (entry p)
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]
