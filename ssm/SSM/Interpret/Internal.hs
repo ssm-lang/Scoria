@@ -657,6 +657,7 @@ eval e = do
     Lit _ l     -> return e
     UOpR _ r op -> case op of
       Changed -> wasWritten r
+      Deref   -> readRef r
     UOpE _ e Neg -> do
       e' <- eval e
       return $ neg e'

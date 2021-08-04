@@ -455,7 +455,6 @@ p = Program
                   ]
                 )
               ]
-            , GetRef ((Ident "v2" Nothing)) TUInt64 (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
             , Fork
               [ ( Ident "fun5" Nothing
                 , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
@@ -574,15 +573,11 @@ p = Program
               , (Ident "fun2" Nothing, [])
               ]
             ]
-          , GetRef ((Ident "v4" Nothing)) TInt32 (Dynamic (Ident "ref1" Nothing, Ref TInt32))
           , Wait [Dynamic (Ident "ref2" Nothing, Ref TUInt64)]
           , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32)]
-          , GetRef ((Ident "v5" Nothing)) TUInt64 (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
-          , GetRef ((Ident "v6" Nothing)) TUInt64 (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
           , After (Lit TUInt64 (LUInt64 3525))
                   (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   (Lit TUInt64 (LUInt64 167))
-          , GetRef ((Ident "v11" Nothing)) TUInt64 (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
           , Wait [(Dynamic (Ident "ref1" Nothing, Ref TInt32))]
           , Wait [(Dynamic (Ident "ref4" Nothing, Ref TUInt64))]
           , After
@@ -592,7 +587,7 @@ p = Program
               TUInt64
               (BOp TUInt64
                    (Lit TUInt64 (LUInt64 7582))
-                   (Var TUInt64 (Ident "v11" Nothing))
+                   (UOpR TUInt64 (Dynamic (Ident "ref2" Nothing, Ref TUInt64)) Deref)
                    OMinus
               )
               (BOp TUInt64

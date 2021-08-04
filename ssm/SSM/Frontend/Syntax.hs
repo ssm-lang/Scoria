@@ -75,7 +75,6 @@ in "SSM.Core.Syntax", but with some changes (@Fork@, @If@, @While@, most notably
 data SSMStm
     -- | Variable/Stream operations
     = NewRef S.Ident S.SSMExp       -- ^ Create a new named reference with an initial value
-    | GetRef S.Ident S.Reference    -- ^ Dereference a reference, place the result in a var
     | SetRef S.Reference S.SSMExp  -- ^ Set a reference
     {-| Set a local variable. Expression variables can currently only be created when
     they are given to a procedure as an argument, or by dereferencing a reference. -}
@@ -185,7 +184,6 @@ transpile program = case mainname st of
 transpileProcedure :: [SSMStm] -> Transpile [S.Stm]
 transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
     NewRef n e     -> return $ [S.NewRef n (S.expType e) e]
-    GetRef n r     -> return $ [S.GetRef n (S.dereference (S.refType r)) r]
     SetRef r e     -> return $ [S.SetRef r e]
     SetLocal (S.Var t n) e2 -> return $ [S.SetLocal n t e2]
     SetLocal _ _ -> error "Trying to set a local variable that is not a variable"
