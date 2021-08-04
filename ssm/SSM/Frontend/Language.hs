@@ -65,6 +65,9 @@ module SSM.Frontend.Language
       -- | These are statements that are derived from the language primitives.
     , waitAll
 
+      -- ** Global references
+      -- | Global references exist in the global scope and are always alive.
+    , global
     ) where
 
 import Data.Int
@@ -77,6 +80,8 @@ import BinderAnn.Monadic
 
 import SSM.Frontend.Syntax
 import SSM.Frontend.Box
+
+-- Binderann name capturing
 
 instance AnnotatedM SSM (Exp a) where
     annotateM ma info = do
@@ -94,7 +99,7 @@ instance AnnotatedM SSM (Ref a) where
         let stmt = last stmts
         let stmt' = renameStmt stmt info
         modify $ \st -> st { statements = init stmts ++ [stmt']}
-        return $ renameRef v info
+        return $ SSM.Frontend.Language.renameRef v info
 
 renameStmt :: SSMStm -> SrcInfo -> SSMStm
 renameStmt s (Info Nothing _)               = s
@@ -116,13 +121,13 @@ renameExp e (Info (Just n) info) = case e of
 renameRef :: Ref a -> SrcInfo -> Ref a
 renameRef e (Info Nothing _) = e
 renameRef e (Info _ Nothing) = e
-renameRef (Ptr (_,t)) (Info (Just n) info) = Ptr $ (Ident n info, t)
+renameRef (Ptr r) (Info (Just n) l) = Ptr $ SSM.Frontend.Syntax.renameRef r (Ident n l)
 
-newtype Ref a = Ptr Reference -- references that are shared, (variable name, ref to value)
+newtype Ref a = Ptr Reference
   deriving Show
-newtype Exp a = Exp SSMExp                 -- expressions
+newtype Exp a = Exp SSMExp
   deriving Show
-newtype Lit a = FLit SSMLit
+newtype Lit a = FLit SSMLit    -- ^ literals
   deriving Show
 
 class FromLiteral a where
@@ -157,24 +162,28 @@ instance Arg (Exp a) where
         return $ (Exp (Var (expType b) (Ident x Nothing)), xs)
 
 instance Arg (Ref a) where
-    arg _ [] _                  = error "No more parameter names"
-    arg name (x:xs) (Ptr (e,t)) = do
-        emit $ Argument (Ident name Nothing) (Ident x Nothing) (Right (e,t))
-        return (Ptr ((Ident x Nothing), t), xs)
+    arg _ [] _              = error "No more parameter names"
+    arg name (x:xs) (Ptr r) = do
+        emit $ Argument (Ident name Nothing) (Ident x Nothing) $ Right r
+        return (Ptr $ SSM.Frontend.Syntax.renameRef r (Ident x Nothing), xs)
 
 -- | When interpreting or compiling a SSM program that requires input references,
 -- supply this value instead.
 inputref :: forall a. SSMType a => Ref a
-inputref = Ptr (Ident "dummy" Nothing, Ref (typeOf (Proxy @a)))
+inputref = Ptr $ makeDynamicRef (Ident "dummy" Nothing) (Ref (typeOf (Proxy @a)))
 
+{- | Class of types @a@ and @b@ where we can perform an immediate assignment of an @b@
+to an @a@. -}
 class Assignable a b where
     -- | Immediate assignment
     (<~) :: a -> b -> SSM ()
 
+-- | We can assign expressions to expressions, if that expression is a variable.
 instance Assignable (Exp a) (Exp a) where
     (Exp (Var t s)) <~ (Exp e) = emit $ SetLocal (Var t s) e
     e <~ _                     = error $ "can not assign a value to expression: " ++ show e
 
+-- | We can always assign an expression to a reference.
 instance Assignable (Ref a) (Exp a) where
     (Ptr r) <~ (Exp e) = emit $ SetRef r e
 
@@ -225,7 +234,7 @@ deref (Ptr r) = do
     n <- fresh
     let id = Ident n Nothing
     emit $ GetRef id r
-    return $ Exp $ Var (dereference (snd r)) id
+    return $ Exp $ Var (dereference (refType r)) id
 
 {- | Create a new, local reference. This reference is deallocated when the procedure
 it was created in terminates. -}
@@ -234,7 +243,7 @@ var (Exp e) = do
     n <- fresh
     let id = Ident n Nothing
     emit $ NewRef id e
-    return $ Ptr $ (id, mkReference (expType e))
+    return $ Ptr $ makeDynamicRef id (mkReference $ expType e)
 
 -- | Block until any of the references in the input list are be written to.
 wait :: [Ref a] -> SSM ()
@@ -278,3 +287,41 @@ waitSingle = box "waitSingle" ["r"] $ \r -> wait [r]
 each. -}
 waitAll :: [Ref a] -> SSM ()
 waitAll refs = fork $ map waitSingle refs
+
+
+
+
+
+
+-- | Create a global reference
+global :: forall a . SSMType a => Compile (Ref a)
+global = do
+    n <- fresh
+    let id = Ident n Nothing
+    let t = mkReference $ typeOf $ Proxy @a
+    addGlobal id t
+    return $ Ptr $ makeStaticRef id t
+
+{- | If BinderAdd is enabled, we can grab the names declared in the source code instead
+of generating fresh named. -}
+instance AnnotatedM Compile (Ref a) where
+    annotateM ma info = do
+        -- get state before running the action
+        st1 <- get
+        ref <- ma
+        -- get state after running the action
+        st2 <- get
+
+        if st1 `hasSameGlobalsAs` st2
+            {- If ma didn't actually declare a new reference, just return the one the
+            action ma already returned. -}
+            then return ref
+            -- Otherwise, rename if with the source information, if any exist
+            else do SSM.Frontend.Language.renameNewestGlobal info
+                    return $ SSM.Frontend.Language.renameRef ref info
+
+{- | Rename the newest global reference according to the source information found
+in the first argument. -}
+renameNewestGlobal :: SrcInfo -> Compile ()
+renameNewestGlobal (Info (Just n) l) = SSM.Frontend.Syntax.renameNewestGlobal (Ident n l)
+renameNewestGlobal _                 = return ()

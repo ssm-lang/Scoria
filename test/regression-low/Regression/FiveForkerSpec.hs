@@ -20,14 +20,14 @@ p = Program
         { name      = Ident "fun0" Nothing
         , arguments = []
         , body      =
-          [ NewRef (Ident "ref1" Nothing) (Ref TInt32) (Lit TInt32 (LInt32 0))
-          , NewRef (Ident "ref2" Nothing) (Ref TUInt64) (Lit TUInt64 (LUInt64 0))
-          , NewRef (Ident "ref4" Nothing) (Ref TUInt64) (Lit TUInt64 (LUInt64 0))
+          [ NewRef (Ident "ref1" Nothing) TInt32 (Lit TInt32 (LInt32 0))
+          , NewRef (Ident "ref2" Nothing) TUInt64 (Lit TUInt64 (LUInt64 0))
+          , NewRef (Ident "ref4" Nothing) TUInt64 (Lit TUInt64 (LUInt64 0))
           , Fork
             [ ( Ident "fun5" Nothing
-              , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                , Right (Ident "ref2" Nothing, Ref TUInt64)
-                , Right (Ident "ref4" Nothing, Ref TUInt64)
+              , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+                , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                 , Left
                   (BOp TInt32
                        (Lit TInt32 (LInt32 144))
@@ -68,9 +68,9 @@ p = Program
             (Var TBool (Ident "var6" Nothing))
             [ Fork
               [ ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                   , Left
                     (UOpE
                       TInt32
@@ -107,9 +107,9 @@ p = Program
                   ]
                 )
               , ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
+                , [ Right (Dynamic ((Ident "ref1" Nothing), Ref TInt32))
+                  , Right (Dynamic ((Ident "ref4" Nothing), Ref TUInt64))
+                  , Right (Dynamic ((Ident "ref4" Nothing), Ref TUInt64))
                   , Left
                     (BOp TInt32 (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OMinus)
                   , Left
@@ -123,9 +123,9 @@ p = Program
                 )
               , (Ident "fun2" Nothing, [])
               , ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   , Left (Var TInt32 (Ident "var7" Nothing))
                   , Left
                     (BOp
@@ -149,9 +149,9 @@ p = Program
             , Fork
               [ (Ident "fun2" Nothing, [])
               , ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   , Left (Var TInt32 (Ident "var5" Nothing))
                   , Left (Lit TBool (LBool True))
                   , Left
@@ -169,9 +169,9 @@ p = Program
                   ]
                 )
               , ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                   , Left
                     (BOp TInt32 (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OMinus)
                   , Left
@@ -194,9 +194,9 @@ p = Program
                   ]
                 )
               , ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   , Left
                     (BOp TInt32
                          (Var TInt32 (Ident "var5" Nothing))
@@ -236,7 +236,7 @@ p = Program
               (BOp TBool (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OLT)
               [ After
                 (Lit TUInt64 (LUInt64 1112))
-                (Ident "ref1" Nothing, Ref TInt32)
+                (Dynamic (Ident "ref1" Nothing, Ref TInt32))
                 (BOp
                   TInt32
                   (BOp TInt32
@@ -249,9 +249,9 @@ p = Program
                 )
               , Fork
                 [ ( Ident "fun5" Nothing
-                  , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                    , Right (Ident "ref4" Nothing, Ref TUInt64)
-                    , Right (Ident "ref4" Nothing, Ref TUInt64)
+                  , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                    , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
+                    , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                     , Left
                       (BOp TInt32
                            (Lit TInt32 (LInt32 41))
@@ -291,9 +291,9 @@ p = Program
                     ]
                   )
                 , ( Ident "fun5" Nothing
-                  , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                    , Right (Ident "ref4" Nothing, Ref TUInt64)
-                    , Right (Ident "ref2" Nothing, Ref TUInt64)
+                  , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                    , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
+                    , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                     , Left
                       (UOpE
                         TInt32
@@ -316,9 +316,9 @@ p = Program
               [ Fork
                   [ (Ident "fun2" Nothing, [])
                   , ( Ident "fun5" Nothing
-                    , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                      , Right (Ident "ref2" Nothing, Ref TUInt64)
-                      , Right (Ident "ref2" Nothing, Ref TUInt64)
+                    , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                      , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+                      , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                       , Left (Var TInt32 (Ident "var7" Nothing))
                       , Left
                         (BOp TBool (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OLT)
@@ -331,9 +331,9 @@ p = Program
                       ]
                     )
                   , ( Ident "fun5" Nothing
-                    , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                      , Right (Ident "ref4" Nothing, Ref TUInt64)
-                      , Right (Ident "ref4" Nothing, Ref TUInt64)
+                    , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                      , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
+                      , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                       , Left
                         (BOp
                           TInt32
@@ -376,13 +376,13 @@ p = Program
                   , (Ident "fun2" Nothing, [])
                   ]
               ]
-            , Wait [(Ident "ref1" Nothing, Ref TInt32), (Ident "ref2" Nothing, Ref TUInt64)]
+            , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32), Dynamic (Ident "ref2" Nothing, Ref TUInt64)]
             ]
             [ Fork
               [ ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   , Left (Var TInt32 (Ident "var7" Nothing))
                   , Left (Lit TBool (LBool True))
                   , Left
@@ -401,9 +401,9 @@ p = Program
               , (Ident "fun2" Nothing, [])
               , (Ident "fun2" Nothing, [])
               , ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   , Left
                     (BOp
                       TInt32
@@ -432,9 +432,9 @@ p = Program
                   ]
                 )
               , ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                   , Left (Lit TInt32 (LInt32 62))
                   , Left
                     (BOp
@@ -455,12 +455,12 @@ p = Program
                   ]
                 )
               ]
-            , GetRef ((Ident "v2" Nothing)) TUInt64 (Ident "ref4" Nothing, Ref TUInt64)
+            , GetRef ((Ident "v2" Nothing)) TUInt64 (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
             , Fork
               [ ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                   , Left
                     (BOp
                       TInt32
@@ -500,9 +500,9 @@ p = Program
                   ]
                 )
               , ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   , Left
                     (BOp
                       TInt32
@@ -540,9 +540,9 @@ p = Program
                   ]
                 )
               , ( Ident "fun5" Nothing
-                , [ Right (Ident "ref1" Nothing, Ref TInt32)
-                  , Right (Ident "ref2" Nothing, Ref TUInt64)
-                  , Right (Ident "ref4" Nothing, Ref TUInt64)
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                   , Left
                     (BOp
                       TInt32
@@ -574,20 +574,20 @@ p = Program
               , (Ident "fun2" Nothing, [])
               ]
             ]
-          , GetRef ((Ident "v4" Nothing)) TInt32 (Ident "ref1" Nothing, Ref TInt32)
-          , Wait [(Ident "ref2" Nothing, Ref TUInt64)]
-          , Wait [(Ident "ref1" Nothing, Ref TInt32)]
-          , GetRef ((Ident "v5" Nothing)) TUInt64 (Ident "ref4" Nothing, Ref TUInt64)
-          , GetRef ((Ident "v6" Nothing)) TUInt64 (Ident "ref2" Nothing, Ref TUInt64)
+          , GetRef ((Ident "v4" Nothing)) TInt32 (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+          , Wait [Dynamic (Ident "ref2" Nothing, Ref TUInt64)]
+          , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32)]
+          , GetRef ((Ident "v5" Nothing)) TUInt64 (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
+          , GetRef ((Ident "v6" Nothing)) TUInt64 (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
           , After (Lit TUInt64 (LUInt64 3525))
-                  (Ident "ref2" Nothing, Ref TUInt64)
+                  (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   (Lit TUInt64 (LUInt64 167))
-          , GetRef ((Ident "v11" Nothing)) TUInt64 (Ident "ref2" Nothing, Ref TUInt64)
-          , Wait [(Ident "ref1" Nothing, Ref TInt32)]
-          , Wait [(Ident "ref4" Nothing, Ref TUInt64)]
+          , GetRef ((Ident "v11" Nothing)) TUInt64 (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+          , Wait [(Dynamic (Ident "ref1" Nothing, Ref TInt32))]
+          , Wait [(Dynamic (Ident "ref4" Nothing, Ref TUInt64))]
           , After
             (Lit TUInt64 (LUInt64 4696))
-            (Ident "ref2" Nothing, Ref TUInt64)
+            (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
             (BOp
               TUInt64
               (BOp TUInt64
@@ -608,7 +608,7 @@ p = Program
         }
       )
     ]
-  }
+  , global_references = []}
 
 spec :: H.Spec
 spec = T.semanticIncorrectSpec "FiveForker" p

@@ -20,7 +20,7 @@ p = Program
                 )
               , (Ident "fun1" Nothing, Procedure { name = Ident "fun1" Nothing, arguments = [], body = [] })
               ]
-  }
+  , global_references = []}
 
 spec :: H.Spec
 spec = T.correctSpec "RecurseExhaustDepth" p

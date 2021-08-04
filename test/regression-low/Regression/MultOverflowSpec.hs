@@ -20,7 +20,7 @@ p = Program
         { name      = Ident "fun1" Nothing
         , arguments = []
         , body      =
-          [ NewRef ((Ident "v0" Nothing)) (Ref TInt32) (Lit TInt32 (LInt32 999999))
+          [ NewRef ((Ident "v0" Nothing)) TInt32 (Lit TInt32 (LInt32 999999))
           , If
             (BOp TBool
                  (Lit TInt32 (LInt32 0))
@@ -28,19 +28,19 @@ p = Program
                  OLT
             )
             [ After (Lit TUInt64 (LUInt64 2))
-                    ((Ident "v0" Nothing), Ref TInt32)
+                    (Dynamic ((Ident "v0" Nothing), Ref TInt32))
                     (Lit TInt32 (LInt32 0))
             ]
             [ After (Lit TUInt64 (LUInt64 2))
-                    ((Ident "v0" Nothing), Ref TInt32)
+                    (Dynamic ((Ident "v0" Nothing), Ref TInt32))
                     (Lit TInt32 (LInt32 1))
             ]
-          , Wait [((Ident "v0" Nothing), Ref TInt32)]
+          , Wait [Dynamic ((Ident "v0" Nothing), Ref TInt32)]
           ]
         }
       )
     ]
-  }
+  , global_references = []}
 
 spec :: H.Spec
 spec = T.semanticIncorrectSpec "MultOverflow" p

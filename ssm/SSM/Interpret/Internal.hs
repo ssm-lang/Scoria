@@ -15,6 +15,7 @@ module SSM.Interpret.Internal
   , variableStorage
   , initState
   , params
+  , globals
 
   -- * Model time helpers
   , getNow
@@ -41,6 +42,7 @@ module SSM.Interpret.Internal
   -- * Reference helpers
   , newRef
   , writeRef
+  , writeLocal
   , readRef
 
   -- * Wait, fork, and leave + helpers
@@ -101,6 +103,15 @@ import           SSM.Interpret.Types
 
 {-********** Main interpret function helpers **********-}
 
+-- | Create initial global variable storage
+globals :: Program -> ST s (Map.Map Ident (Var s))
+globals p = do
+  vars <- forM (global_references p) $ \(id,t) -> do
+    let initval = defaultValue (dereference t)
+    v <- newVar' initval maxBound
+    return (id, v)
+  return $ Map.fromList vars
+
 {- | Creates the initial variable storage for a program.
 
 Expressions are just allocated in an @STRef@, while references are given
@@ -118,15 +129,6 @@ params p = do
 
   return $ Map.fromList m
  where
-  -- | Default values for SSM types.
-  defaultValue :: Type -> SSMExp
-  defaultValue TInt32  = Lit TInt32 $ LInt32 0
-  defaultValue TInt64  = Lit TInt64 $ LInt64 0
-  defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
-  defaultValue TUInt8  = Lit TUInt8 $ LUInt8 0
-  defaultValue TBool   = Lit TBool $ LBool False
-  defaultValue (Ref _) = error "default value of reference not allowed"
-
   createParam :: ((a, Type), Either SSMExp b) -> ST s (a, Var s)
   createParam ((n, t), Left e) = do
     v <- newVar' e 0
@@ -134,6 +136,16 @@ params p = do
   createParam ((n, t), Right e) = do
     v <- newVar' (defaultValue $ dereference t) 0
     return (n, v)
+
+-- | Default values for SSM types.
+defaultValue :: Type -> SSMExp
+defaultValue TInt32  = Lit TInt32 $ LInt32 0
+defaultValue TInt64  = Lit TInt64 $ LInt64 0
+defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
+defaultValue TUInt8  = Lit TUInt8 $ LUInt8 0
+defaultValue TBool   = Lit TBool $ LBool False
+defaultValue TEvent  = Lit TEvent LEvent
+defaultValue (Ref _) = error "default value of reference not allowed"
 
 -- | Log the state of all variables in the current process to the event trace.
 traceVars :: Interp s ()
@@ -166,7 +178,7 @@ The reference @r@ will get the value @val@ in @thn@ units of time.
 scheduleEvent :: Reference -> Word64 -> SSMExp -> Interp s ()
 scheduleEvent r thn val = do
   st <- get
-  e  <- lookupRef (fst r)
+  e  <- lookupRef r
 
   when (SSM.Interpret.Types.now st > thn) $ terminate T.CrashInvalidTime
 
@@ -345,39 +357,86 @@ newVar n e = do
     modify $ \st -> st { process = p { variables = Map.insert n ref (variables p) } }
 
 -- | Write a value to a variable.
-writeRef :: Ident -> SSMExp -> Interp s ()
+writeRef :: Reference -> SSMExp -> Interp s ()
 writeRef r e = do
     p <- gets process
-    case Map.lookup r (variables p) of
-        Just ref -> do v <- eval e
-                       writeVar ref v
-        Nothing  -> case Map.lookup r (localrefs p) of
+    if isDynamic r
+
+        -- dynamic references must be fetched from the curent context
+        then case Map.lookup (refIdent r) (variables p) of
             Just ref -> do v <- eval e
                            writeVar ref v
-            Nothing ->
-                error $ "interpreter error - can not find variable " ++ identName r
+            Nothing  -> case Map.lookup (refIdent r) (localrefs p) of
+                Just ref -> do v <- eval e
+                               writeVar ref v
+                Nothing -> error $ "interpreter error - can't find variable " ++
+                                   (refName r)
+
+        -- static references can always be read from the global state
+        else do globals <- gets global_variables
+                case Map.lookup (refIdent r) globals of
+                    Just ref -> eval e >>= \v -> writeVar ref v
+                    Nothing  -> error $ "interpreter error - can't find global variable :"
+                                     ++ refName r
+
+-- | Write a value to a local expression variable.
+writeLocal :: Ident -> SSMExp -> Interp s ()
+writeLocal n e = do
+    p <- gets process
+    case Map.lookup n (variables p) of
+        Just ref -> do v <- eval e
+                       writeVar ref v
+        Nothing  -> case Map.lookup n (localrefs p) of
+            Just ref -> do v <- eval e
+                           writeVar ref v
+            Nothing -> error $ "interpreter error - can't find variable " ++
+                               (identName n)
+
+writeDynamic_ :: Ident -> SSMExp -> Interp s ()
+writeDynamic_ n e = do
+    p <- gets process
+    case Map.lookup n (variables p) of
+        Just ref -> eval e >>= \v -> writeVar ref v
+        Nothing  -> case Map.lookup n (localrefs p) of
+            Just ref -> eval e >>= \v -> writeVar ref v
+            Nothing  -> error $ "interpreter error - can't find variable " ++ identName n
 
 -- | Read the value of a reference
 readRef :: Reference -> Interp s SSMExp
 readRef r = do
-    r <- lookupRef (fst r)
+    r <- lookupRef r
     (vr,_,_,_,_) <- lift' $ readSTRef r
     lift' $ readSTRef vr
 
 {- | This function returns @True@ if variable was written in this instant, and otherwise
 @False@. -}
-wasWritten :: Ident -> Interp s SSMExp
-wasWritten r = do
-    p <- gets process
-    n <- getNow
-    case Map.lookup r (variables p) of
-        Just v -> do (_,_,t,_,_) <- lift' $ readSTRef v
-                     return $ Lit TBool $ LBool $ t == n
-        Nothing -> case Map.lookup r (localrefs p) of
-            Just v  -> do (_,_,t,_,_) <- lift' $ readSTRef v
-                          return $ Lit TBool $ LBool $ t == n
+wasWritten :: Reference -> Interp s SSMExp
+wasWritten r =
+  if isDynamic r
+
+    then do
+        p <- gets process
+        case Map.lookup (refIdent r) (variables p) of
+            Just v -> wasWritten' v
+            Nothing -> case Map.lookup (refIdent r) (localrefs p) of
+                Just v  -> wasWritten' v
+                Nothing ->
+                    error $ "interpreter error - can not find variable " ++ (refName r)
+
+    else do
+        globs <- gets global_variables
+        case Map.lookup (refIdent r) globs of
+            Just v -> wasWritten' v
             Nothing ->
-                error $ "interpreter error - can not find variable " ++ identName r
+                error $ "interpreter error - can not find global variable " ++ (refName r)
+  where
+      {- | Returns a `SSM.Core.Syntax.SSMExp` representing if the @Var s@ was written
+      to or not in the current instant. -}
+      wasWritten' :: Var s -> Interp s SSMExp
+      wasWritten' v = do
+          n <- getNow
+          (_,_,t,_,_) <- lift' $ readSTRef v
+          return $ Lit TBool $ LBool $ t == n
 
 -- | Creates a new `Var s` with an initial value.
 newVar' :: SSMExp -> Word64 -> ST s (Var s)
@@ -420,29 +479,37 @@ writeVar_ ref e prio = do
       lift' $ writeSTRef r (ref, Map.delete (priority p) procs, b, me, mv)
     enqueue $ p { waitingOn = Nothing }
 
--- | Look up a variable in the current process's variable store.
-lookupRef :: Ident -> Interp s (Var s)
-lookupRef r = do
-  p <- gets process
-  case Map.lookup r (variables p) of
-    Just ref -> return ref
-    Nothing  -> case Map.lookup r (localrefs p) of
-      Just ref -> return ref
-      Nothing  -> case Map.lookup r (localrefs p) of
+-- | Look up a variable associated with a reference
+lookupRef :: Reference -> Interp s (Var s)
+lookupRef ref =
+  if isDynamic ref
+
+    then do
+      p <- gets process
+      case Map.lookup (refIdent ref) (variables p) of
+        Just ref -> return ref
+        Nothing  -> case Map.lookup (refIdent ref) (localrefs p) of
+          Just ref -> return ref
+          Nothing  ->
+            error $ "interpreter error - can not find variable " ++ (refName ref)
+
+    else do
+      globs <- gets global_variables
+      case Map.lookup (refIdent ref) globs of
           Just ref -> return ref
           Nothing ->
-              crash $ "interpreter error - can not find variable " ++ identName r
+            error $ "interpreter error - can not find global variable " ++ (refName ref)
 
 -- | Make a procedure wait for writes to the variable identified by the name @v@.
-sensitize :: Ident -> Interp s ()
-sensitize v = do
-  p                       <- gets process
-  r                       <- lookupRef v
-  (ref, procs, b, me, mv) <- lift' $ readSTRef r
-  -- don't want to register a process twice
-  if Map.member (priority p) procs
-    then return ()
-    else lift' $ writeSTRef r (ref, Map.insert (priority p) p procs, b, me, mv)
+sensitize :: Reference -> Interp s ()
+sensitize ref = do
+    p <- gets process
+    r <- lookupRef ref
+    (ref,procs,b,me,mv) <- lift' $ readSTRef r
+    -- don't want to register a process twice
+    if Map.member (priority p) procs
+        then return ()
+        else lift' $ writeSTRef r (ref, Map.insert (priority p) p procs,b,me,mv)
 
 -- | This function will, if told how many new processes are being forked, compute
 -- new priorities and depths for them.
@@ -463,9 +530,17 @@ of the references in the list @refs@ have been written to.
 -}
 wait :: [Reference] -> Interp s ()
 wait refs = do
-  refs' <- mapM (lookupRef . fst) refs
+  refs' <- mapM lookupRef refs
   modify $ \st -> st { process = (process st) { waitingOn = Just refs' } }
-  mapM_ (sensitize . fst) refs
+  mapM_ sensitize refs
+
+
+
+
+
+
+
+
 
 {-********** Forking processes **********-}
 
@@ -502,7 +577,7 @@ fork (n,args) prio dep par = do
                   Left e  -> do v <- eval e
                                 v' <- lift' (newVar' v currenttime)
                                 return (n, v')
-                  Right r -> do ref <- lookupRef (fst r)
+                  Right r -> do ref <- lookupRef r
                                 return (n, ref)
           return $ Map.fromList m
 
@@ -581,7 +656,7 @@ eval e = do
             ++ identName n
     Lit _ l     -> return e
     UOpR _ r op -> case op of
-      Changed -> wasWritten $ fst r
+      Changed -> wasWritten r
     UOpE _ e Neg -> do
       e' <- eval e
       return $ neg e'

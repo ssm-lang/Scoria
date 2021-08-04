@@ -21,7 +21,7 @@ p = Program
                   { name = Ident "fun0" Nothing
                   , arguments = []
                   , body = [ NewRef (Ident "ref2" Nothing) TBool (Lit TBool (LBool True))
-                           , Fork [(Ident "fun1" Nothing, [Right (Ident "ref2" Nothing, TBool)])]
+                           , Fork [(Ident "fun1" Nothing, [Right (Dynamic (Ident "ref2" Nothing, Ref TBool))])]
                            ]
                   }
                 )
@@ -32,18 +32,19 @@ p = Program
                   , body      = [ While
                                     (Lit TBool (LBool True))
                                     [ After (Lit TUInt64 (LUInt64 2))
-                                            (Ident "ref2" Nothing, Ref TBool)
+                                            (Dynamic (Ident "ref2" Nothing, Ref TBool))
                                             (Lit TBool (LBool False))
-                                    , Wait [(Ident "ref2" Nothing, Ref TBool)]
+                                    , Wait [Dynamic (Ident "ref2" Nothing, Ref TBool)]
                                     , After (Lit TUInt64 (LUInt64 2))
-                                            (Ident "ref2" Nothing, Ref TBool)
+                                            (Dynamic (Ident "ref2" Nothing, Ref TBool))
                                             (Lit TBool (LBool True))
-                                    , Wait [(Ident "ref2" Nothing, Ref TBool)]
+                                    , Wait [Dynamic (Ident "ref2" Nothing, Ref TBool)]
                                     ]
                                 ]
                   }
                 )
               ]
+  , global_references = []
   }
 
 spec :: H.Spec

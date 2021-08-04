@@ -18,9 +18,9 @@ p = Program
         { name      = Ident "fun0" Nothing
         , arguments = []
         , body      = [ NewRef (Ident "ref2" Nothing)
-                                (Ref TUInt64)
+                                TUInt64
                                 (Lit TUInt64 (LUInt64 0))
-                      , Fork [(Ident "fun1" Nothing, [Right (Ident "ref2" Nothing, Ref TUInt64)])]
+                      , Fork [(Ident "fun1" Nothing, [Right $ Dynamic (Ident "ref2" Nothing, Ref TUInt64)])]
                       ]
         }
       )
@@ -32,20 +32,20 @@ p = Program
         , body      =
           [ After
             (Lit TUInt64 (LUInt64 2))
-            (Ident "Ref2" Nothing, Ref TUInt64)
+            (Dynamic (Ident "Ref2" Nothing, Ref TUInt64))
             (Lit TUInt64 (LUInt64 2))
-          , Wait [(Ident "Ref2" Nothing, Ref TUInt64)]
+          , Wait [Dynamic (Ident "Ref2" Nothing, Ref TUInt64)]
           , Fork
             [ ( Ident "fun1" Nothing
-              , [ Right (Ident "Ref2" Nothing, Ref TUInt64)
+              , [ Right $ Dynamic (Ident "Ref2" Nothing, Ref TUInt64)
                 ]
               )
             , ( Ident "fun1" Nothing
-              , [ Right (Ident "Ref2" Nothing, Ref TUInt64)
+              , [ Right $ Dynamic (Ident "Ref2" Nothing, Ref TUInt64)
                 ]
               )
             , ( Ident "fun1" Nothing
-              , [ Right (Ident "Ref2" Nothing, Ref TUInt64)
+              , [ Right $ Dynamic (Ident "Ref2" Nothing, Ref TUInt64)
                 ]
               )
             ]
@@ -53,6 +53,7 @@ p = Program
         }
       )
     ]
+  , global_references = []
   }
 
 spec :: H.Spec

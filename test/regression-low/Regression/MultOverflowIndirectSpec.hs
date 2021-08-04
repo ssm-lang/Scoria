@@ -21,9 +21,9 @@ p = Program
                   , arguments = []
                   , body      =
                     [ NewRef ((Ident "v0" Nothing))
-                             (Ref TInt32)
+                             TInt32
                              (Lit TInt32 (LInt32 999999))
-                    , GetRef ((Ident "v1" Nothing)) TInt32 ((Ident "v0" Nothing), Ref TInt32)
+                    , GetRef ((Ident "v1" Nothing)) TInt32 $ Dynamic ((Ident "v0" Nothing), Ref TInt32)
                     , If
                       (BOp
                         TBool
@@ -32,16 +32,17 @@ p = Program
                         OLT
                       )
                       [ After (Lit TUInt64 (LUInt64 2))
-                              ((Ident "v0" Nothing), Ref TInt32)
+                              (Dynamic ((Ident "v0" Nothing), Ref TInt32))
                               (Lit TInt32 (LInt32 0))
                       ]
                       []
-                    , NewRef (Ident "v3" Nothing) (Ref TInt32) (Lit TInt32 (LInt32 0))
-                    , Wait [(Ident "v3" Nothing, Ref TInt32)]
+                    , NewRef (Ident "v3" Nothing) TInt32 (Lit TInt32 (LInt32 0))
+                    , Wait [Dynamic (Ident "v3" Nothing, Ref TInt32)]
                     ]
                   }
                 )
               ]
+  , global_references = []
   }
 
 spec :: H.Spec

@@ -135,13 +135,17 @@ instance Ord (Proc s) where
 -- | The interpreter state maintained while interpreting a program.
 data St s = St
   { -- | The current model time
-    now               :: Word64
+    now              :: Word64
+    {- | The variables which exist in the global scope and can be referenced from any
+    context. There is no need to have an activation record to look up one of these
+    variables. -}
+  , global_variables :: Map.Map Ident (Var s)
     {- | The outstanding events. Represented as a map from the time at which the
     event should occur to a list of the variables that should be updated at that time.
     This representation is faithful to the order in which the events are inserted in
     the event queue, while the C heap might shuffle events around when they are
     scheduled for the same instant. -}
-  , events            :: Map.Map Word64 [Var s]
+  , events           :: Map.Map Word64 [Var s]
     {- | Number of outstanding events. Bounded by the number of variables currently
     allocated in the program, as there can be at most 1 outstanding event per
     variable. While this number could be derived from the map, that would be a linear
@@ -171,13 +175,15 @@ data St s = St
 
 -- | Create initial state for interpreter.
 initState
-  :: InterpretConfig -- ^ Configuration
-  -> Program         -- ^ Program
-  -> Word64          -- ^ Start time
-  -> Proc s          -- ^ Entry point
+  :: InterpretConfig       -- ^ Configuration
+  -> Program               -- ^ Program
+  -> Word64                -- ^ Start time
+  -> Map.Map Ident (Var s) -- ^ Global references
+  -> Proc s                -- ^ Entry point
   -> St s
-initState conf p startTime entryPoint = St
+initState conf p startTime glob entryPoint = St
   { now               = startTime
+  , global_variables  = glob
   , events            = Map.empty
   , numevents         = 0
   , readyQueue        = IntMap.singleton 0 entryPoint

@@ -19,10 +19,9 @@ import SSM.Core.Syntax
       UnaryOpE(..),
       UnaryOpR(..),
       Procedure(body, name, arguments),
-      Program(funs, args, entry),
+      Program(funs, args, entry, global_references),
       Stm(..),
-      Ident,
-      identName )
+      Ident(..))
 import SSM.Util.HughesList ( fromHughes, toHughes, Hughes )
 
 type PP a = ReaderT Int                    -- current level of indentation
@@ -58,8 +57,15 @@ prettyProgram' p = do
     emit "entrypoint:"
     indent $ emit $ prettyApp (entry p, args p)
     emit ""
+    emit "global variables:"
+    prettyGlobals (global_references p)
+    emit ""
     intercalateM (emit "") $ map prettyProcedure (Map.elems (funs p))
     return ()
+
+prettyGlobals :: [(Ident, Type)] -> PP ()
+prettyGlobals xs = flip mapM_ xs $ \(n,t) ->
+    indent $ emit $ concat [prettyType t, " ", identName n]
 
 prettyProcedure :: Procedure -> PP ()
 prettyProcedure p = do

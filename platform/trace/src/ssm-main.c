@@ -3,6 +3,8 @@
 extern uint16_t event_queue_len;
 
 int main(void) {
+  initialize_global_variables();
+
   ssm_activate(
       ssm_entry_point(&ssm_top_parent, SSM_ROOT_PRIORITY, SSM_ROOT_DEPTH));
 

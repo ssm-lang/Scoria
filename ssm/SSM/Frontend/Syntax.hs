@@ -24,6 +24,9 @@ module SSM.Frontend.Syntax
     , S.Reference(..)
     , S.refType
     , S.refName
+    , S.renameRef
+    , S.makeDynamicRef
+    , S.makeStaticRef
 
       -- * Expressions
     , S.SSMExp(..)
@@ -50,14 +53,21 @@ module SSM.Frontend.Syntax
 
       -- * Transpilation
     , transpile
+
+    , Compile
+    , addGlobal
+    , hasSameGlobalsAs
+    , renameNewestGlobal
 ) where
 
+import SSM.Util.State
 import qualified SSM.Core.Syntax as S
 
 import qualified Data.Map as Map
 
 import Control.Monad.State
     ( gets, get, put, modify, execState, runState, forM, MonadState, State, StateT(StateT) )
+import qualified System.Console.GetOpt as S
 
 {- | High level representation of the statements that can be executed in a program
 of the sparse synchronous model-domain. It is very similar to the abstract synatx defined
@@ -111,12 +121,11 @@ pureSSM stmts = modify $ \st -> st { statements = stmts }
 emit :: SSMStm -> SSM ()
 emit stm = modify $ \st -> st { statements = statements st ++ [stm]}
 
--- | Fetch a fresh name from the environment.
-fresh :: SSM String
-fresh = do
-    i <- gets counter
-    modify $ \st -> st { counter = i + 1 }
-    return $ "v" ++ show i
+{- | @IntState@ Instance for the SSM state, so that we can generate fresh names using
+the generic `SSM.Util.State.Fresh` for generating fresh names. -}
+instance IntState SSMSt where
+  getInt = counter
+  setInt i st = st { counter = i }
 
 {- | Get the name of a procedure, where the procedure is represented by a list of
 statements that make up its body. -}
@@ -154,15 +163,19 @@ data TranspileState = TranspileState
 
 {- | Transpile a program of the high level syntax to the low level syntax as defined
 in "SSM.Core.Syntax". -}
-transpile :: SSM () -> S.Program
+transpile :: SSM ()
+          -> ( S.Ident                         -- Entry-point of the program
+             , [Either S.SSMExp S.Reference]  -- Arguments to apply it to
+             , Map.Map S.Ident S.Procedure     -- Rest of procedures in the program
+             )
 transpile program = case mainname st of
 
     Nothing -> error $ "no name found for the program entrypoint - did you forget to use box?"
 
     Just n  -> if n `elem` (Map.keys $ procedures st)
-      then S.Program n (mainargvals st) (procedures st)
+      then (n, mainargvals st, procedures st)
       else let p = (S.Procedure n (mainargs st) main)
-           in S.Program n (mainargvals st) $ Map.insert n p (procedures st)
+           in (n, mainargvals st, Map.insert n p (procedures st))
   where
       (main,st) = runState comp state
       state     = TranspileState Map.empty [] Nothing [] []
@@ -200,7 +213,7 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       return []
     Argument n x a -> do 
       let arginfo = (x, either S.expType S.refType a)
-      let a'      = either (Left) (Right . (,) x . snd) a
+      let a'      = either Left (Right . flip S.renameRef x) a
       modify $ \st -> st { mainargs    = mainargs st ++ [arginfo]
                          , mainargvals = mainargvals st ++ [a']
                          }
@@ -247,6 +260,64 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       getArgs _                     = []
 
 {- | Instance of `SSM.Core.Syntax.SSMProgram`, so that the compiler knows how to turn
-the frontend representation into something that it can generate code for. -}
+the frontend representation into something that it can generate code for. Just compiling
+a program does not introduce any global variables. -}
 instance S.SSMProgram (SSM ()) where
-  toProgram = transpile
+  toProgram p = let (n,a,f) = transpile p
+                in S.Program n a f []
+
+-- compile monad
+
+-- | State maintained by the `Compile` monad
+data CompileSt = CompileSt
+    { compileCounter   :: Int                  -- ^ Counter to generate fresh named
+    , generatedGlobals :: [(S.Ident, S.Type)]  -- ^ Names and types of global references
+    }
+
+-- | Compile monad used to set up global variables before running a program
+newtype Compile a = Compile (State CompileSt a)
+  deriving Functor                via State CompileSt
+  deriving Applicative            via State CompileSt
+  deriving Monad                  via State CompileSt
+  deriving (MonadState CompileSt) via State CompileSt
+
+{- | @IntState@ instance for `CompileSt` so that the `Compile` monad can generate
+fresh names with the generic `SSM.Util.State.fresh` function.. -}
+instance IntState CompileSt where
+  getInt = compileCounter
+  setInt i st = st { compileCounter = i }
+
+-- | Add the name and type of a global variable to the Compile monad
+addGlobal :: S.Ident -> S.Type -> Compile ()
+addGlobal name t = do
+  s <- get
+  if name `elem` map fst (generatedGlobals s)
+    then error $
+      concat ["name ", S.identName name, " has already been declared as a global variable"]
+    else modify $ \st ->
+      st { generatedGlobals = generatedGlobals st ++ [(name, t)]}
+
+{- | Meant to be used in infix position, like @st1 `hasSameGlobalsAs` st2@. Returns
+@True@ if, as the name suggests, the two compile states has the same global references
+declared. -}
+hasSameGlobalsAs :: CompileSt -> CompileSt -> Bool
+hasSameGlobalsAs st1 st2 = generatedGlobals st1 == generatedGlobals st2
+
+{- | Rename the newst declared global reference by giving it the name that is supplied
+to this function.
+
+NOTE: This function is only meant to be called by the BinderAdd library. -}
+renameNewestGlobal :: S.Ident -> Compile ()
+renameNewestGlobal name = do
+  st <- get
+  let newest = last (generatedGlobals st)
+  modify $ \st ->
+    st { generatedGlobals = init (generatedGlobals st) ++ [(name, snd newest)] }
+
+{- | If you have a @Compile (SSM ())@ you have probably set up some global variables
+using the @Compile@ monad. This instance makes sure that you can compile and interpret
+something that is a program with such global variables. -}
+instance S.SSMProgram (Compile (SSM ())) where
+  toProgram (Compile p) = let (a,s) = runState p (CompileSt 0 [])
+                              (n,ar,f) = transpile a
+                          in S.Program n ar f $ generatedGlobals s
