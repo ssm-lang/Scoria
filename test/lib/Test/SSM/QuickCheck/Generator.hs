@@ -65,7 +65,7 @@ instance Arbitrary Program where
              let inprefs      = [ makeDynamicRef (Ident ("ref" ++ show i) Nothing) t | (t,i) <- refs]
              let inpvars      = [(Ident ("var" ++ show i) Nothing, t) | (t,i) <- vars]
 
-             -- generate a procedure body where the input parameters are in scope
+             -- generate a procedure body where the input parameters & global refs are in scope
              (body,_)        <- arbProc tab inpvars (inprefs ++ globalrefs) 0 =<< choose (0, 15)
 
              -- create (String, Type) pairs, representing the parameters to this procedure
@@ -92,7 +92,7 @@ arbProc :: Procedures     -- ^ All procedures in the program
         -> Gen ([Stm], Int)
 arbProc _ _ _ c 0          = return ([], c)
 arbProc funs vars refs c n = frequency $
-      [ (1, do t         <- elements basetypes-- [TInt32, TBool]
+      [ (1, do t         <- elements basetypes
                e         <- choose (0,3) >>= arbExp t vars refs
                (name,c1) <- fresh c
                let rt     = mkReference t

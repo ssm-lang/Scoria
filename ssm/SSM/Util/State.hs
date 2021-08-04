@@ -1,4 +1,4 @@
-{- | This module implements some machinery to generate fresh named. There's a typeclass
+{- | This module implements some machinery to generate fresh names. There's a typeclass
 @IntState@ that specifies that a type has an @Int@ as part of its state. If something
 has an @Int@ as part of its state, we can use that int to generate a fresh name given
 that the @Int@ is used for only this. @MonadState s m@ is a little restricted in that
