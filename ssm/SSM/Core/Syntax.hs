@@ -226,6 +226,7 @@ data UnaryOpE
 -- | Expressions of unary operators on references
 data UnaryOpR
     = Changed  -- ^ Expression represents if the reference has been written to
+    | Deref    -- ^ Dereference/sample the value of a reference
     deriving (Show, Eq, Read)
 
 -- | Expressions of binary operators.
@@ -254,9 +255,6 @@ data Stm
     {-| Create a new reference with the given name, which references a value of the
     given type, with the initial value specified by the expression. -}
     = NewRef Ident Type SSMExp
-    {-| Dereference an expression and put the result in a variable with the given name &
-    with the given type.-}
-    | GetRef Ident Type Reference
     | SetRef Reference SSMExp  -- ^ Set the value of a reference
     {-| Set the value of a local expression specified by the name, with the given type,
     with the new value specified by the expression. -}

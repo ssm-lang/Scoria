@@ -106,11 +106,6 @@ step = do
         newRef n e
         continue
 
-      GetRef n _ r -> do
-        v <- readRef r
-        newRef n v
-        continue
-
       SetRef r e -> do
         writeRef r e
         continue

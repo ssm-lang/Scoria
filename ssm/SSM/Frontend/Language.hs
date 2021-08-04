@@ -108,7 +108,6 @@ renameStmt s (Info (Just n) info) =
     let srcinfo = Ident n info
     in case s of
         NewRef n e  -> NewRef srcinfo e
-        GetRef n r  -> GetRef srcinfo r
         _           -> s
 
 renameExp :: Exp a -> SrcInfo -> Exp a
@@ -229,12 +228,8 @@ event' :: Exp ()
 event' = Exp $ Lit TEvent LEvent
 
 -- | Dereference a reference and get an expression holding the result
-deref :: Ref a -> SSM (Exp a)
-deref (Ptr r) = do
-    n <- fresh
-    let id = Ident n Nothing
-    emit $ GetRef id r
-    return $ Exp $ Var (dereference (refType r)) id
+deref :: forall a . SSMType a => Ref a -> Exp a
+deref (Ptr r) = Exp $ UOpR (typeOf (Proxy @a)) r Deref
 
 {- | Create a new, local reference. This reference is deallocated when the procedure
 it was created in terminates. -}
