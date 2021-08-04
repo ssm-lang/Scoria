@@ -21,7 +21,7 @@ p = Program
                   { name = Ident "fun0" Nothing
                   , arguments = []
                   , body = [ NewRef (Ident "ref2" Nothing) TBool (Lit TBool (LBool True))
-                           , Fork [(Ident "fun1" Nothing, [Right (Dynamic (Ident "ref2" Nothing, TBool))])]
+                           , Fork [(Ident "fun1" Nothing, [Right (Dynamic (Ident "ref2" Nothing, Ref TBool))])]
                            ]
                   }
                 )

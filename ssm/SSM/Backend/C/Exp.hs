@@ -26,7 +26,7 @@ genExp _  (Lit _ (LBool   True )) = [cexp|true|]
 genExp _  (Lit _ (LBool   False)) = [cexp|false|]
 genExp _  (Lit _ (LEvent       )) = [cexp|0|]
 genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
-genExp ls (UOpR _ r Changed) = [cexp|event_on(($ty:sv_t *) $exp:(refPtr r ls))|]
+genExp ls (UOpR _ r Changed) = [cexp|$id:event_on($exp:(refSV r ls))|]
 --  | r `elem` ls = [cexp|event_on(($ty:sv_t *) $exp:(refPtr r ls))|]
 --  | otherwise   = [cexp|event_on(&acts->$id:((refName r))->sv)|]
 -- | Circumvent optimizations that take advantage of C's undefined signed

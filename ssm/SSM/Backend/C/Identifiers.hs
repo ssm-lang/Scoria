@@ -60,6 +60,7 @@ module SSM.Backend.C.Identifiers
     C-expression that references the same reference. -}
   , refPtr
   , refVal
+  , refSV
   ) where
 
 import           SSM.Core.Syntax
@@ -70,7 +71,7 @@ import           Language.C.Quote.GCC           ( cexp
                                                 )
 import qualified Language.C.Syntax             as C
 import           SSM.Backend.C.Types
-
+import Debug.Trace
 -- | Use snake_case for c literals
 {-# ANN module "HLint: ignore Use camelCase" #-}
 
@@ -218,6 +219,16 @@ refPtr r@(Dynamic _) lrefs =
     else [cexp| acts->$id:(refName r)  |]
 -- Static references can be referenced without an activation record
 refPtr r@(Static _) _ = [cexp| &$id:(refName r) |]
+
+{- | Given a reference and a list of local references, this function will return a
+C expression that holds a pointer to the internal sv-component of the processes
+activation record. -}
+refSV :: Reference -> [Reference] -> C.Exp
+refSV r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| &acts->$id:(refName r).sv |]
+    else [cexp| &acts->$id:(refName r)->sv|]
+refSV r@(Static _) _ = [cexp| &$id:(refName r).sv|]
 
 {- | Given a Reference, this function will return a C expression that holds
 the value of that reference. -}

@@ -8,6 +8,9 @@ import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 
+import SSM.Compile
+import SSM.Interpret
+
 p :: Program
 p = Program
   { entry = Ident "fun0" Nothing
@@ -18,12 +21,12 @@ p = Program
         { name      = Ident "fun0" Nothing
         , arguments = []
         , body      =
-          [ NewRef (Ident "v0" Nothing) (TBool) (Lit TBool (LBool False))
+          [ NewRef (Ident "v0" Nothing) TBool (Lit TBool (LBool False))
           , After (Lit TUInt64 (LUInt64 1))
                   (Dynamic (Ident "v0" Nothing, Ref TBool))
                   (Lit TBool (LBool True))
           , NewRef (Ident "v1" Nothing)
-                   (TBool)
+                   TBool
                    (UOpR TBool (Dynamic (Ident "v0" Nothing, Ref TBool)) Changed)
           , After (Lit TUInt64 (LUInt64 3872))
                   (Dynamic (Ident "v1" Nothing, Ref TBool))
@@ -32,7 +35,7 @@ p = Program
         }
       )
     ]
-  }
+  , global_references = []}
 
 spec :: H.Spec
 spec = T.correctSpec "CancelBoth" p

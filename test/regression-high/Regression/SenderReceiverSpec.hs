@@ -25,4 +25,4 @@ main = boxNullary "main" $ do
     fork [ sender myEvent, receiver myEvent ]
 
 spec :: H.Spec
-spec = T.correctSpec "SenderReceiver" $ transpile main
+spec = T.correctSpec "SenderReceiver" main

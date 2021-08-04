@@ -25,8 +25,8 @@ p = Program
                   { name      = Ident "fun0" Nothing
                   , arguments = []
                   , body      =
-                    [ NewRef (Ident "ref1" Nothing) (Ref TBool)  (Lit TBool (LBool True))
-                    , NewRef (Ident "ref3" Nothing) (Ref TInt32) (Lit TInt32 (LInt32 0))
+                    [ NewRef (Ident "ref1" Nothing) TBool  (Lit TBool (LBool True))
+                    , NewRef (Ident "ref3" Nothing) TInt32 (Lit TInt32 (LInt32 0))
                     , Fork
                       [(Ident "fun1" Nothing, [Right (Dynamic (Ident "ref1" Nothing, Ref TBool)), Right (Dynamic (Ident "ref3" Nothing, Ref TInt32))])]
                     ]

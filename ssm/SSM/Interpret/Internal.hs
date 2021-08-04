@@ -108,7 +108,7 @@ globals :: Program -> ST s (Map.Map Ident (Var s))
 globals p = do
   vars <- forM (global_references p) $ \(id,t) -> do
     let initval = defaultValue (dereference t)
-    v <- newVar' initval 0
+    v <- newVar' initval maxBound
     return (id, v)
   return $ Map.fromList vars
 
@@ -144,6 +144,7 @@ defaultValue TInt64  = Lit TInt64 $ LInt64 0
 defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
 defaultValue TUInt8  = Lit TUInt8 $ LUInt8 0
 defaultValue TBool   = Lit TBool $ LBool False
+defaultValue TEvent  = Lit TEvent LEvent
 defaultValue (Ref _) = error "default value of reference not allowed"
 
 -- | Log the state of all variables in the current process to the event trace.

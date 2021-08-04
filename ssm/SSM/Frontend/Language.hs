@@ -293,18 +293,7 @@ waitAll refs = fork $ map waitSingle refs
 
 
 
-{- | Create a reference that exists in the global scope, and that remains alive during
-the full execution of a program. Meant to be used with the @-XTypeApplications@
-extention.
-
-Example:
-
-@
-int32ref <- global @Int32
-word8ref <- global @Word8
-@
-
--}
+-- | Create a global reference
 global :: forall a . SSMType a => Compile (Ref a)
 global = do
     n <- fresh
@@ -313,8 +302,8 @@ global = do
     addGlobal id t
     return $ Ptr $ makeStaticRef id t
 
-{- | If BinderAnn is enabled, we can grab the names declared in the source code instead
-of generating fresh names. -}
+{- | If BinderAdd is enabled, we can grab the names declared in the source code instead
+of generating fresh named. -}
 instance AnnotatedM Compile (Ref a) where
     annotateM ma info = do
         -- get state before running the action

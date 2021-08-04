@@ -17,7 +17,7 @@ p = Program
                   { name = Ident "fun0" Nothing
                   , arguments = []
                   , body = [ NewRef (Ident "v0" Nothing)
-                                    (TInt32)
+                                    TInt32
                                     (Lit TInt32 (LInt32 0))
                            , After (Lit TUInt64 (LUInt64 2))
                                    (Dynamic (Ident "v0" Nothing, Ref TInt32))
@@ -26,7 +26,7 @@ p = Program
                   }
                 )
               ]
-  }
+  , global_references = []}
 
 spec :: H.Spec
 spec = T.correctSpec "CancelLater" p

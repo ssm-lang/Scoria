@@ -18,7 +18,7 @@ p = Program
         { name      = Ident "fun0" Nothing
         , arguments = []
         , body      = [ NewRef (Ident "ref2" Nothing)
-                                (Ref TUInt64)
+                                TUInt64
                                 (Lit TUInt64 (LUInt64 0))
                       , Fork [(Ident "fun1" Nothing, [Right $ Dynamic (Ident "ref2" Nothing, Ref TUInt64)])]
                       ]

@@ -18,4 +18,4 @@ fun0 = boxNullary "fun0" $ do
     fork [ fun0 ]
 
 spec :: H.Spec
-spec = T.correctSpec "RecurseForever" $ transpile fun0
+spec = T.correctSpec "RecurseForever" fun0

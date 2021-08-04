@@ -92,11 +92,11 @@ arbProc :: Procedures     -- ^ All procedures in the program
         -> Gen ([Stm], Int)
 arbProc _ _ _ c 0          = return ([], c)
 arbProc funs vars refs c n = frequency $
-      [ (1, do t         <- elements [TInt32, TBool]
+      [ (1, do t         <- elements basetypes-- [TInt32, TBool]
                e         <- choose (0,3) >>= arbExp t vars refs
                (name,c1) <- fresh c
                let rt     = mkReference t
-               let stm    = NewRef name rt e
+               let stm    = NewRef name t e
                let ref    = makeDynamicRef name rt
                (rest, c2) <- arbProc funs vars (ref:refs) c1 (n-1)
                return (stm:rest, c2)

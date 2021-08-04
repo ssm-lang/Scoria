@@ -32,7 +32,7 @@ import           SSM.Backend.C.Identifiers
 import           SSM.Backend.C.Types
 import           SSM.Core.Syntax
 import qualified SSM.Interpret.Trace           as T
-
+import Debug.Trace
 -- TODOs: remove hard-coded identifiers.
 
 -- | Given a 'Program', returns a tuple containing the compiled program and
@@ -330,7 +330,7 @@ genCase (NewRef n t v) = do
   let lvar = identName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
       rhs  = genExp locs v
-  addLocal $ makeDynamicRef n t
+  addLocal $ makeDynamicRef n (mkReference t)
   case baseType t of
     TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
     _ ->
@@ -394,7 +394,12 @@ genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts
   locs <- gets locals
-  let trigs = zip [1 ..] $ map (flip refPtr locs) {-(genTrig locs)-} ts
+
+--  traceM $ "\n\n"
+--  traceM $ show locs
+--  traceM $ "\n\n"
+
+  let trigs = zip [1 ..] $ map (flip refSV locs) ts
   return
     $ map getTrace ts
     ++ map sensitizeTrig trigs
@@ -406,8 +411,8 @@ genCase (Wait ts) = do
  where
   sensitizeTrig (i, trig) = [cstm|$id:sensitize($exp:trig, &$id:acts->$id:(trig_ i));|]
   desensitizeTrig (i,_) = [cstm|$id:desensitize(&$id:acts->$id:(trig_ i));|]
-  genTrig locs r | refIdent r `elem` locs = [cexp|&$id:acts->$id:(refName r).sv|]
-                 | otherwise              = [cexp|&$id:acts->$id:(refName r)->sv|]
+--  genTrig locs r | refIdent r `elem` locs = [cexp|&$id:acts->$id:(refName r).sv|]
+--                 | otherwise              = [cexp|&$id:acts->$id:(refName r)->sv|]
   getTrace r = [cstm|$id:debug_trace($string:event);|]
     where event = show $ T.ActSensitize $ refName r
 genCase (Fork cs) = do
