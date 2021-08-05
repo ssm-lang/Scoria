@@ -11,142 +11,180 @@ import SSM.Core.Syntax
 import qualified Data.Map as Map
 import System.IO ()
 
+-- | Type to record and report the type error
+data TypeError = TypeError {expected::Type, actual::Type, msg::String}
+
+-- | data type for the entries in our environment
+data Entry = VarEntry {ty::Type} 
+           | ProcEntry {params::[(String, Type)]}
+
 -- | Helper function to check whether the type is an integer
 isInt :: Type -> Bool 
 isInt TBool = False 
 isInt (Ref _) = False  
 isInt _ = True 
 
+-- | Helper function to take parameters out of a procedure entry
+takeParams :: Entry -> [(String, Type)]
+takeParams VarEntry {ty=_} = []
+takeParams ProcEntry {params=_params} = _params
+
 -- | Unwrap the result of typeCheckExp
 unwrapExpRes :: Either TypeError Type -> Type
 unwrapExpRes (Left TypeError {expected=_expected, actual=_actual, msg=_msg}) = _actual
 unwrapExpRes (Right ty) = ty
 
+-- | Checks whether two types are the same
+sameTy :: Type -> Type -> Either TypeError ()
+sameTy t1 t2 | t1 == t2 = Right ()
+             | otherwise = Left TypeError {expected=t1, actual=t2, msg="The literal's type doesn't match the claimed type"}
+
 -- | Helper function to check whether the expression type matches 
 -- the reference type
-expMatchRef :: Reference -> SSMExp -> Bool 
-expMatchRef (s, ty) expr = 
-    case typeCheckExp expr of Left TypeError {expected=_expected, actual=_actual, msg=_msg} -> False 
-                              Right actualTy -> actualTy == ty
+expMatchRef :: Reference -> SSMExp -> Map.Map String Entry -> Either TypeError ()
+expMatchRef (s, ty) expr env = do
+    expTy <- typeCheckExp expr env
+    sameTy ty expTy
 
--- | Typechecks a program
-typeCheckProgram :: Program -> Either TypeError ()
-typeCheckProgram Program {entry=e, args=as, funs=fs} = do
-    res <- typeCheckArgs as
-    typeCheckFuns fs
-    
+-- | Checks whether the claimed type of the variable matches how it is stored in 
+-- the environment
+varMatchEnv :: Type -> String -> Map.Map String Entry -> Either TypeError ()
+varMatchEnv ty name env = 
+    case Map.lookup name env of Nothing -> Left TypeError {expected=ty, actual=TUInt8, msg="The variable is undefined"}
+                                Just VarEntry {ty=t} ->
+                                    if t == ty then Right () else 
+                                        Left TypeError {expected=t, actual=ty, msg="Claimed type unmatched"}
+                                Just _ -> Left TypeError {expected=ty, actual=TUInt8, msg="The name is for a function, not variable"}
+
+-- | Checks whether an argument has the correct type
+typeCheckArg :: Map.Map String Entry -> (Either SSMExp Reference, (String, Type)) -> Either TypeError ()
+typeCheckArg env (Left expr, (name, ty)) = do
+    expTy <- typeCheckExp expr env
+    sameTy expTy ty
+typeCheckArg env (Right (s, ty1), (name, ty2)) = sameTy ty2 ty1 
+
 -- | Checks whether a list of arguments all have the correct type
-typeCheckArgs :: [Either SSMExp Reference] -> Either TypeError ()
-typeCheckArgs [] = Right ()
-typeCheckArgs (Left expr : t) = do
-    res <- typeCheckExp expr
-    typeCheckArgs t
-typeCheckArgs (Right ref : t) = typeCheckArgs t
+typeCheckArgs :: [Either SSMExp Reference] -> [(String, Type)] -> Map.Map String Entry -> Either TypeError ()
+typeCheckArgs args params env = mapM_ (typeCheckArg env) (zip args params)
+
+-- | enter procedure definition into our environment
+enterProc :: Map.Map String Entry -> Procedure -> Map.Map String Entry
+enterProc env Procedure {name=_name, arguments=_arguments, body=_} = 
+    Map.insert _name ProcEntry {params=_arguments} env
+
+-- | enter parameter definitions in the Map `funs` into our environment
+enterProcs :: Map.Map String Entry -> Map.Map String Procedure -> Map.Map String Entry
+enterProcs env funs = foldl enterProc env (Map.elems funs) 
+
+-- | enter the type of the variable into our environment
+enterVar :: Map.Map String Entry -> (String, Type) -> Map.Map String Entry
+enterVar env (name, ty) = Map.insert name VarEntry{ty=ty} env
+
+-- | enter the types of a list of variables into our environment
+enterVars :: Map.Map String Entry -> [(String, Type)] -> Map.Map String Entry
+enterVars = foldl enterVar
 
 -- | Typechecks a procedure
-typeCheckFunction :: Procedure -> Either TypeError ()
-typeCheckFunction Procedure {name=n, arguments=params, body=b} = 
-    typeCheckStmLst b
+typeCheckProcedure ::Map.Map String Entry -> Procedure -> Either TypeError ()
+typeCheckProcedure env Procedure {name=n, arguments=args, body=b} = 
+    typeCheckStmLst b newEnv 
+    where newEnv = enterVars env args
 
 -- | Checks the functions in a String-Procedure map all have the corret type
-typeCheckFuns :: Map.Map String Procedure -> Either TypeError ()
-typeCheckFuns = 
-    Map.foldr f (Right ())
-    where
-        f func (Right ()) = typeCheckFunction func
-        f func te = te
+typeCheckProcs :: Map.Map String Procedure -> Map.Map String Entry -> Either TypeError ()
+typeCheckProcs funs env = mapM_ (typeCheckProcedure env) (Map.elems funs)
+
+-- | Typechecks a program
+typeCheckProgram :: Program -> Map.Map String Entry -> Either TypeError ()
+typeCheckProgram Program {entry=e, args=as, funs=fs} env = do
+    res <- typeCheckArgs as params env
+    typeCheckProcs fs newEnv
+    where 
+        params = maybe [] takeParams (Map.lookup e env)
+        newEnv = enterProcs env fs
 
 -- | Typechecks an expression
-typeCheckExp :: SSMExp -> Either TypeError Type 
-typeCheckExp (Var ty str) = Right ty
-typeCheckExp (Lit ty lit) = 
+typeCheckExp :: SSMExp -> Map.Map String Entry -> Either TypeError Type 
+typeCheckExp (Var ty str) env = 
+    case Map.lookup str env of Nothing -> 
+                                Left TypeError {expected=ty, actual=TUInt8, msg="The variable is undefined"}
+                               Just VarEntry {ty=_ty} -> Right _ty
+typeCheckExp (Lit ty lit) env = 
     if actualTy == ty then Right ty
     else Left TypeError {expected=ty, actual=actualTy, msg="The literal's type doesn't match the claimed type"}
     where
         actualTy = typeCheckLit lit
-typeCheckExp (UOpE ty expr op) = 
+typeCheckExp (UOpE ty expr op) env = 
     if actualTy == ty then Right ty
     else Left TypeError {expected=ty, actual=actualTy, msg="The expression's type doesn't match the claimed type"}
-    where actualTy = unwrapExpRes (typeCheckExp expr)
-typeCheckExp (UOpR ty ref op) = 
+    where actualTy = unwrapExpRes (typeCheckExp expr env)
+typeCheckExp (UOpR ty ref op) env = 
     if actualTy == ty then Right ty
     else Left TypeError {expected=ty, actual=actualTy, msg="The expression's type doesn't match the claimed type"}
     where actualTy = typeCheckRef ref
-typeCheckExp (BOp ty e1 e2 op) = 
+typeCheckExp (BOp ty e1 e2 op) env = 
     if actualTy1 == ty && actualTy2 == ty then Right ty
     else Left TypeError {expected=ty, actual=actualTy1, msg="The expressions' type doesn't match the claimed type"}
     where 
-        actualTy1 = unwrapExpRes (typeCheckExp e1)
-        actualTy2 = unwrapExpRes (typeCheckExp e1)
-
-data TypeError = TypeError {expected::Type, actual::Type, msg::String}
+        actualTy1 = unwrapExpRes (typeCheckExp e1 env)
+        actualTy2 = unwrapExpRes (typeCheckExp e1 env)
 
 -- | Typechecks a list of statements
-typeCheckStmLst :: [Stm] -> Either TypeError ()
-typeCheckStmLst [] = Right ()
-typeCheckStmLst (h:t) = do
-    res <- typeCheckStm h
-    typeCheckStmLst t
+typeCheckStmLst :: [Stm] -> Map.Map String Entry -> Either TypeError ()
+typeCheckStmLst [] env = Right ()
+typeCheckStmLst (h:t) env = do
+    res <- typeCheckStm h env
+    typeCheckStmLst t env
 
--- | Typechecks the arguments of a forked procedure
-typeCheckForkProcArg :: [Either SSMExp Reference] -> Either TypeError ()
-typeCheckForkProcArg [] = Right ()
-typeCheckForkProcArg ((Left expr):t) = do
-    res <- typeCheckExp expr
-    typeCheckForkProcArg t
-typeCheckForkProcArg ((Right ref):t) = typeCheckForkProcArg t
+-- | Typechecks one forked procedure
+typeCheckProc :: (String, [Either SSMExp Reference]) -> Map.Map String Entry -> Either TypeError ()
+typeCheckProc (name, args) env = 
+    Right ()
+    where params = maybe [] takeParams (Map.lookup name env)
 
 -- | Typechecks forked procedures
-typeCheckForkProcs :: [(String, [Either SSMExp Reference])] -> Either TypeError ()
-typeCheckForkProcs [] = Right ()
-typeCheckForkProcs ((name, expOrRefs):t) = do
+typeCheckForkProcs :: [(String, [Either SSMExp Reference])] -> Map.Map String Entry -> Either TypeError ()
+typeCheckForkProcs [] env = Right ()
+typeCheckForkProcs ((name, expOrRefs):t) env = do
     res <- typeCheckForkProcArg expOrRefs
     typeCheckForkProcs t
 
 -- | Typechecks a statement
-typeCheckStm :: Stm -> Either TypeError ()
-typeCheckStm Skip = Right ()
-typeCheckStm (After exp1 ref exp2) 
-    | isInt (unwrapExpRes (typeCheckExp exp1)) =
-        if expMatchRef ref exp2 then Right ()
-        else
-            Left TypeError {expected=typeCheckRef ref, 
-                            actual=unwrapExpRes (typeCheckExp exp1), msg="Expression type doesn't match the reference"}
+typeCheckStm :: Stm -> Map.Map String Entry -> Either TypeError ()
+typeCheckStm Skip env = Right ()
+typeCheckStm (After exp1 ref exp2) env
+    | isInt (unwrapExpRes (typeCheckExp exp1 env)) = expMatchRef ref exp2 env
     | otherwise =
-        Left TypeError {expected=TInt32, actual=unwrapExpRes (typeCheckExp exp1), msg="The time parameter is not an int"}
-typeCheckStm (Wait refs) = Right ()
-typeCheckStm (While expr stms) 
-    | unwrapExpRes (typeCheckExp expr) == TBool =
-        typeCheckStmLst stms
+        Left TypeError {expected=TInt32, actual=unwrapExpRes (typeCheckExp exp1 env), msg="The time parameter is not an int"}
+typeCheckStm (Wait refs) env = Right ()
+typeCheckStm (While expr stms) env 
+    | unwrapExpRes (typeCheckExp expr env) == TBool =
+        typeCheckStmLst stms env
     | otherwise =
-        Left TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr), msg="Condition variable is not a bool"}
-typeCheckStm (If expr stms1 stms2) 
-    | unwrapExpRes (typeCheckExp expr) == TBool =
-        typeCheckStmLst (stms1 ++ stms2)
+        Left TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr env), msg="Condition variable is not a bool"}
+typeCheckStm (If expr stms1 stms2) env
+    | unwrapExpRes (typeCheckExp expr env) == TBool =
+        typeCheckStmLst (stms1 ++ stms2) env
     | otherwise =
-        Left TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr), msg="Condition variable is not a bool"}
-typeCheckStm (Fork procs) = typeCheckForkProcs procs
-typeCheckStm (SetLocal name ty expr) 
+        Left TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr env), msg="Condition variable is not a bool"}
+typeCheckStm (Fork procs) env = typeCheckForkProcs procs
+typeCheckStm (SetLocal name ty expr) env
     | actualTy == ty = Right ()
     | otherwise =
         Left TypeError {expected=ty, actual=actualTy, msg="Expression doesn't match the type of the local variable"}
     where
-        actualTy = unwrapExpRes (typeCheckExp expr)
-typeCheckStm (GetRef name ty ref) 
+        actualTy = unwrapExpRes (typeCheckExp expr env)
+typeCheckStm (GetRef name ty ref) env
     | ty == typeCheckRef ref = Right ()
     | otherwise =
         Left TypeError {expected=typeCheckRef ref, actual=ty, msg="Reference type doesn't match the claimed type"}
-typeCheckStm (SetRef ref expr) 
-    | expMatchRef ref expr = Right ()
-    | otherwise =
-        Left TypeError {expected=typeCheckRef ref, 
-                        actual=unwrapExpRes (typeCheckExp expr), msg="Expression type doesn't match the reference"}
-typeCheckStm (NewRef name ty expr) 
+typeCheckStm (SetRef ref expr) env = expMatchRef ref expr env
+typeCheckStm (NewRef name ty expr) env 
     | actualTy == ty = Right ()
     | otherwise =
         Left TypeError {expected=ty, actual=actualTy, msg="Expression type doesn't match the reference"}
     where
-        actualTy = unwrapExpRes (typeCheckExp expr)
+        actualTy = unwrapExpRes (typeCheckExp expr env)
 
 -- | Typechecks a literal
 typeCheckLit :: SSMLit -> Type 
