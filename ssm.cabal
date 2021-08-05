@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c2e101a8ecce9cc9e63605cdec88c6f68d5fc8e0f93ac548e53e1d3338294e97
+-- hash: 53adacbd0ccacd2919b175d8b14135f7b3ca07c8baf6e56e7e27f4a92e16105b
 
 name:           ssm
 version:        0.1.0.0
@@ -46,7 +46,6 @@ library
       SSM.Language
       SSM.Pretty
       SSM.Pretty.Syntax
-      SSM.TestProgram
       SSM.Util.Default
       SSM.Util.HughesList
       SSM.Util.Operators
