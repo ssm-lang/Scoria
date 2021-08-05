@@ -29,6 +29,7 @@ dependencies:
 - QuickCheck
 - text
 - parser-combinators
+- megaparsec
 - extra
 - mainland-pretty
 - time

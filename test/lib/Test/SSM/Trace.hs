@@ -77,28 +77,6 @@ doParseOutput slug outs = do
         QC.monitor $ QC.counterexample x
         fail $ "Parse error: line " ++ show ln
 
--- | Parse the output line by line; report line number upon failure.
-doParseOutputOld :: Monad m => Slug -> String -> QC.PropertyM m Tr.Trace
-doParseOutputOld slug outs = do
-  cTrace <- go 1 $ lines outs
-  reportOnFail slug "executed.out" $ show cTrace
-  return cTrace
- where
-  go :: Monad m => Int -> [String] -> QC.PropertyM m [Tr.Event]
-  go _  []       = fail "Parse error: empty output"
-  go ln (x : xs) = case readMaybe x of
-    Just (e :: Tr.Event)
-      | null xs -> if Tr.isTerminal e
-        then return [e]
-        else fail "Parse error: trace ended with non-terminal event"
-      | otherwise -> go (ln + 1) xs <&> (e :)
-    Nothing
-      | -- Skip empty line
-        null x -> go (ln + 1) xs
-      | otherwise -> do
-        QC.monitor $ QC.counterexample x
-        fail $ "Parse error: line " ++ show ln
-
 -- | Interpret a program and produce a (potentially trucated) output trace.
 --
 -- The evaluation is functionally limited to the number of steps specified by

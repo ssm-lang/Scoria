@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 53adacbd0ccacd2919b175d8b14135f7b3ca07c8baf6e56e7e27f4a92e16105b
+-- hash: 1dafe55a9500114e41b93ca10d57b6dbf1c0cf1a92a3d69c266c48b25f59915c
 
 name:           ssm
 version:        0.1.0.0
@@ -42,6 +42,7 @@ library
       SSM.Interpret.Internal
       SSM.Interpret.Interpreter
       SSM.Interpret.Trace
+      SSM.Interpret.TraceParser
       SSM.Interpret.Types
       SSM.Language
       SSM.Pretty
@@ -63,6 +64,7 @@ library
     , extra
     , language-c-quote
     , mainland-pretty
+    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
@@ -109,6 +111,7 @@ test-suite 1-regression-high
     , hspec
     , language-c-quote
     , mainland-pretty
+    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
@@ -167,6 +170,7 @@ test-suite 2-regression-low
     , hspec
     , language-c-quote
     , mainland-pretty
+    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
@@ -213,6 +217,7 @@ test-suite 3-arbitrary
     , hspec
     , language-c-quote
     , mainland-pretty
+    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter

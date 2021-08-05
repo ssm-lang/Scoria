@@ -1,5 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
-module SSM.Interpret.TraceParser where
+module SSM.Interpret.TraceParser
+    ( parseEvent
+    , parseEventS
+    , parseTrace
+    , parseTraceS
+    ) where
 
 import           SSM.Core.Syntax
 import           SSM.Interpret.Trace
@@ -46,14 +51,17 @@ parens p = do
     pChar ')'
     return a
 
+-- | Parse a single event
 parseEvent :: T.Text -> Maybe Event
 parseEvent t = case parse pEvent "" t of
     Left  e -> Nothing
     Right r -> Just r
 
+-- | Parse a single event, from a string. Synonymous to @parseEvent . Data.Text.Pack@
 parseEventS :: String -> Maybe Event
 parseEventS = parseEvent . T.pack
 
+-- | Parses the output found on stdout when running the C program
 parseTrace :: T.Text -> Trace
 parseTrace t = go $ T.lines t
   where
@@ -63,6 +71,8 @@ parseTrace t = go $ T.lines t
         Left  e -> error $ show e
         Right r -> r : go ts
 
+{- | Parses the output found on stdout when running the C program, but works on a
+@String@ instead of @Text@. Synonymous to @parseTrace . Data.Text.pack@. -}
 parseTraceS :: String -> Trace
 parseTraceS = parseTrace . T.pack
 
@@ -106,14 +116,14 @@ pEvent = choice
     -- | Parse a `SSM.Internal.Trace.Event.ActVar`
     pActVar :: Parser Event
     pActVar = do
-        pSymbol "ActVar"
+        pSymbol actVar
         varval <- parens pVarVal
         return $ ActVar varval
 
     -- | Parse a `SSM.Internal.Trace.Event.DriverEventQueueStatus`
     pDriverEventQueueStatus :: Parser Event
     pDriverEventQueueStatus = do
-        pSymbol "DriverEventQueueStatus"
+        pSymbol driverEventQueueStatus
         l <- some digitChar
         pSpace
         t <- some digitChar
@@ -122,7 +132,7 @@ pEvent = choice
     -- | Parse a `SSM.Internal.Trace.Event.ActSensitize`
     pActSensitize :: Parser Event
     pActSensitize = do
-        pSymbol "ActSensitize"
+        pSymbol actSensitize
         pChar '"'
         v <- some alphaNumChar
         pChar '"'
@@ -130,45 +140,43 @@ pEvent = choice
 
     -- | Parse a `SSM.Internal.Trace.Event.TerminatedOk`
     pTerminatedOk :: Parser Event
-    pTerminatedOk = pSymbol "TerminatedOk" *> return TerminatedOk
+    pTerminatedOk = pSymbol terminatedOk *> return TerminatedOk
 
     -- | Parse a `SSM.Internal.Trace.Event.ExhaustedMicrotick`
     pExhaustedMicrotick :: Parser Event
     pExhaustedMicrotick =
-        pSymbol "ExhaustedMicrotick" *> return ExhaustedMicrotick
+        pSymbol exhaustedMicrotick *> return ExhaustedMicrotick
 
     -- | Parse a `SSM.Internal.Trace.Event.ExhaustedActQueue`
     pExhaustedActQueue :: Parser Event
-    pExhaustedActQueue =
-        pSymbol "ExhaustedActQueue" *> return ExhaustedActQueue
+    pExhaustedActQueue = pSymbol exhaustedActQueue *> return ExhaustedActQueue
 
     -- | Parse a `SSM.Internal.Trace.Event.ExhaustedEventQueue`
     pExhaustedEventQueue :: Parser Event
     pExhaustedEventQueue =
-        pSymbol "ExhaustedEventQueue" *> return ExhaustedEventQueue
+        pSymbol exhaustedEventQueue *> return ExhaustedEventQueue
 
     -- | Parse a `SSM.Internal.Trace.Event.ExhaustedMemory`
     pExhaustedMemory :: Parser Event
-    pExhaustedMemory = pSymbol "ExhaustedMemory" *> return ExhaustedMemory
+    pExhaustedMemory = pSymbol exhaustedMemory *> return ExhaustedMemory
 
     -- | Parse a `SSM.Internal.Trace.Event.ExhaustedPriority`
     pExhaustedPriority :: Parser Event
-    pExhaustedPriority =
-        pSymbol "ExhaustedPriority" *> return ExhaustedPriority
+    pExhaustedPriority = pSymbol exhaustedPriority *> return ExhaustedPriority
 
     -- | Parse a `SSM.Internal.Trace.Event.CrashInvalidTime`
     pCrashInvalidTime :: Parser Event
-    pCrashInvalidTime = pSymbol "CrashInvalidTime" *> return CrashInvalidTime
+    pCrashInvalidTime = pSymbol crashInvalidTime *> return CrashInvalidTime
 
     -- | Parse a `SSM.Internal.Trace.Event.CrashArithmeticError`
     pCrashArithmeticError :: Parser Event
     pCrashArithmeticError =
-        pSymbol "CrashArithmeticError" *> return CrashArithmeticError
+        pSymbol crashArithmeticError *> return CrashArithmeticError
 
     -- | Parse a `SSM.Internal.Trace.Event.CrashUnforeseen`
     pCrashUnforeseen :: Parser Event
     pCrashUnforeseen = do
-        pSymbol "CrashUnforeseen"
+        pSymbol crashUnforeseen
         pChar '"'
         reason <- someTill alphaNumChar "\""
         return $ CrashUnforeseen reason
@@ -196,7 +204,7 @@ pType = choice [parseType, parens parseType]
     -- | Parse a reference type
     reftype :: Parser Type
     reftype = do
-        pSymbol "Ref"
+        pSymbol ref
         t <- pType
         return $ Ref t
 
@@ -233,21 +241,17 @@ pConcreteValue = choice [pUnitType, try (parens pIntegralVal)]
     -- | Parse `SSM.Intepret.Trace.ConcreteValue.IntegralVal`
     pIntegralVal :: Parser ConcreteValue
     pIntegralVal = do
-        pSymbol "IntegralVal"
+        pSymbol integralVal
         num <- pInteger
         return $ IntegralVal num
 
     -- | Parse `SSM.Intepret.Trace.ConcreteValue.UnitType`
     pUnitType :: Parser ConcreteValue
-    pUnitType = pSymbol "UnitType" *> return UnitType
+    pUnitType = pSymbol unitType *> return UnitType
 
 pInteger :: Parser Integer
 pInteger = choice
     [read <$> some digitChar, (negate . read) <$> (pChar '-' *> some digitChar)]
-
-
-
-
 
 actStepBegin :: T.Text
 actStepBegin = "ActStepBegin"
@@ -258,25 +262,55 @@ actActivate = "ActActivate"
 varVal :: T.Text
 varVal = "VarVal"
 
+actVar :: T.Text
+actVar = "ActVar"
 
+driverEventQueueStatus :: T.Text
+driverEventQueueStatus = "DriverEventQueueStatus"
 
+actSensitize :: T.Text
+actSensitize = "ActSensitize"
 
+terminatedOk :: T.Text
+terminatedOk = "TerminatedOk"
 
+exhaustedMicrotick :: T.Text
+exhaustedMicrotick = "ExhaustedMicrotick"
 
+exhaustedActQueue :: T.Text
+exhaustedActQueue = "ExhaustedActQueue"
 
+exhaustedEventQueue :: T.Text
+exhaustedEventQueue = "ExhaustedEventQueue"
 
+exhaustedMemory :: T.Text
+exhaustedMemory = "ExhaustedMemory"
 
+exhaustedPriority :: T.Text
+exhaustedPriority = "ExhaustedPriority"
 
+crashInvalidTime :: T.Text
+crashInvalidTime = "CrashInvalidTime"
 
+crashArithmeticError :: T.Text
+crashArithmeticError = "CrashArithmeticError"
 
+crashUnforeseen :: T.Text
+crashUnforeseen = "CrashUnforeseen"
 
+integralVal :: T.Text
+integralVal = "IntegralVal"
 
+unitType :: T.Text
+unitType = "UnitType"
 
+ref :: T.Text
+ref = "Ref"
 
-
-
-
-
+{- ********** Code for testing the parser **********-}
+{- I am testing it by generating values of the types we are parsing, showing them
+and then parsing them again. Since the C-code is meant to output text that looks
+the same like showed Haskell values, this should be an OK strategy. -}
 
 prop_Parse_Type :: Type -> Bool
 prop_Parse_Type t = isRight $ parse pType "" $ T.pack (show t)
