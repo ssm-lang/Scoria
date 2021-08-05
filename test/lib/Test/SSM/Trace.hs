@@ -26,6 +26,7 @@ import           SSM.Interpret                  ( InterpretConfig(..)
                                                 , interpret
                                                 )
 import qualified SSM.Interpret.Trace           as Tr
+import qualified SSM.Interpret.TraceParser     as TrP
 
 import           SSM.Util.Default               ( Default(..) )
 
@@ -57,6 +58,28 @@ diffColumnWidth, diffNumWidth :: Int
 -- | Parse the output line by line; report line number upon failure.
 doParseOutput :: Monad m => Slug -> String -> QC.PropertyM m Tr.Trace
 doParseOutput slug outs = do
+  cTrace <- go 1 $ lines outs
+  reportOnFail slug "executed.out" $ show cTrace
+  return cTrace
+ where
+  go :: Monad m => Int -> [String] -> QC.PropertyM m [Tr.Event]
+  go _  []       = fail "Parse error: empty output"
+  go ln (x : xs) = case TrP.parseEventS x of
+    Just e
+      | null xs -> if Tr.isTerminal e
+        then return [e]
+        else fail "Parse error: trace ended with non-terminal event"
+      | otherwise -> go (ln + 1) xs <&> (e :)
+    Nothing
+      | -- Skip empty line
+        null x -> go (ln + 1) xs
+      | otherwise -> do
+        QC.monitor $ QC.counterexample x
+        fail $ "Parse error: line " ++ show ln
+
+-- | Parse the output line by line; report line number upon failure.
+doParseOutputOld :: Monad m => Slug -> String -> QC.PropertyM m Tr.Trace
+doParseOutputOld slug outs = do
   cTrace <- go 1 $ lines outs
   reportOnFail slug "executed.out" $ show cTrace
   return cTrace
