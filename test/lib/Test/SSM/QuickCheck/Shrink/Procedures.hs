@@ -35,12 +35,12 @@ shrinkManyProcedures p = concat $ for [ removeCallsFromProgram h1 p
   where
 
     -- | Procedures that can be removed (all except the programs entry point)
-    toremove :: [String]
+    toremove :: [Ident]
     toremove = delete (entry p) (Map.keys (funs p))
 
     {- | each of h1, h2 & h3 contains the names of a third of the programs procedures
     each. -}
-    h1,h2,h3 :: [String]
+    h1,h2,h3 :: [Ident]
     (h1,h2,h3) = let l       = length toremove `div` 3
                      (h1,r)  = mysplit l toremove
                      (h2,h3) = mysplit l r
@@ -62,7 +62,7 @@ shrinkManyProcedures p = concat $ for [ removeCallsFromProgram h1 p
 program but where now no procedure every forks any of the deleted procedures.
 Returns @Nothing@ if the program was unchanged (in which case no shrinking could
 have occured). -}
-removeCallsFromProgram :: [String] -> Program -> Maybe Program
+removeCallsFromProgram :: [Ident] -> Program -> Maybe Program
 removeCallsFromProgram deletedfuns p =
   let -- delete the procedures from the program
       funs'   = foldl (\m' n -> Map.delete n m') (funs p) deletedfuns
@@ -81,7 +81,7 @@ removeCallsFromProgram deletedfuns p =
 
 {- | Take a list of procedures that are deleted and a procedure, and return a new
 procedure where any call to the deleted procedures have been deleted. -}
-removeCallsFromProcedure :: [String] -> Procedure -> Procedure
+removeCallsFromProcedure :: [Ident] -> Procedure -> Procedure
 removeCallsFromProcedure funs p =
   let body' = removeCallsFromStmts (body p)
   in p { body = body' }
@@ -122,7 +122,7 @@ removeUnusedProcedures p = case removeCallsFromProgram (toremove' p) p of
   where
      {- | Traverses a program and builds a set of all the names of procedures
      that are used. Procedures can only be references from `Fork` statements. -}
-     usedInStm :: [Stm] -> Set.Set String
+     usedInStm :: [Stm] -> Set.Set Ident
      usedInStm []     = Set.empty
      usedInStm (x:xs) = case x of
        If c thn els -> let s1 = usedInStm thn
@@ -142,7 +142,7 @@ removeUnusedProcedures p = case removeCallsFromProgram (toremove' p) p of
 
      {- | Takes a program and returns a list of names of procedures that are unused can that
      can be safely removed all together. -}
-     toremove' :: Program -> [String]
+     toremove' :: Program -> [Ident]
      toremove' p = let -- Set of procedures that exist
                        s1 = Set.fromList $ Map.keys (funs p)
                        -- Set of procedures that are used

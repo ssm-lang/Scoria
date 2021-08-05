@@ -1,8 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
+--
+-- hash: c2e101a8ecce9cc9e63605cdec88c6f68d5fc8e0f93ac548e53e1d3338294e97
 
 name:           ssm
 version:        0.1.0.0
@@ -30,6 +32,7 @@ library
       SSM.Backend.C.Exp
       SSM.Backend.C.Identifiers
       SSM.Backend.C.MainLoop
+      SSM.Backend.C.Types
       SSM.Compile
       SSM.Core.Syntax
       SSM.Frontend.Box
@@ -43,8 +46,11 @@ library
       SSM.Language
       SSM.Pretty
       SSM.Pretty.Syntax
+      SSM.TestProgram
+      SSM.Util.Default
       SSM.Util.HughesList
       SSM.Util.Operators
+      SSM.Util.State
   other-modules:
       Paths_ssm
   hs-source-dirs:
@@ -55,11 +61,9 @@ library
     , base >=4.7 && <5
     , bytestring
     , containers
-    , deepseq
     , extra
     , language-c-quote
     , mainland-pretty
-    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
@@ -67,12 +71,11 @@ library
     , time
   default-language: Haskell2010
 
-test-suite 1-regression-low
+test-suite 1-regression-high
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Output
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
@@ -87,39 +90,26 @@ test-suite 1-regression-low
       Test.SSM.QuickCheck.Shrink.Wait
       Test.SSM.QuickCheck.Util
       Test.SSM.Report
-      Regression.EmptyFunSpec
-      Regression.FiveForkerSpec
-      Regression.FlipFlopLoopSpec
-      Regression.LaterAssignOverwriteSpec
-      Regression.ManyContsSpec
-      Regression.MultOverflowIndirectSpec
-      Regression.MultOverflowSpec
-      Regression.Test1623630765726Spec
-      Regression.Test1623691869727Spec
-      Regression.Test1624504860035Spec
-      Regression.Test1624507133117Spec
-      Regression.Test1624511150452Spec
-      Regression.Test1625068655962Spec
-      Regression.Test1625475651426Spec
-      Regression.Test1625480635361Spec
+      Test.SSM.Trace
+      Regression.RecurseForeverSpec
+      Regression.SenderReceiverSpec
       Paths_ssm
   hs-source-dirs:
       test/lib
-      test/regression-low
+      test/regression-high
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
+    , Diff
     , QuickCheck
     , base >=4.7 && <5
     , bytestring
     , containers
-    , deepseq
     , directory
     , extra
     , hspec
     , language-c-quote
     , mainland-pretty
-    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
@@ -129,12 +119,11 @@ test-suite 1-regression-low
     , time
   default-language: Haskell2010
 
-test-suite 2-arbitrary
+test-suite 2-regression-low
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Output
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
@@ -149,6 +138,65 @@ test-suite 2-arbitrary
       Test.SSM.QuickCheck.Shrink.Wait
       Test.SSM.QuickCheck.Util
       Test.SSM.Report
+      Test.SSM.Trace
+      Regression.CancelBothSpec
+      Regression.CancelLaterSpec
+      Regression.EmptyFunSpec
+      Regression.FiveForkerSpec
+      Regression.FlipFlopLoopSpec
+      Regression.LaterAssignOverwriteSpec
+      Regression.LaterWaitSpec
+      Regression.ManyContsSpec
+      Regression.MultOverflowIndirectSpec
+      Regression.MultOverflowSpec
+      Regression.RecurseExhaustDepthSpec
+      Regression.RecurseForeverSpec
+      Paths_ssm
+  hs-source-dirs:
+      test/lib
+      test/regression-low
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      BinderAnn
+    , Diff
+    , QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , directory
+    , extra
+    , hspec
+    , language-c-quote
+    , mainland-pretty
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , process
+    , ssm
+    , text
+    , time
+  default-language: Haskell2010
+
+test-suite 3-arbitrary
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Test.SSM.Build
+      Test.SSM.Prop
+      Test.SSM.QuickCheck.Generator
+      Test.SSM.QuickCheck.Shrink
+      Test.SSM.QuickCheck.Shrink.Expressions
+      Test.SSM.QuickCheck.Shrink.Fork
+      Test.SSM.QuickCheck.Shrink.GetRefs
+      Test.SSM.QuickCheck.Shrink.If
+      Test.SSM.QuickCheck.Shrink.ProcedureArity
+      Test.SSM.QuickCheck.Shrink.Procedures
+      Test.SSM.QuickCheck.Shrink.References
+      Test.SSM.QuickCheck.Shrink.Statements
+      Test.SSM.QuickCheck.Shrink.Wait
+      Test.SSM.QuickCheck.Util
+      Test.SSM.Report
+      Test.SSM.Trace
       Paths_ssm
   hs-source-dirs:
       test/lib
@@ -156,17 +204,16 @@ test-suite 2-arbitrary
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       BinderAnn
+    , Diff
     , QuickCheck
     , base >=4.7 && <5
     , bytestring
     , containers
-    , deepseq
     , directory
     , extra
     , hspec
     , language-c-quote
     , mainland-pretty
-    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter

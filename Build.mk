@@ -24,7 +24,6 @@
 #
 #   SSMDIR := absolute path of the directory where this Makefile lives
 #   PLATFORMDIR := platform-specific directory
-#   RUNTIMEDIR := directory where platform-generic runtime is located
 #
 # ---
 #
@@ -123,11 +122,6 @@ distclean:
 else # make was invoked from inside build directory
 ################################################################################
 
-# These variables are used by runtime and platform Build.mk to orient themselves
-RUNTIMEDIR := $(SSMDIR)/runtime
-PLATFORMDIR := $(SSMDIR)/platform/$(PLATFORM)
-
-
 ########
 # Compiler frontend (.hs => .c)
 ##
@@ -147,15 +141,54 @@ $(SSM_SRCS:%.hs=%.c): %.c: %.hs
 	stack --stack-yaml $(SSMDIR)/stack.yaml runghc $< -- -o $@
 
 ########
-# Compiler backend/C compilation (.c => .o)
+# Runtime library compilation (.c => .a)
 ##
 
-include $(RUNTIMEDIR)/Build.mk
+# These variables are used by runtime and platform Build.mk to orient themselves
+RUNTIMEDIR := $(SSMDIR)/runtime
+PLATFORMDIR := $(SSMDIR)/platform/$(PLATFORM)
+
 include $(PLATFORMDIR)/Build.mk
+
+####
+# Build platform-generic runtime library
+##
+
+CPPFLAGS += -I $(RUNTIMEDIR)/include
+LDLIBS += -lssm
+
+ifdef SSM_ACT_QUEUE_SIZE
+CPPFLAGS += -DSSM_ACT_QUEUE_SIZE=$(SSM_ACT_QUEUE_SIZE)
+endif
+
+ifdef SSM_EVENT_QUEUE_SIZE
+CPPFLAGS += -DSSM_EVENT_QUEUE_SIZE=$(SSM_EVENT_QUEUE_SIZE)
+endif
+
+vpath %.c $(RUNTIMEDIR)/src
+
+RUNTIMESRC := $(notdir $(wildcard $(RUNTIMEDIR)/src/*.c))
+
+libssm.a : libssm.a($(RUNTIMESRC:%.c=%.o))
+
+SRCS += $(RUNTIMESRC)
+LIBS += libssm.a
+
+
+########
+# Compiler backend/C compilation (.c => .o)
+##
 
 # The generated code uses the pattern x << y - z without unnecessary
 # parentheses, which GCC goes out of its way to warn about without this flag.
 CFLAGS += -Wno-parentheses
+
+# Arbitrary programs may contain silly-looking tautological comparisons that GCC
+# warns about; we tell GCC to mind its own business.
+CFLAGS += -Wno-tautological-compare
+
+# Forbid incompatible pointer types, which are likely due to CodeGen errors.
+CFLAGS += -Werror=incompatible-pointer-types
 
 # Generated C files are placed in the build directory.
 # TODO: remove this, or at least make this specific to the trace platform.
@@ -209,11 +242,11 @@ LDFLAGS += -L.
 
 # Declare an executable target for each generated C file.
 #
-# Note that due to the way Make's implicit rules are defined, this will cause
-# the linker command to contain both libLIB.a (from the pre-requisite) and -lLIB
-# (from the LDLIBS) flag.
-$(GEN_SRCS:%.c=%): %: %.o $(LIBS)
-$(SSM_SRCS:%.hs=%): %: %.o $(LIBS)
+# We redefine Make's implicit rule so that we can specify libLIB.a as
+# a prerequisite without it being directly linked in (instead it should be
+# linked in using -lLIB in LDLIBS).
+$(GEN_SRCS:%.c=%) $(SSM_SRCS:%.hs=%): %: %.o $(LIBS)
+	$(CC) $(LDFLAGS) $< $(LDLIBS) -o $@
 
 # .elf and hex file generation rules.
 %.elf :

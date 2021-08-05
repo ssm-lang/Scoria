@@ -11,81 +11,100 @@ import           System.Directory               ( createDirectoryIfMissing )
 import           System.Exit                    ( ExitCode(..) )
 import           System.Process                 ( readProcessWithExitCode )
 
-import           SSM.Backend.C.Compile          ( compile )
-import           SSM.Core.Syntax                ( Program )
+import           SSM.Compile                    ( SSMProgram(..)
+                                                , toC
+                                                )
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
 
 import           Test.SSM.Report                ( (</>)
                                                 , Slug(..)
+                                                , reportDir
                                                 , reportFileOnFail
                                                 , reportOnFail
+                                                , reportScriptOnFail
                                                 , reportUnixError
-                                                , slugStr
                                                 )
-
--- | Tick limit compiled into the test target.
-tickLimit :: Maybe Int
-tickLimit = Just 7500
 
 -- | Name of the build platform.
 buildPlatform :: String
 buildPlatform = "trace"
 
--- | Size of the act queue
-actQueueSize :: Int
-actQueueSize = 1024
-
--- | Size of the act queue
-eventQueueSize :: Int
-eventQueueSize = 2048
-
--- | Obtain the target name from a test Slug.
---
--- Use the magic target name "arbitrary" for randomly generated tests to avoid
--- unnecessarily polluting the build directory.
-slugTarget :: Slug -> String
-slugTarget (SlugTimestamp _          ) = "arbitrary"
-slugTarget (SlugNamed     "arbitrary") = undefined -- TODO: resolve name clash
-slugTarget (SlugNamed     n          ) = n
-
 -- | Compile an SSM program to a C program's string representation.
-doCompile :: Monad m => Slug -> Program -> QC.PropertyM m String
+doCompile :: (Monad m, SSMProgram p) => Slug -> p -> QC.PropertyM m String
 doCompile slug program = do
-  let cSrc = compile program True tickLimit
-  reportOnFail slug (slugTarget slug ++ ".c") cSrc
+  let cSrc = toC program
+  reportOnFail slug (show slug ++ ".c") cSrc
   return cSrc
 
--- | Try to compile a C program using make.
+-- | Compile a C program using make; returns path of the built executable.
 --
 -- Note that the paths here are all relative to the root of the project path,
 -- since we are already relying on stack test always executing there.
---
--- TODO: It's probably possible to just inspect the returncode here
--- TODO: pass in DEBUG flag here
 doMake :: Slug -> String -> (Int, Int) -> QC.PropertyM IO FilePath
 doMake slug cSrc (aQSize, eQSize) = do
+  -- Remove and recreate build directory to ensure clean build.
   _   <- make "clean"
   out <- make "make_builddir"
 
-  let execPath = dropWhileEnd isSpace out </> target
-  QC.run $ writeFile (execPath ++ ".c") cSrc
+  let -- Where the build will take place
+      buildDir = dropWhileEnd isSpace out
+      -- Path of executable in build directory
+      execPath = buildDir </> target
+      -- Path of C source file in build directory
+      srcPath  = execPath ++ ".c"
 
+  -- Add C source file to build directory, so that it can be compiled.
+  QC.run $ writeFile srcPath cSrc
+  -- Add helper script to make the previous step easier.
+  reportScriptOnFail slug "load-c"
+    $ loadCScript (reportDir slug </> target ++ ".c") buildDir srcPath
+
+  -- Build executable.
   _ <- make target
-  reportFileOnFail slug execPath (slugStr slug ++ ".exe")
+
+  -- Add executable to report directory upon failure.
+  reportFileOnFail slug execPath (target ++ ".exe")
 
   return execPath
  where
-  target = slugTarget slug
-  mkArgs t = ["PLATFORM=" ++ buildPlatform, "ACT_QUEUE_SIZE=" ++ show aQSize, "EVENT_QUEUE_SIZE=" ++ show eQSize, t]
+  target = show slug
+
+  -- | Build list of parameters to pass to make, in addition to target 't'.
+  mkArgs t =
+    [ "PLATFORM=" ++ buildPlatform
+    , "SSM_ACT_QUEUE_SIZE=" ++ show aQSize
+    , "SSM_EVENT_QUEUE_SIZE=" ++ show eQSize
+    , t
+    ]
+
+  -- | Call make with target, and handle error(s), if any.
   make t = do
     (code, out, err) <- QC.run $ readProcessWithExitCode "make" (mkArgs t) ""
     case code of
       ExitSuccess   -> return out
       ExitFailure c -> do
         reportUnixError slug ("make" : mkArgs t) (c, out, err)
-        fail "Make target error"
+        fail $ "Make error: " ++ t
+
+  -- | Generate helper script that loads the generated .c file in the report
+  --   directory back into the build directory.
+  loadCScript src dstDir dst = unlines
+    [ "#!/usr/bin/env bash"
+    , ""
+    , "GITROOT=\"$(git rev-parse --show-toplevel)\""
+    , ""
+    , "echo mkdir -p \"" ++ dstDir ++ "\""
+    , "mkdir -p \"" ++ dstDir ++ "\""
+    , ""
+    , "echo cp \"$GITROOT/" ++ src ++ "\" \"" ++ dst ++ "\""
+    , "cp \"$GITROOT/" ++ src ++ "\" \"" ++ dst ++ "\""
+    , ""
+    , "echo \"# Copied generated .c file into the build directory\""
+    , "echo \"# To build, run:\""
+    , "echo \"    make " ++ unwords (mkArgs target) ++ "\""
+    ]
 
 -- | Test compiled program with valgrind.
 --
@@ -112,7 +131,8 @@ doVg slug fp = do
 doExec :: Slug -> FilePath -> QC.PropertyM IO (ExitCode, String, String)
 doExec slug fp = do
   res@(_, out, err) <- QC.run $ readProcessWithExitCode fp [] ""
-  QC.assert $ null err
   reportOnFail slug "exec.out" out
   reportOnFail slug "exec.err" err
-  return res
+  if null err
+    then return res
+    else fail "Unexpected stderr output (see trace-report)"

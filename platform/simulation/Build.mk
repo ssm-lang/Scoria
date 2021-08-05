@@ -12,3 +12,14 @@ CC = gcc
 AR = ar
 
 CPPFLAGS += -I $(PLATFORMDIR)/include
+
+vpath %.c $(PLATFORMDIR)/src
+
+LDLIBS += -lplatform
+LIBS += libplatform.a
+
+PLATFORMSRC = ssm-main.c
+
+SRCS += $(PLATFORMSRC)
+
+libplatform.a : libplatform.a($(PLATFORMSRC:%.c=%.o))

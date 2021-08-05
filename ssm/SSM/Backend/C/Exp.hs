@@ -8,23 +8,25 @@ module SSM.Backend.C.Exp
 
 import SSM.Core.Syntax
 import SSM.Backend.C.Identifiers
+import SSM.Backend.C.Types
 
 import Language.C.Quote.GCC ( cexp )
 import qualified Language.C.Syntax             as C
 
 -- | Generate C expression from 'SSMExp' and a list of local variables.
-genExp :: [String] -> SSMExp -> C.Exp
-genExp _  (Var _ n              ) = [cexp|acts->$id:n.value|]
+genExp :: [Reference] -> SSMExp -> C.Exp
+genExp _  (Var t n              )
+  | baseType t == TEvent = [cexp|0|]
+  | otherwise            = [cexp|acts->$id:(identName n).value|]
 genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
 genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
 genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename i64) $int:i|]
 genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename u64) $int:i|]
 genExp _  (Lit _ (LBool   True )) = [cexp|true|]
 genExp _  (Lit _ (LBool   False)) = [cexp|false|]
+genExp _  (Lit _ (LEvent       )) = [cexp|0|]
 genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
-genExp ls (UOpR _ (n, _) Changed)
-  | n `elem` ls = [cexp|event_on(&acts->$id:n.sv)|]
-  | otherwise   = [cexp|event_on(&acts->$id:n->sv)|]
+genExp ls (UOpR _ r Changed) = [cexp|$id:event_on($exp:(refSV r ls))|]
 -- | Circumvent optimizations that take advantage of C's undefined signed
 -- integer wraparound behavior. FIXME: remove this hack, which is probably not
 -- robust anyway if C is aggressive about inlining.

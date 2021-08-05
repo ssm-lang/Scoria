@@ -1,3 +1,6 @@
+-- | Empty program.
+--
+-- If this fails, something is severely broken with the compiler pipeline.
 module Regression.EmptyFunSpec where
 
 import Data.Map (fromList)
@@ -7,7 +10,7 @@ import qualified Test.Hspec as H
 import qualified Test.Hspec.QuickCheck as H
 
 p :: Program
-p = Program {entry = "fun1", args = [], funs = fromList [("fun1",Procedure {name = "fun1", arguments = [], body = []})]}
+p = Program {entry = Ident "fun1" Nothing, args = [], funs = fromList [(Ident "fun1" Nothing,Procedure {name = Ident "fun1" Nothing, arguments = [], body = []})], globalReferences = []}
 
 spec :: H.Spec
 spec = T.correctSpec "EmptyFun" p
