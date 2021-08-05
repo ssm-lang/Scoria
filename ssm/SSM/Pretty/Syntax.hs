@@ -19,7 +19,7 @@ import SSM.Core.Syntax
       UnaryOpE(..),
       UnaryOpR(..),
       Procedure(body, name, arguments),
-      Program(funs, args, entry, global_references),
+      Program(..),
       Stm(..),
       Ident(..))
 import SSM.Util.HughesList ( fromHughes, toHughes, Hughes )
@@ -33,7 +33,7 @@ emit str = do
     tell $ toHughes [replicate ind ' ' ++ str]
 
 indent :: PP () -> PP ()
-indent pp = local (+2) pp
+indent = local (+2)
 
 intercalateM :: Monad m => m a -> [m a] -> m [a]
 intercalateM _ [] = return []
@@ -58,7 +58,7 @@ prettyProgram' p = do
     indent $ emit $ prettyApp (entry p, args p)
     emit ""
     emit "global variables:"
-    prettyGlobals (global_references p)
+    prettyGlobals (globalReferences p)
     emit ""
     intercalateM (emit "") $ map prettyProcedure (Map.elems (funs p))
     return ()
@@ -109,7 +109,7 @@ prettyStm stm = case stm of
     While c bdy    -> do
         emit $ concat ["while(", prettySSMExp c, ") {"]
         indent $ mapM_ prettyStm bdy
-        emit $ "}"
+        emit "}"
     Skip           -> return ()
     After d r v    -> emit $ concat [ "after "
                                     , prettySSMExp d

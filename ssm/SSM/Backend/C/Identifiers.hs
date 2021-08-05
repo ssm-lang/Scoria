@@ -7,7 +7,7 @@ module SSM.Backend.C.Identifiers
     CIdent(..)
 
       -- * Identifiers recognized by the C runtime system.
-  , initializeProgram
+  , initialize_program
   , top_return
   , fork
   , act_enter
@@ -80,8 +80,8 @@ import           SSM.Backend.C.Types
 type CIdent = String
 
 -- | Name of top level program initialization function
-initializeProgram :: CIdent
-initializeProgram = "initializeProgram"
+initialize_program :: CIdent
+initialize_program = "ssm_initialize_program"
 
 -- | Name of top level return step-function
 top_return :: CIdent

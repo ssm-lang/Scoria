@@ -26,7 +26,7 @@ p = Program
                   }
                 )
               ]
-  , global_references = []}
+  , globalReferences = []}
 
 spec :: H.Spec
 spec = T.correctSpec "CancelLater" p

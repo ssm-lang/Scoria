@@ -42,11 +42,11 @@ compile_ program = (compUnit, includes)
  where
   -- | The file to generate, minus include statements
   compUnit :: [C.Definition]
-  compUnit = globals ++ preamble ++ decls ++ defns ++ initProg ++ entryPointSymbol
+  compUnit = globals ++ preamble ++ decls ++ defns ++ initProg
 
   -- | Global reference declarations
   globals :: [C.Definition]
-  globals = genGlobals (global_references program)
+  globals = genGlobals (globalReferences program)
 
   initProg :: [C.Definition]
   initProg = genInitProgram program
@@ -63,13 +63,6 @@ compile_ program = (compUnit, includes)
   -- | Utility function to distribute @concat@ over a tuple
   concat2 :: ([[a]], [[b]]) -> ([a], [b])
   concat2 (x, y) = (concat x, concat y)
-
-  -- | Entry point to begin the SSM computation from
-  entryPointSymbol :: [C.Definition]
-  entryPointSymbol = [cunit|
-    $ty:act_t *(*$id:entry_point)($ty:act_t *, $ty:priority_t, $ty:depth_t) =
-      $id:initializeProgram;
-  |]
 
 {- | State maintained while compiling a 'Procedure'.
 
@@ -124,37 +117,25 @@ actm = "act"
 them. These variables can be accessed without an activation record. -}
 genGlobals :: [(Ident, Type)] -> [C.Definition]
 genGlobals globals = globalvars
-  where
-    -- | The global variable declarations
-    globalvars :: [C.Definition]
-    globalvars = map (\(n,t) -> [cedecl| $ty:(svt_ t) $id:(identName n); |]) globals
+ where
+  -- | The global variable declarations
+  globalvars :: [C.Definition]
+  globalvars =
+    map (\(n, t) -> [cedecl| $ty:(svt_ t) $id:(identName n); |]) globals
 
 -- | Generate the entry point of a program - the first thing to be ran.
 genInitProgram :: Program -> [C.Definition]
 genInitProgram p = [cunit|
-
-  $ty:act_t *$id:initializeProgram( $params:genParams ){
-    $items:initGlobals
-    $stm:callEntry
+  void $id:initialize_program(void) {
+    $items:(map initGlobal $ globalReferences p)
+    $id:fork($id:(enter_ $ identName $ entry p)
+        (&ssm_top_parent, SSM_ROOT_PRIORITY, SSM_ROOT_DEPTH));
   }
-
   |]
-
-  where
-    -- | Parameters to the programs entry point
-    genParams :: [C.Param]
-    genParams = [cparams|$ty:act_t *caller, $ty:priority_t priority, $ty:depth_t depth|]
-
-    -- | Initialize the global references, if any exist
-    initGlobals :: [C.BlockItem]
-    initGlobals =
-      map (\(n,t) -> [citem| $id:(initialize_ t)(&$id:(identName n)); |]) (global_references p)
-
-    -- | Call the entry function of the first procedure to run
-    callEntry :: C.Stm
-    callEntry = [cstm| return $id:(enter_ entryName)(caller, priority, depth); |]
-      where
-        entryName = identName (entry p)
+ where
+  -- | Initialize global reference
+  initGlobal :: (Ident, Type) -> C.BlockItem
+  initGlobal (n, t) = [citem| $id:(initialize_ t)(&$id:(identName n));|]
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]
@@ -226,9 +207,8 @@ genStruct = do
  where
   -- | Turn a @(Ident, Type)@ pair into a C function parameter
   param :: (Ident, Type) -> C.FieldGroup
-  param (n,t)
-    | isReference t = [csdecl|$ty:(svt_ t) *$id:(identName n);|]
-    | otherwise     = [csdecl|$ty:(svt_ t) $id:(identName n);|]
+  param (n, t) | isReference t = [csdecl|$ty:(svt_ t) *$id:(identName n);|]
+               | otherwise     = [csdecl|$ty:(svt_ t) $id:(identName n);|]
 
   {- | Return a scheduled variable field, of the same type and name as the
   argument reference. -}
@@ -254,7 +234,7 @@ genEnter = do
       act'    = act_ actname -- hack to use this typename as expr in macros
       enter   = enter_ actname
       step    = step_ actname
-      params  =
+      params =
         [cparams|$ty:act_t *caller, $ty:priority_t priority, $ty:depth_t depth|]
           ++ map param (arguments p)
   return
@@ -280,26 +260,27 @@ genEnter = do
  where
   -- | TODO: This only works because we don't have nested Refs (yet)
   param :: (Ident, Type) -> C.Param
-  param (n,t)
-    | isReference t = [cparam|$ty:(svt_ t) *$id:(identName n)|]
-    | otherwise     = [cparam|$ty:(basetype t) $id:(identName n)|]
+  param (n, t) | isReference t = [cparam|$ty:(svt_ t) *$id:(identName n)|]
+               | otherwise     = [cparam|$ty:(basetype t) $id:(identName n)|]
 
   -- | initialize a parameter
   initParam :: (Ident, Type) -> [C.Stm]
-  initParam (n,t)
-    | isReference t = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
-    | baseType t == TEvent =
-      [ [cstm|$id:(initialize_ t)(&$id:acts->$id:(identName n));|],
-        [cstm|$id:(assign_ t)(&$id:acts->$id:(identName n), $id:actg->priority);|]]
-    | otherwise               =
-      [ [cstm|$id:(initialize_ t)(&acts->$id:(identName n));|]
+  initParam (n, t)
+    | isReference t
+    = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
+    | baseType t == TEvent
+    = [ [cstm|$id:(initialize_ t)(&$id:acts->$id:(identName n));|]
+      , [cstm|$id:(assign_ t)(&$id:acts->$id:(identName n), $id:actg->priority);|]
+      ]
+    | otherwise
+    = [ [cstm|$id:(initialize_ t)(&acts->$id:(identName n));|]
       , [cstm|acts->$id:(identName n).value = $id:(identName n);|]
       ]
 
   -- | Initialize a local reference
   initLocal :: Reference -> [C.Stm]
   initLocal ref =
-    [ [cstm| $id:(initialize_ (refType ref))(&acts->$id:(refName ref));|] ]
+    [[cstm| $id:(initialize_ (refType ref))(&acts->$id:(refName ref));|]]
 
   -- | Initialize a trigger
   initTrig :: Int -> C.Stm
@@ -325,7 +306,7 @@ genStep = do
     actt          = act_ actname -- hack to use this typename as expr in macros
     step          = step_ actname
 
-    actStepBeginS = show $ T.ActStepBegin $ actname
+    actStepBeginS = show $ T.ActStepBegin actname
     actLocalVarS nt = show $ T.ActVar $ varFmt nt
 
     debugLocal :: Reference -> C.Stm
@@ -336,25 +317,25 @@ genStep = do
       = [cstm|if ($exp:initialized) $id:debug_trace($exp:fmt, $exp:val);|]
      where
       initialized :: C.Exp
-      initialized = [cexp|$id:acts->$id:(refName r).sv.last_updated != $id:never|]
-      
+      initialized =
+        [cexp|$id:acts->$id:(refName r).sv.last_updated != $id:never|]
+
       fmt :: C.Exp
       fmt = [cexp|$string:(actLocalVarS (refIdent r, refType r))|]
-      
+
       val :: C.Exp
       val = [cexp|$id:acts->$id:(refName r).value|]
 
     debugArg :: (Ident, Type) -> C.Stm
-    debugArg (n,t) | baseType t == TEvent = [cstm|$id:debug_trace($exp:fmt);|]
-                   | otherwise            = [cstm|$id:debug_trace($exp:fmt, $exp:val);|]
+    debugArg (n, t) | baseType t == TEvent = [cstm|$id:debug_trace($exp:fmt);|]
+                    | otherwise = [cstm|$id:debug_trace($exp:fmt, $exp:val);|]
      where
       fmt :: C.Exp
       fmt = [cexp|$string:(actLocalVarS (n, t))|]
-      
+
       val :: C.Exp
-      val
-        | isReference t = [cexp|$id:acts->$id:(identName n)->value|]
-        | otherwise     = [cexp|$id:acts->$id:(identName n).value|]
+      val | isReference t = [cexp|$id:acts->$id:(identName n)->value|]
+          | otherwise     = [cexp|$id:acts->$id:(identName n).value|]
 
     -- | Dequeue any outstanding event on a reference
     dequeue :: Reference -> C.Stm
@@ -406,7 +387,7 @@ genCase (GetRef n t r) = do
   let rvar = refIdent r
       lvar = identName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
-      rhs = refVal r locs
+      rhs  = refVal r locs
   addLocal $ makeDynamicRef n t
   case baseType t of
     TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
@@ -417,7 +398,7 @@ genCase (SetRef r e) = do
   let lvar = refIdent r
       t    = refType r
       lhs  = refPtr r locs
-      rhs = genExp locs e
+      rhs  = genExp locs e
   case baseType t of
     TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
     _ ->
@@ -448,7 +429,7 @@ genCase (After d r v) = do
       t    = refType r
       del  = genExp locs d
       lhs  = refPtr r locs
-      rhs = genExp locs v
+      rhs  = genExp locs v
   -- Note that the semantics of 'After' and 'later_' differ---the former
   -- expects a relative time, whereas the latter takes an absolute time.
   -- Thus we add now() in the code we generate.
@@ -460,9 +441,9 @@ genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts
   locs <- gets locals
-  let trigs = zip [1 ..] $ map (flip refSV locs) ts
+  let trigs = zip [1 ..] $ map (`refSV` locs) ts
   return
-    $ map getTrace ts
+    $  map getTrace      ts
     ++ map sensitizeTrig trigs
     ++ [ [cstm| $id:actg->pc = $int:caseNum; |]
        , [cstm| return; |]
@@ -471,11 +452,12 @@ genCase (Wait ts) = do
     ++ fmap desensitizeTrig trigs
  where
   sensitizeTrig :: (Int, C.Exp) -> C.Stm
-  sensitizeTrig (i, trig) = [cstm|$id:sensitize($exp:trig, &$id:acts->$id:(trig_ i));|]
+  sensitizeTrig (i, trig) =
+    [cstm|$id:sensitize($exp:trig, &$id:acts->$id:(trig_ i));|]
 
-  desensitizeTrig :: (Int, C.Exp) -> C.Stm  
-  desensitizeTrig (i,_) = [cstm|$id:desensitize(&$id:acts->$id:(trig_ i));|]
-  
+  desensitizeTrig :: (Int, C.Exp) -> C.Stm
+  desensitizeTrig (i, _) = [cstm|$id:desensitize(&$id:acts->$id:(trig_ i));|]
+
   getTrace :: Reference -> C.Stm
   getTrace r = [cstm|$id:debug_trace($string:event);|]
     where event = show $ T.ActSensitize $ refName r
@@ -484,7 +466,8 @@ genCase (Fork cs) = do
   caseNum <- nextCase
   let
     genCall :: Int -> (Ident, [Either SSMExp Reference]) -> C.Stm
-    genCall i (r, as) = [cstm|$id:fork($id:(enter_ (identName r))($args:enterArgs));|]
+    genCall i (r, as) =
+      [cstm|$id:fork($id:(enter_ (identName r))($args:enterArgs));|]
      where
       enterArgs =
         [ [cexp|actg|]
@@ -493,12 +476,12 @@ genCase (Fork cs) = do
           ]
           ++ map genArg as
       genArg :: Either SSMExp Reference -> C.Exp
-      genArg (Left e) = genExp locs e
+      genArg (Left  e) = genExp locs e
       genArg (Right r) = refPtr r locs
 
     newDepth :: C.Exp
     newDepth = [cexp|actg->depth - $int:depthSub|]
-    
+
     depthSub :: Int
     depthSub =
       (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Int

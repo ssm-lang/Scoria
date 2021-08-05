@@ -39,4 +39,4 @@ p = Program
         }
       )
     ]
-  , global_references = []}
+  , globalReferences = []}

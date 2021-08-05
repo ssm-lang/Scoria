@@ -295,7 +295,7 @@ data Program = Program
       -- | Map that associates procedure names with their definitions.
     , funs :: Map.Map Ident Procedure
       -- | Name and type of references that exist in the global scope.
-    , global_references :: [(Ident, Type)]
+    , globalReferences :: [(Ident, Type)]
     }
     deriving (Show, Read, Eq)
 

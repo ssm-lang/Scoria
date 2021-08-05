@@ -106,7 +106,7 @@ import           SSM.Interpret.Types
 -- | Create initial global variable storage
 globals :: Program -> ST s (Map.Map Ident (Var s))
 globals p = do
-  vars <- forM (global_references p) $ \(id,t) -> do
+  vars <- forM (globalReferences p) $ \(id,t) -> do
     let initval = defaultValue (dereference t)
     v <- newVar' initval maxBound
     return (id, v)
@@ -370,10 +370,10 @@ writeRef r e = do
                 Just ref -> do v <- eval e
                                writeVar ref v
                 Nothing -> error $ "interpreter error - can't find variable " ++
-                                   (refName r)
+                                   refName r
 
         -- static references can always be read from the global state
-        else do globals <- gets global_variables
+        else do globals <- gets globalVariables
                 case Map.lookup (refIdent r) globals of
                     Just ref -> eval e >>= \v -> writeVar ref v
                     Nothing  -> error $ "interpreter error - can't find global variable :"
@@ -390,7 +390,7 @@ writeLocal n e = do
             Just ref -> do v <- eval e
                            writeVar ref v
             Nothing -> error $ "interpreter error - can't find variable " ++
-                               (identName n)
+                               identName n
 
 writeDynamic_ :: Ident -> SSMExp -> Interp s ()
 writeDynamic_ n e = do
@@ -421,14 +421,14 @@ wasWritten r =
             Nothing -> case Map.lookup (refIdent r) (localrefs p) of
                 Just v  -> wasWritten' v
                 Nothing ->
-                    error $ "interpreter error - can not find variable " ++ (refName r)
+                    error $ "interpreter error - can not find variable " ++ refName r
 
     else do
-        globs <- gets global_variables
+        globs <- gets globalVariables
         case Map.lookup (refIdent r) globs of
             Just v -> wasWritten' v
             Nothing ->
-                error $ "interpreter error - can not find global variable " ++ (refName r)
+                error $ "interpreter error - can not find global variable " ++ refName r
   where
       {- | Returns a `SSM.Core.Syntax.SSMExp` representing if the @Var s@ was written
       to or not in the current instant. -}
@@ -491,14 +491,14 @@ lookupRef ref =
         Nothing  -> case Map.lookup (refIdent ref) (localrefs p) of
           Just ref -> return ref
           Nothing  ->
-            error $ "interpreter error - can not find variable " ++ (refName ref)
+            error $ "interpreter error - can not find variable " ++ refName ref
 
     else do
-      globs <- gets global_variables
+      globs <- gets globalVariables
       case Map.lookup (refIdent ref) globs of
           Just ref -> return ref
           Nothing ->
-            error $ "interpreter error - can not find global variable " ++ (refName ref)
+            error $ "interpreter error - can not find global variable " ++ refName ref
 
 -- | Make a procedure wait for writes to the variable identified by the name @v@.
 sensitize :: Reference -> Interp s ()
@@ -563,7 +563,7 @@ fork :: (Ident, [Either SSMExp Reference])   -- ^ Procedure to fork (name and ar
      -> Interp s ()
 fork (n,args) prio dep par = do
     p <- lookupProcedure n
-    variables <- params $ (fst . unzip . arguments) p
+    variables <- params $ (map fst . arguments) p
     enqueue $ Proc (identName n) prio dep 0 (Just par) variables Map.empty Nothing (body p)
   where
       -- | Return an initial variable storage for the new process. Expression arguments are turned into
@@ -572,7 +572,7 @@ fork (n,args) prio dep par = do
       params names = do
           st <- gets process
           currenttime <- getNow
-          m <- flip mapM (zip names args) $ \(n, a) ->
+          m <- forM (zip names args) $ \(n, a) ->
               case a of
                   Left e  -> do v <- eval e
                                 v' <- lift' (newVar' v currenttime)
@@ -588,15 +588,7 @@ fork (n,args) prio dep par = do
           st <- get
           case Map.lookup n (procedures st) of
               Just p -> return p
-              Nothing -> error $ "interpreter error - trying to fork non-existant procedure"
-
-
-
-
-
-
-
-
+              Nothing -> error "interpreter error - trying to fork non-existant procedure"
 
 {-********** Process termination **********-}
 
