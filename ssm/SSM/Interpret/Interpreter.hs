@@ -41,10 +41,11 @@ interpret config program = runST $ do
   fun <- case Map.lookup (entry p) (funs p) of
     Just p' -> return p'
     Nothing ->
-      error $ "Interpreter error: cannot find entry point: " ++ entry p
+      error $ "Interpreter error: cannot find entry point: " ++ identName (entry p)
   vars        <- params p
+  globs       <- globals p
   -- Run the interpret action and produce it's output
-  (_, events) <- runWriterT $ runStateT run $ initState config p 0 $ mkProc
+  (_, events) <- runWriterT $ runStateT run $ initState config p 0 globs $ mkProc
     config
     p
     fun
@@ -111,11 +112,11 @@ step = do
         continue
 
       SetRef r e -> do
-        writeRef (fst r) e
+        writeRef r e
         continue
 
       SetLocal n _ e2 -> do
-        writeRef (getVarName n) e2
+        writeLocal n e2
         continue
 
       If c thn els -> do
@@ -139,7 +140,7 @@ step = do
         continue
 
       Wait refs -> do
-        forM_ refs $ \(r, _) -> tellEvent $ T.ActSensitize r
+        forM_ refs $ \r -> tellEvent $ T.ActSensitize $ refName r
         wait refs
         yield
 
@@ -147,7 +148,7 @@ step = do
         setRunningChildren (length procs)
         parent <- addressToSelf
         pdeps  <- pds (length procs)
-        forM_ procs $ \(f, _) -> tellEvent $ T.ActActivate f
+        forM_ procs $ \(f, _) -> tellEvent $ T.ActActivate $ identName f
         forM_ (zip procs pdeps) $ \(f, (prio, dep)) -> fork f prio dep parent
         yield
 

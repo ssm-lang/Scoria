@@ -8,31 +8,34 @@ import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 
+import SSM.Compile
+import SSM.Interpret
+
 p :: Program
 p = Program
-  { entry = "fun0"
+  { entry = Ident "fun0" Nothing
   , args  = []
   , funs  = fromList
-    [ ( "fun0"
+    [ ( Ident "fun0" Nothing
       , Procedure
-        { name      = "fun0"
+        { name      = Ident "fun0" Nothing
         , arguments = []
         , body      =
-          [ NewRef (Fresh "v0") (Ref TBool) (Lit TBool (LBool False))
+          [ NewRef (Ident "v0" Nothing) TBool (Lit TBool (LBool False))
           , After (Lit TUInt64 (LUInt64 1))
-                  ("v0", Ref TBool)
+                  (Dynamic (Ident "v0" Nothing, Ref TBool))
                   (Lit TBool (LBool True))
-          , NewRef (Fresh "v1")
-                   (Ref TBool)
-                   (UOpR TBool ("v0", Ref TBool) Changed)
+          , NewRef (Ident "v1" Nothing)
+                   TBool
+                   (UOpR TBool (Dynamic (Ident "v0" Nothing, Ref TBool)) Changed)
           , After (Lit TUInt64 (LUInt64 3872))
-                  ("v1", Ref TBool)
+                  (Dynamic (Ident "v1" Nothing, Ref TBool))
                   (Lit TBool (LBool False))
           ]
         }
       )
     ]
-  }
+  , global_references = []}
 
 spec :: H.Spec
 spec = T.correctSpec "CancelBoth" p

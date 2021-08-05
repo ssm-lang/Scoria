@@ -7,6 +7,7 @@ module SSM.Backend.C.Identifiers
     CIdent(..)
 
       -- * Identifiers recognized by the C runtime system.
+  , initializeProgram
   , top_return
   , fork
   , act_enter
@@ -54,6 +55,13 @@ module SSM.Backend.C.Identifiers
     -- * Debug-/trace-specific macros
   , debug_microtick
   , debug_trace
+
+    -- * Accessing references
+    {- | These functions help the code generator compile a reference into a
+    C-expression that references the same reference. -}
+  , refPtr
+  , refVal
+  , refSV
   ) where
 
 import           SSM.Core.Syntax
@@ -70,6 +78,10 @@ import           SSM.Backend.C.Types
 
 -- | Type alias for C identifiers.
 type CIdent = String
+
+-- | Name of top level program initialization function
+initializeProgram :: CIdent
+initializeProgram = "initializeProgram"
 
 -- | Name of top level return step-function
 top_return :: CIdent
@@ -202,3 +214,32 @@ debug_microtick = "SSM_DEBUG_MICROTICK"
 
 debug_trace :: CIdent
 debug_trace = "SSM_DEBUG_TRACE"
+
+{- | Given a reference and a list of local references, this function will return
+a C expression that holds a pointer to the reference. -}
+refPtr :: Reference -> [Reference] -> C.Exp
+refPtr r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| &acts->$id:(refName r) |]
+    else [cexp| acts->$id:(refName r)  |]
+-- Static references can be referenced without an activation record
+refPtr r@(Static _) _ = [cexp| &$id:(refName r) |]
+
+{- | Given a reference and a list of local references, this function will return a
+C expression that holds a pointer to the internal sv-component of the processes
+activation record. -}
+refSV :: Reference -> [Reference] -> C.Exp
+refSV r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| &acts->$id:(refName r).sv |]
+    else [cexp| &acts->$id:(refName r)->sv|]
+refSV r@(Static _) _ = [cexp| &$id:(refName r).sv|]
+
+{- | Given a Reference, this function will return a C expression that holds
+the value of that reference. -}
+refVal :: Reference -> [Reference] -> C.Exp
+refVal r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| acts->$id:(refName r).value|]
+    else [cexp| acts->$id:(refName r)->value|]
+refVal r@(Static _) _      = [cexp| $id:(refName r).value |]

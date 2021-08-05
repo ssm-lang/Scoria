@@ -41,12 +41,12 @@ arities p =
 {- | Remove the @i@th parameter from a procedure. The procedure body is rewritten to
 contain no references to the deleted parameter, and any expression that depended on
 that parameter has been either rewritten or deleted. -}
-shrinkProcedureBody :: String     -- ^ Name of parameter to remove
+shrinkProcedureBody :: Ident      -- ^ Name of parameter to remove
                     -> Procedure  -- ^ Procedure that it was removed from
                     -> Procedure
 shrinkProcedureBody n p = p { body = removeVars [n] refs (body p) }
   where
-    refs = filter (isReference . snd) (arguments p)
+    refs = map (\(n,t) -> makeDynamicRef n t) $ filter (isReference . snd) (arguments p)
 
 {- | If a procedure @n@ has had its @i@th parameter removed, this function will remove
 the @i@th arguments from calls to @n@ from any other procedure @m@, and @m@ might
@@ -54,7 +54,7 @@ event be the same procedure @n@. -}
 shrinkProcedureCalls :: {- Index in the parameter list of of the parameter that was
                         deleted from the procedure @n@. -}
                         Int
-                     -> String     -- ^ name of procedure @n@
+                     -> Ident      -- ^ name of procedure @n@
                      -> Procedure  -- ^ procedure @m@ to alter to reflect the changes
                      -> Procedure
 shrinkProcedureCalls i n p = p { body = removeCalls i (body p) }

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e4ae0356ebdbf942d586b9745ba489b7225ef3651337dc7a437dd0fccd633830
+-- hash: c2e101a8ecce9cc9e63605cdec88c6f68d5fc8e0f93ac548e53e1d3338294e97
 
 name:           ssm
 version:        0.1.0.0
@@ -31,6 +31,7 @@ library
       SSM.Backend.C.Compile
       SSM.Backend.C.Exp
       SSM.Backend.C.Identifiers
+      SSM.Backend.C.MainLoop
       SSM.Backend.C.Types
       SSM.Compile
       SSM.Core.Syntax
@@ -45,9 +46,11 @@ library
       SSM.Language
       SSM.Pretty
       SSM.Pretty.Syntax
+      SSM.TestProgram
       SSM.Util.Default
       SSM.Util.HughesList
       SSM.Util.Operators
+      SSM.Util.State
   other-modules:
       Paths_ssm
   hs-source-dirs:
@@ -73,7 +76,6 @@ test-suite 1-regression-high
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Compile
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
@@ -122,7 +124,6 @@ test-suite 2-regression-low
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Compile
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
@@ -181,7 +182,6 @@ test-suite 3-arbitrary
   main-is: Spec.hs
   other-modules:
       Test.SSM.Build
-      Test.SSM.Compile
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink

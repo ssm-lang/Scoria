@@ -9,18 +9,18 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = "fun0"
+  { entry = Ident "fun0" Nothing
   , args  = []
   , funs  = fromList
-              [ ( "fun0"
-                , Procedure { name      = "fun0"
+              [ ( Ident "fun0" Nothing
+                , Procedure { name      = Ident "fun0" Nothing
                             , arguments = []
-                            , body      = [Fork [("fun0", []), ("fun1", [])]]
+                            , body      = [Fork [(Ident "fun0" Nothing, []), (Ident "fun1" Nothing, [])]]
                             }
                 )
-              , ("fun1", Procedure { name = "fun1", arguments = [], body = [] })
+              , (Ident "fun1" Nothing, Procedure { name = Ident "fun1" Nothing, arguments = [], body = [] })
               ]
-  }
+  , global_references = []}
 
 spec :: H.Spec
 spec = T.correctSpec "RecurseExhaustDepth" p
