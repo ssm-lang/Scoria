@@ -26,6 +26,7 @@ import           SSM.Interpret                  ( InterpretConfig(..)
                                                 , interpret
                                                 )
 import qualified SSM.Interpret.Trace           as Tr
+import qualified SSM.Interpret.TraceParser     as TrP
 
 import           SSM.Util.Default               ( Default(..) )
 
@@ -63,8 +64,8 @@ doParseOutput slug outs = do
  where
   go :: Monad m => Int -> [String] -> QC.PropertyM m [Tr.Event]
   go _  []       = fail "Parse error: empty output"
-  go ln (x : xs) = case readMaybe x of
-    Just (e :: Tr.Event)
+  go ln (x : xs) = case TrP.parseEventS x of
+    Just e
       | null xs -> if Tr.isTerminal e
         then return [e]
         else fail "Parse error: trace ended with non-terminal event"
