@@ -7,7 +7,8 @@ import SSM.Core.Syntax
       SSMLit(..),
       SSMExp(..),
       Reference,
-      Type(..) ) 
+      Type(..),
+      getVarName ) 
 import qualified Data.Map as Map
 import System.IO ()
 
@@ -137,50 +138,56 @@ typeCheckStmLst (h:t) env = do
     typeCheckStmLst t env
 
 -- | Typechecks one forked procedure
-typeCheckProc :: (String, [Either SSMExp Reference]) -> Map.Map String Entry -> Either TypeError ()
-typeCheckProc (name, args) env = 
-    Right ()
+typeCheckForkProc :: Map.Map String Entry -> (String, [Either SSMExp Reference]) -> Either TypeError ()
+typeCheckForkProc env (name, args) = 
+    typeCheckArgs args params env
     where params = maybe [] takeParams (Map.lookup name env)
 
 -- | Typechecks forked procedures
 typeCheckForkProcs :: [(String, [Either SSMExp Reference])] -> Map.Map String Entry -> Either TypeError ()
-typeCheckForkProcs [] env = Right ()
-typeCheckForkProcs ((name, expOrRefs):t) env = do
-    res <- typeCheckForkProcArg expOrRefs
-    typeCheckForkProcs t
+typeCheckForkProcs procs env = 
+    mapM_ (typeCheckForkProc env) procs
 
 -- | Typechecks a statement
-typeCheckStm :: Stm -> Map.Map String Entry -> Either TypeError ()
-typeCheckStm Skip env = Right ()
+typeCheckStm :: Stm -> Map.Map String Entry -> Either TypeError (Map.Map String Entry)
+typeCheckStm Skip env = Right env
 typeCheckStm (After exp1 ref exp2) env
-    | isInt (unwrapExpRes (typeCheckExp exp1 env)) = expMatchRef ref exp2 env
+    | isInt (unwrapExpRes (typeCheckExp exp1 env)) = do 
+        expMatchRef ref exp2 env
+        return env
     | otherwise =
         Left TypeError {expected=TInt32, actual=unwrapExpRes (typeCheckExp exp1 env), msg="The time parameter is not an int"}
-typeCheckStm (Wait refs) env = Right ()
+typeCheckStm (Wait refs) env = Right env
 typeCheckStm (While expr stms) env 
-    | unwrapExpRes (typeCheckExp expr env) == TBool =
+    | unwrapExpRes (typeCheckExp expr env) == TBool = do
         typeCheckStmLst stms env
+        return env
     | otherwise =
         Left TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr env), msg="Condition variable is not a bool"}
 typeCheckStm (If expr stms1 stms2) env
-    | unwrapExpRes (typeCheckExp expr env) == TBool =
+    | unwrapExpRes (typeCheckExp expr env) == TBool = do
         typeCheckStmLst (stms1 ++ stms2) env
+        return env
     | otherwise =
         Left TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr env), msg="Condition variable is not a bool"}
-typeCheckStm (Fork procs) env = typeCheckForkProcs procs
+typeCheckStm (Fork procs) env = do
+    typeCheckForkProcs procs env
+    return env
 typeCheckStm (SetLocal name ty expr) env
-    | actualTy == ty = Right ()
+    | actualTy == ty = Right (Map.insert (getVarName name) VarEntry {ty=ty} env) 
     | otherwise =
         Left TypeError {expected=ty, actual=actualTy, msg="Expression doesn't match the type of the local variable"}
     where
         actualTy = unwrapExpRes (typeCheckExp expr env)
 typeCheckStm (GetRef name ty ref) env
-    | ty == typeCheckRef ref = Right ()
+    | ty == typeCheckRef ref = Right env
     | otherwise =
         Left TypeError {expected=typeCheckRef ref, actual=ty, msg="Reference type doesn't match the claimed type"}
-typeCheckStm (SetRef ref expr) env = expMatchRef ref expr env
+typeCheckStm (SetRef ref expr) env = do
+    expMatchRef ref expr env
+    return env
 typeCheckStm (NewRef name ty expr) env 
-    | actualTy == ty = Right ()
+    | actualTy == ty = Right env
     | otherwise =
         Left TypeError {expected=ty, actual=actualTy, msg="Expression type doesn't match the reference"}
     where
