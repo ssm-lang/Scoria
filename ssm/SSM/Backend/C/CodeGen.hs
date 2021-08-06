@@ -333,7 +333,7 @@ genStep = do
 
       val :: C.Exp
       val | isReference t = [cexp|$id:acts->$id:(identName n)->value|]
-          | otherwise     = [cexp|$id:acts->$id:(identName n).value|]
+          | otherwise     = [cexp|$id:acts->$id:(identName n)|]
 
     -- | Dequeue any outstanding event on a reference
     dequeue :: Reference -> C.Stm
@@ -397,8 +397,8 @@ genCase (SetLocal n t e) = do
       rhs  = genExp locs e
   case baseType t of
     TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
-    _ ->
-      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
+    _ -> return [[cstm| $id:acts->$id:(identName n) = $exp:rhs; |]]
+--      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (If c t e) = do
   locs <- gets locals
   let cnd = genExp locs c
