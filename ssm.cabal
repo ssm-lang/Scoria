@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1dafe55a9500114e41b93ca10d57b6dbf1c0cf1a92a3d69c266c48b25f59915c
+-- hash: 002d06de1762ad6c32f459b4ecfdc8a6987fdd5fe89b87dfe25fc9c2427f32b4
 
 name:           ssm
 version:        0.1.0.0
@@ -68,6 +68,33 @@ library
     , mtl
     , parser-combinators
     , prettyprinter
+    , text
+    , time
+  default-language: Haskell2010
+
+test-suite 0-trace-parser
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_ssm
+  hs-source-dirs:
+      test/trace-parser
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      BinderAnn
+    , QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , extra
+    , hspec
+    , language-c-quote
+    , mainland-pretty
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , ssm
     , text
     , time
   default-language: Haskell2010

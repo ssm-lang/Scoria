@@ -1,28 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
-module SSM.Interpret.TraceParser
-    ( parseEvent
-    , parseEventS
-    , parseTrace
-    , parseTraceS
-    ) where
+module SSM.Interpret.TraceParser where
 
 import           SSM.Core.Syntax
 import           SSM.Interpret.Trace
 
-import           Data.Either
 import           Data.List.NonEmpty
 import           Data.Maybe
 import qualified Data.Set                      as Set
 import qualified Data.Text                     as T
 import           Data.Void
-import           Data.Word
 
 import           Text.Megaparsec
 import qualified Text.Megaparsec.Byte.Lexer    as Lexer
 import           Text.Megaparsec.Char
-
-import           Debug.Trace
-import           Test.QuickCheck
 
 type Parser a = Parsec Void T.Text a
 
@@ -252,138 +242,3 @@ pConcreteValue = choice [pUnitType, try (parens pIntegralVal)]
 pInteger :: Parser Integer
 pInteger = choice
     [read <$> some digitChar, (negate . read) <$> (pChar '-' *> some digitChar)]
-
-actStepBegin :: T.Text
-actStepBegin = "ActStepBegin"
-
-actActivate :: T.Text
-actActivate = "ActActivate"
-
-varVal :: T.Text
-varVal = "VarVal"
-
-actVar :: T.Text
-actVar = "ActVar"
-
-driverEventQueueStatus :: T.Text
-driverEventQueueStatus = "DriverEventQueueStatus"
-
-actSensitize :: T.Text
-actSensitize = "ActSensitize"
-
-terminatedOk :: T.Text
-terminatedOk = "TerminatedOk"
-
-exhaustedMicrotick :: T.Text
-exhaustedMicrotick = "ExhaustedMicrotick"
-
-exhaustedActQueue :: T.Text
-exhaustedActQueue = "ExhaustedActQueue"
-
-exhaustedEventQueue :: T.Text
-exhaustedEventQueue = "ExhaustedEventQueue"
-
-exhaustedMemory :: T.Text
-exhaustedMemory = "ExhaustedMemory"
-
-exhaustedPriority :: T.Text
-exhaustedPriority = "ExhaustedPriority"
-
-crashInvalidTime :: T.Text
-crashInvalidTime = "CrashInvalidTime"
-
-crashArithmeticError :: T.Text
-crashArithmeticError = "CrashArithmeticError"
-
-crashUnforeseen :: T.Text
-crashUnforeseen = "CrashUnforeseen"
-
-integralVal :: T.Text
-integralVal = "IntegralVal"
-
-unitType :: T.Text
-unitType = "UnitType"
-
-ref :: T.Text
-ref = "Ref"
-
-{- ********** Code for testing the parser **********-}
-{- I am testing it by generating values of the types we are parsing, showing them
-and then parsing them again. Since the C-code is meant to output text that looks
-the same like showed Haskell values, this should be an OK strategy. -}
-
-prop_Parse_Type :: Type -> Bool
-prop_Parse_Type t = isRight $ parse pType "" $ T.pack (show t)
-
-prop_Parse_VarVal :: VarVal -> Bool
-prop_Parse_VarVal vv = isRight $ parse pVarVal "" $ T.pack (show vv)
-
-prop_Parse_ConcreteValue :: ConcreteValue -> Bool
-prop_Parse_ConcreteValue cv =
-    isRight $ parse pConcreteValue "" $ T.pack (show cv)
-
-prop_Parse_Event :: Event -> Bool
-prop_Parse_Event e = isRight $ parse pEvent "" $ T.pack (show e)
-
-prop_Parse_Trace :: Trace -> Bool
-prop_Parse_Trace tr =
-    if tr == parseTrace (T.unlines $ Prelude.map (T.pack . show) tr)
-        then True
-        else traceShowId tr == traceShowId
-            (parseTrace (T.unlines $ Prelude.map (T.pack . show) tr))
-
-runtests :: IO ()
-runtests = do
-    quickCheck $ withMaxSuccess 10000 prop_Parse_Type
-    quickCheck $ withMaxSuccess 10000 prop_Parse_VarVal
-    quickCheck $ withMaxSuccess 10000 prop_Parse_ConcreteValue
-    quickCheck $ withMaxSuccess 10000 prop_Parse_Event
-    quickCheck $ withMaxSuccess 10000 prop_Parse_Trace
-
-instance Arbitrary Type where
-    arbitrary = elements $ basetypes ++ Prelude.map Ref basetypes
-        where basetypes = [TUInt8, TUInt64, TInt32, TInt64, TBool, TEvent]
-
-instance Arbitrary ConcreteValue where
-    arbitrary = oneof [IntegralVal <$> arbitrary, return UnitType]
-
-instance Arbitrary VarVal where
-    arbitrary = do
-        i <- arbitrary :: Gen Word8
-        let varIdent = "v" ++ show i
-        t  <- arbitrary
-        cv <- arbitrary
-        return $ VarVal varIdent t cv
-
-instance Arbitrary Event where
-    arbitrary = oneof
-        [ return ExhaustedActQueue
-        , return ExhaustedEventQueue
-        , return ExhaustedMicrotick
-        , return ExhaustedPriority
-        , return ExhaustedMemory
-        , return CrashArithmeticError
-        , return CrashInvalidTime
-        , do
-            reason <- oneof [return "error1", return "error2", return "error3"]
-            return $ CrashUnforeseen reason
-        , return TerminatedOk
-        , ActSensitize <$> arbVar
-        , ActActivate <$> arbAct
-        , ActVar <$> arbitrary
-        , ActStepBegin <$> arbAct
-        , do
-            i <- arbitrary
-            t <- arbitrary
-            return $ DriverEventQueueStatus i t
-        ]
-      where
-        arbVar :: Gen String
-        arbVar = do
-            i <- arbitrary :: Gen Word8
-            return $ "v" ++ show i
-
-        arbAct :: Gen String
-        arbAct = do
-            i <- arbitrary :: Gen Word8
-            return $ "fun" ++ show i
