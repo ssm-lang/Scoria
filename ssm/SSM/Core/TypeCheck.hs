@@ -96,6 +96,9 @@ typeCheckProcs :: Map.Map String Procedure -> Map.Map String Entry -> Either Typ
 typeCheckProcs funs env = mapM_ (typeCheckProcedure env) (Map.elems funs)
 
 -- | Typechecks a program
+-- We will first check whether the provided arguments for the entrypoint procedure
+-- have the correct types
+-- And then, we will check each procedure stored in the [funs] map
 typeCheckProgram :: Program -> Map.Map String Entry -> Either TypeError ()
 typeCheckProgram Program {entry=e, args=as, funs=fs} env = do
     res <- typeCheckArgs as params env
@@ -134,8 +137,8 @@ typeCheckExp (BOp ty e1 e2 op) env =
 typeCheckStmLst :: [Stm] -> Map.Map String Entry -> Either TypeError ()
 typeCheckStmLst [] env = Right ()
 typeCheckStmLst (h:t) env = do
-    res <- typeCheckStm h env
-    typeCheckStmLst t env
+    newEnv <- typeCheckStm h env
+    typeCheckStmLst t newEnv
 
 -- | Typechecks one forked procedure
 typeCheckForkProc :: Map.Map String Entry -> (String, [Either SSMExp Reference]) -> Either TypeError ()
@@ -148,7 +151,8 @@ typeCheckForkProcs :: [(String, [Either SSMExp Reference])] -> Map.Map String En
 typeCheckForkProcs procs env = 
     mapM_ (typeCheckForkProc env) procs
 
--- | Typechecks a statement
+-- | Typechecks a statement, meanwhile generating a new environment 
+-- with the definitions in the statement
 typeCheckStm :: Stm -> Map.Map String Entry -> Either TypeError (Map.Map String Entry)
 typeCheckStm Skip env = Right env
 typeCheckStm (After exp1 ref exp2) env
