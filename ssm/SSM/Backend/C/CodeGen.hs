@@ -268,10 +268,10 @@ genEnter = do
   initParam (n, t)
     | isReference t
     = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
-    | baseType t == TEvent
-    = [ [cstm|$id:(initialize_ t)(&$id:acts->$id:(identName n));|]
-      , [cstm|$id:(assign_ t)(&$id:acts->$id:(identName n), $id:actg->priority);|]
-      ]
+--    | baseType t == TEvent
+--    = [ [cstm|$id:(initialize_ t)(&$id:acts->$id:(identName n));|]
+--      , [cstm|$id:(assign_ t)(&$id:acts->$id:(identName n), $id:actg->priority);|]
+--      ]
     | otherwise
     = [ [cstm|acts->$id:(identName n) = $id:(identName n);|] ]
 
@@ -396,7 +396,7 @@ genCase (SetLocal n t e) = do
       lhs  = [cexp|&$id:acts->$id:lvar|]
       rhs  = genExp locs e
   case baseType t of
-    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
+--    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
     _ -> return [[cstm| $id:acts->$id:(identName n) = $exp:rhs; |]]
 --      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (If c t e) = do

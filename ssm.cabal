@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 002d06de1762ad6c32f459b4ecfdc8a6987fdd5fe89b87dfe25fc9c2427f32b4
+-- hash: 6573f29e908523f235835605a7bebd57b40eb94a62d4814901bb19aff3972368
 
 name:           ssm
 version:        0.1.0.0
