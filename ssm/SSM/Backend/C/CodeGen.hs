@@ -266,14 +266,8 @@ genEnter = do
   -- | initialize a parameter
   initParam :: (Ident, Type) -> [C.Stm]
   initParam (n, t)
-    | isReference t
-    = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
---    | baseType t == TEvent
---    = [ [cstm|$id:(initialize_ t)(&$id:acts->$id:(identName n));|]
---      , [cstm|$id:(assign_ t)(&$id:acts->$id:(identName n), $id:actg->priority);|]
---      ]
-    | otherwise
-    = [ [cstm|acts->$id:(identName n) = $id:(identName n);|] ]
+    | isReference t = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
+    | otherwise     = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
 
   -- | Initialize a local reference
   initLocal :: Reference -> [C.Stm]
@@ -395,10 +389,7 @@ genCase (SetLocal n t e) = do
   let lvar = identName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
       rhs  = genExp locs e
-  case baseType t of
---    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
-    _ -> return [[cstm| $id:acts->$id:(identName n) = $exp:rhs; |]]
---      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
+  return [[cstm| $id:acts->$id:(identName n) = $exp:rhs;|]]
 genCase (If c t e) = do
   locs <- gets locals
   let cnd = genExp locs c
