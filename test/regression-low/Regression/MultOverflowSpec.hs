@@ -9,7 +9,8 @@ import           SSM.Core.Syntax
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
-
+import SSM.Compile
+import SSM.Pretty
 p :: Program
 p = Program
   { entry = Ident "fun1" Nothing

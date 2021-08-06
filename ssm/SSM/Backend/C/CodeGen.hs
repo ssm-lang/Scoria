@@ -208,7 +208,7 @@ genStruct = do
   -- | Turn a @(Ident, Type)@ pair into a C function parameter
   param :: (Ident, Type) -> C.FieldGroup
   param (n, t) | isReference t = [csdecl|$ty:(svt_ t) *$id:(identName n);|]
-               | otherwise     = [csdecl|$ty:(svt_ t) $id:(identName n);|]
+               | otherwise     = [csdecl|$ty:(basetype t) $id:(identName n);|]
 
   {- | Return a scheduled variable field, of the same type and name as the
   argument reference. -}
@@ -273,9 +273,7 @@ genEnter = do
       , [cstm|$id:(assign_ t)(&$id:acts->$id:(identName n), $id:actg->priority);|]
       ]
     | otherwise
-    = [ [cstm|$id:(initialize_ t)(&acts->$id:(identName n));|]
-      , [cstm|acts->$id:(identName n).value = $id:(identName n);|]
-      ]
+    = [ [cstm|acts->$id:(identName n) = $id:(identName n);|] ]
 
   -- | Initialize a local reference
   initLocal :: Reference -> [C.Stm]

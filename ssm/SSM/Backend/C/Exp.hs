@@ -17,7 +17,7 @@ import qualified Language.C.Syntax             as C
 genExp :: [Reference] -> SSMExp -> C.Exp
 genExp _  (Var t n              )
   | baseType t == TEvent = [cexp|0|]
-  | otherwise            = [cexp|acts->$id:(identName n).value|]
+  | otherwise            = [cexp|acts->$id:(identName n)|]
 genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
 genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
 genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename i64) $int:i|]
