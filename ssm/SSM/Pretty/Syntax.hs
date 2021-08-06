@@ -81,7 +81,7 @@ prettyProcedure p = do
 prettyStm :: Stm -> PP ()
 prettyStm stm = case stm of
     NewRef n t e   -> emit $ concat [ prettyType t
-                                    , " "
+                                    , " *"
                                     , identName n
                                     , " = var "
                                     , prettySSMExp e
