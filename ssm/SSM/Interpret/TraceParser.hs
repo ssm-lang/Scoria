@@ -79,19 +79,19 @@ parseTraceS = parseTrace . T.pack
 -- | Parse a `SSM.Internal.Trace.Event`
 pEvent :: Parser Event
 pEvent = choice
-    [ try $ pActStepBegin
-    , try $ pActActivate
-    , try $ pActSensitize
+    [ try pActStepBegin
+    , try pActActivate
+    , try pActSensitize
     , pActVar
     , pDriverEventQueueStatus
     , pTerminatedOk
-    , try $ pExhaustedMicrotick
-    , try $ pExhaustedEventQueue
-    , try $ pExhaustedActQueue
-    , try $ pExhaustedMemory
+    , try pExhaustedMicrotick
+    , try pExhaustedEventQueue
+    , try pExhaustedActQueue
+    , try pExhaustedMemory
     , pExhaustedPriority
-    , try $ pCrashInvalidTime
-    , try $ pCrashArithmeticError
+    , try pCrashInvalidTime
+    , try pCrashArithmeticError
     , pCrashUnforeseen
     ]
   where
