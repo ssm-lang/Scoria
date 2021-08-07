@@ -42,10 +42,6 @@ module SSM.Frontend.Syntax
     , S.timeValue
     , S.timeUnit
 
-      -- * Names
-    , S.Name(..)
-    , S.getVarName
-
       -- * Identifiers
     , S.Ident(..)
 

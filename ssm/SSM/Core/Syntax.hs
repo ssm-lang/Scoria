@@ -60,10 +60,6 @@ module SSM.Core.Syntax
     , timeValue
     , timeUnit
 
-      -- ** Names
-    , Name(..)
-    , getVarName
-
       -- ** Statements
       {- | Statements that make up an SSM program take any of these forms. A program
       is made up of a list of these statements.-}
