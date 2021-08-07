@@ -12,35 +12,37 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = "fun1"
+  { entry = Ident "fun1" Nothing
   , args  = []
   , funs  = fromList
-    [ ( "fun1"
-      , Procedure
-        { name      = "fun1"
-        , arguments = []
-        , body      =
-          [ NewRef (Fresh "v0") (Ref TInt32) (Lit TInt32 (LInt32 999999))
-          , GetRef (Fresh "v1") TInt32 ("v0", Ref TInt32)
-          , If
-            (BOp TBool
-                 (Lit TInt32 (LInt32 0))
-                 (BOp TInt32 (Var TInt32 "v1") (Var TInt32 "v1") OTimes)
-                 OLT
-            )
-            [ After (Lit TUInt64 (LUInt64 2))
-                    ("v0", Ref TInt32)
-                    (Lit TInt32 (LInt32 0))
-            ]
-            [ After (Lit TUInt64 (LUInt64 2))
-                    ("v0", Ref TInt32)
-                    (Lit TInt32 (LInt32 1))
-            ]
-          , Wait [("v0", Ref TInt32)]
-          ]
-        }
-      )
-    ]
+              [ ( Ident "fun1" Nothing
+                , Procedure
+                  { name      = Ident "fun1" Nothing
+                  , arguments = []
+                  , body      =
+                    [ NewRef ((Ident "v0" Nothing))
+                             TInt32
+                             (Lit TInt32 (LInt32 999999))
+                    , GetRef ((Ident "v1" Nothing)) TInt32 $ Dynamic ((Ident "v0" Nothing), Ref TInt32)
+                    , If
+                      (BOp
+                        TBool
+                        (Lit TInt32 (LInt32 0))
+                        (BOp TInt32 (Var TInt32 (Ident "v1" Nothing)) (Var TInt32 (Ident "v1" Nothing)) OTimes)
+                        OLT
+                      )
+                      [ After (Lit TUInt64 (LUInt64 2))
+                              (Dynamic ((Ident "v0" Nothing), Ref TInt32))
+                              (Lit TInt32 (LInt32 0))
+                      ]
+                      []
+                    , NewRef (Ident "v3" Nothing) TInt32 (Lit TInt32 (LInt32 0))
+                    , Wait [Dynamic (Ident "v3" Nothing, Ref TInt32)]
+                    ]
+                  }
+                )
+              ]
+  , globalReferences = []
   }
 
 spec :: H.Spec

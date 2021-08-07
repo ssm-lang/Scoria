@@ -2,8 +2,7 @@
 #include <ssm-platform.h>
 
 int main(void) {
-  ssm_activate(
-      ssm_entry_point(&ssm_top_parent, SSM_ROOT_PRIORITY, SSM_ROOT_DEPTH));
+  ssm_activate_program();
 
   for (;;) {
     ssm_tick();

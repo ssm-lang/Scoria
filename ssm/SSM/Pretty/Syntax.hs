@@ -10,9 +10,9 @@ import Control.Monad.Writer
     ( execWriter, MonadWriter(tell), Writer )
 
 import SSM.Core.Syntax
-    ( getVarName,
-      BinOp(..),
+    ( BinOp(..),
       Reference,
+      refName,
       SSMExp(..),
       SSMLit(..),
       SSMTime(..),
@@ -22,8 +22,9 @@ import SSM.Core.Syntax
       UnaryOpE(..),
       UnaryOpR(..),
       Procedure(body, name, arguments),
-      Program(funs, args, entry),
-      Stm(..) )
+      Program(..),
+      Stm(..),
+      Ident(..))
 import SSM.Util.HughesList ( fromHughes, toHughes, Hughes )
 
 type PP a = ReaderT Int                    -- current level of indentation
@@ -35,7 +36,7 @@ emit str = do
     tell $ toHughes [replicate ind ' ' ++ str]
 
 indent :: PP () -> PP ()
-indent pp = local (+2) pp
+indent = local (+2)
 
 intercalateM :: Monad m => m a -> [m a] -> m [a]
 intercalateM _ [] = return []
@@ -59,39 +60,46 @@ prettyProgram' p = do
     emit "entrypoint:"
     indent $ emit $ prettyApp (entry p, args p)
     emit ""
+    emit "global variables:"
+    prettyGlobals (globalReferences p)
+    emit ""
     intercalateM (emit "") $ map prettyProcedure (Map.elems (funs p))
     return ()
+
+prettyGlobals :: [(Ident, Type)] -> PP ()
+prettyGlobals xs = flip mapM_ xs $ \(n,t) ->
+    indent $ emit $ concat [prettyType t, " ", identName n]
 
 prettyProcedure :: Procedure -> PP ()
 prettyProcedure p = do
     let params = map prettyParam (arguments p)
-    let header = concat [name p, "(", intercalate ", " params, ") {"]
+    let header = concat [identName $ name p, "(", intercalate ", " params, ") {"]
     emit header
     indent $ mapM_ prettyStm (body p)
     emit "}"
   where
-      prettyParam :: (String, Type) -> String
-      prettyParam (n,t) = concat [prettyType t, " ", n]
+      prettyParam :: (Ident, Type) -> String
+      prettyParam (n,t) = concat [prettyType t, " ", identName n]
 
 prettyStm :: Stm -> PP ()
 prettyStm stm = case stm of
     NewRef n t e   -> emit $ concat [ prettyType t
                                     , " "
-                                    , getVarName n
+                                    , identName n
                                     , " = var "
                                     , prettySSMExp e
                                     ]
     GetRef n t r   -> emit $ concat [ prettyType t
                                     , " "
-                                    , getVarName n
+                                    , identName n
                                     , " = *"
-                                    , fst r
+                                    , refName r
                                     ]
-    SetRef r e     -> emit $ concat [ fst r
+    SetRef r e     -> emit $ concat [ refName r
                                     , " = "
                                     , prettySSMExp e
                                     ]
-    SetLocal n t e -> emit $ concat [ getVarName n
+    SetLocal n t e -> emit $ concat [ identName n
                                     , " = "
                                     , prettySSMExp e
                                     ]
@@ -104,18 +112,20 @@ prettyStm stm = case stm of
     While c bdy    -> do
         emit $ concat ["while(", prettySSMExp c, ") {"]
         indent $ mapM_ prettyStm bdy
-        emit $ "}"
+        emit "}"
     Skip           -> return ()
-    After d r v -> emit $ concat [ "after ("
-                                 , prettySSMExp $ timeValue d
-                                 , show $ timeUnit d
-                                 , ") then "
-                                 , fst r
-                                 , " = "
-                                 , prettySSMExp v
-                                 ]
+
+    After d r v    -> emit $ concat [ "after "
+                                    , prettySSMExp $ timeValue d
+                                    , show $ timeUnit d
+                                    , " then "
+                                    , refName r
+                                    , " = "
+                                    , prettySSMExp v
+                                    ]
+
     Wait refs      -> emit $ concat [ "wait ["
-                                    , intercalate ", " (map fst refs)
+                                    , intercalate ", " (map refName refs)
                                     , "]"
                                     ]
     Fork procs     -> do
@@ -129,15 +139,15 @@ prettyStm stm = case stm of
             ind <- ask
             return $ '\n' : replicate (ind + 5) ' ' ++ ", "
 
-prettyApp :: (String, [Either SSMExp Reference]) -> String
-prettyApp (n, args) = concat [ n
+prettyApp :: (Ident, [Either SSMExp Reference]) -> String
+prettyApp (n, args) = concat [ identName n
                              , "("
                              , intercalate ", " (map printarg args)
                              , ")"
                              ]
   where
       printarg :: Either SSMExp Reference -> String
-      printarg = either prettySSMExp fst
+      printarg = either prettySSMExp refName
 
 prettyType :: Type -> String
 prettyType t = case t of
@@ -160,7 +170,7 @@ prettyLit l = case l of
 
 prettySSMExp :: SSMExp -> String
 prettySSMExp e = case e of
-    Var t n         -> n
+    Var t n         -> identName n
     Lit t l         -> prettyLit l
     UOpE t e op     -> prettyUnaryOpE op e
     UOpR t r op     -> prettyUnaryOpR op r
@@ -179,7 +189,7 @@ prettyUnaryOpE op e = case op of
 
 prettyUnaryOpR :: UnaryOpR -> Reference -> String
 prettyUnaryOpR op r = case op of
-    Changed -> '@' : fst r
+    Changed -> '@' : refName r
 
 prettyBinop :: BinOp -> String
 prettyBinop op = case op of

@@ -10,37 +10,50 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = "fun0"
+  { entry = Ident "fun0" Nothing
   , args  = []
   , funs  = fromList
-              [ ( "fun0"
-                , Procedure
-                  { name      = "fun0"
-                  , arguments = []
-                  , body      = [ NewRef (Fresh "ref2")
-                                         (Ref TUInt64)
-                                         (Lit TUInt64 (LUInt64 0))
-                                , Fork [("fun1", [Right ("ref2", Ref TUInt64)])]
-                                ]
-                  }
-                )
-              , ( "fun1"
-                , Procedure
-                  { name      = "fun1"
-                  , arguments = [("ref2", Ref TUInt64)]
-                  , body      = [ After (Lit TUInt64 (LUInt64 2))
-                                        ("ref2", Ref TUInt64)
-                                        (Lit TUInt64 (LUInt64 2))
-                                , Wait [("ref2", Ref TUInt64)]
-                                , Fork
-                                  [ ("fun1", [Right ("ref2", Ref TUInt64)])
-                                  , ("fun1", [Right ("ref2", Ref TUInt64)])
-                                  , ("fun1", [Right ("ref2", Ref TUInt64)])
-                                  ]
-                                ]
-                  }
-                )
-              ]
+    [ ( Ident "fun0" Nothing
+      , Procedure
+        { name      = Ident "fun0" Nothing
+        , arguments = []
+        , body      = [ NewRef (Ident "ref2" Nothing)
+                                TUInt64
+                                (Lit TUInt64 (LUInt64 0))
+                      , Fork [(Ident "fun1" Nothing, [Right $ Dynamic (Ident "ref2" Nothing, Ref TUInt64)])]
+                      ]
+        }
+      )
+    , ( Ident "fun1" Nothing
+      , Procedure
+        { name      = Ident "fun1" Nothing
+        , arguments = [ (Ident "Ref2" Nothing, Ref TUInt64)
+                      ]
+        , body      =
+          [ After
+            (Lit TUInt64 (LUInt64 2))
+            (Dynamic (Ident "Ref2" Nothing, Ref TUInt64))
+            (Lit TUInt64 (LUInt64 2))
+          , Wait [Dynamic (Ident "Ref2" Nothing, Ref TUInt64)]
+          , Fork
+            [ ( Ident "fun1" Nothing
+              , [ Right $ Dynamic (Ident "Ref2" Nothing, Ref TUInt64)
+                ]
+              )
+            , ( Ident "fun1" Nothing
+              , [ Right $ Dynamic (Ident "Ref2" Nothing, Ref TUInt64)
+                ]
+              )
+            , ( Ident "fun1" Nothing
+              , [ Right $ Dynamic (Ident "Ref2" Nothing, Ref TUInt64)
+                ]
+              )
+            ]
+          ]
+        }
+      )
+    ]
+  , globalReferences = []
   }
 
 spec :: H.Spec

@@ -6,8 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-extern struct ssm_act *(*ssm_entry_point)(struct ssm_act *, ssm_priority_t,
-                                          ssm_depth_t);
+extern void ssm_entry_point(void);
 
 #define SSM_DEBUG_ASSERT(assertion, ...)                                       \
     do if (!(assertion)){                                                     \

@@ -27,31 +27,23 @@ trace x = unsafePerformIO $ putStrLn (show x) >> return x
 for :: [a] -> (a -> b) -> [b]
 for = flip map
 
+basetypes :: [Type]
+basetypes = [TUInt8, TUInt64, TInt32, TInt64, TBool, TEvent]
+
 instance Arbitrary Type where
-  arbitrary = elements [ TInt32
-                       , TInt64
-                       , TBool
-                       , TUInt64
-                       , TEvent
-                       , Ref TInt32
-                       , Ref TInt64
-                       , Ref TUInt64
-                       , Ref TBool
-                       , Ref TEvent
-                       ]
+  arbitrary = elements $ basetypes ++ map Ref basetypes
 
 instance Arbitrary SSMTimeUnit where
-    arbitrary = elements [ SSMNanosecond
-                         , SSMMicrosecond
-                         , SSMMillisecond
-                         , SSMSecond
-                         , SSMMinute
-                         , SSMHour
-                         ]
+  arbitrary = elements [ SSMNanosecond
+                       , SSMMicrosecond
+                       , SSMMillisecond
+                       , SSMSecond
+                       , SSMMinute
+                       , SSMHour
+                       ]
 
-type Procedures = [(String, [(String, Type)], [Stm])]
-type Variable   = (Name, Type)
-type Ref        = (String, Type)
+type Procedures = [(Ident, [(Ident, Type)], [Stm])]
+type Variable   = (Ident, Type)
 
 genListOfLength :: Gen a -> Int -> Gen [a]
 genListOfLength ga 0 = return []
@@ -66,45 +58,55 @@ instance Arbitrary Program where
     funTypes <- genListOfLength typesiggen =<< choose (0,5)
 
     -- Designate entrypoint procedure, with no arguments.
-    let entry@(entryPoint, entryArgs) = ("fun0", [])
+    let entry@(entryPoint, entryArgs) = (Ident "fun0" Nothing, [])
 
     -- List of all functions.
-    let funs = entry:[("fun" ++ show i, as) | (as,i) <- zip funTypes [1..]]
+    let funs = entry:[(Ident ("fun" ++ show i) Nothing, as) | (as,i) <- zip funTypes [1..]]
+
+    -- generate global references
+    globaltypes    <- genListOfLength (elements (map Ref basetypes)) =<< choose (0,5)
+    let globals    = [ (Ident ("glob" ++ show i) Nothing, t) | (t, i) <- zip globaltypes [0..] ]
+    let globalrefs = map (uncurry makeStaticRef) globals
 
     -- Generate type, args, and body for each procedure signature.
     tab <- mfix $ \tab -> sequence
         [ do let (refs, vars) = partition (isReference . fst) $ zip as [1..]
-             let inprefs      = [ ("ref" ++ show i        , t) | (t,i) <- refs]
-             let inpvars      = [ (Fresh $ "var" ++ show i, t) | (t,i) <- vars]
+             let inprefs      = [ makeDynamicRef (Ident ("ref" ++ show i) Nothing) t | (t,i) <- refs]
+             let inpvars      = [(Ident ("var" ++ show i) Nothing, t) | (t,i) <- vars]
 
-             (body,_)        <- arbProc tab inpvars inprefs 0 =<< choose (0, 15)
+             -- generate a procedure body where the input parameters & global refs are in scope
+             (body,_)        <- arbProc tab inpvars (inprefs ++ globalrefs) 0 =<< choose (0, 15)
 
+             -- create (String, Type) pairs, representing the parameters to this procedure
              let params = [ (if isReference a
-                             then "ref"  ++ show i
-                             else "var"  ++ show i
+                             then Ident ("ref" ++ show i) Nothing
+                             else Ident ("var" ++ show i) Nothing
                             , a) 
                           | (a,i) <- zip as [1..]]
+             -- return (function name, parameters, body)
              return (f, params, body)
         | (f,as) <- funs]
 
-    return $ Program entryPoint entryArgs $ Map.fromList
-      [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
+    let procedures = Map.fromList
+          [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
+
+    return $ Program entryPoint entryArgs procedures globals
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program
         -> [Variable]     -- ^ Variables in scope
-        -> [Ref]          -- ^ References in scope
+        -> [Reference]    -- ^ References in scope
         -> Int            -- ^ Fresh name generator
         -> Int            -- ^ Size parameter
         -> Gen ([Stm], Int)
 arbProc _ _ _ c 0          = return ([], c)
 arbProc funs vars refs c n = frequency $
-      [ (1, do t         <- elements [TInt32, TBool]
+      [ (1, do t         <- elements basetypes
                e         <- choose (0,3) >>= arbExp t vars refs
                (name,c1) <- fresh c
                let rt     = mkReference t
-               let stm    = NewRef name rt e
-               let ref    = (getVarName name, rt)
+               let stm    = NewRef name t e
+               let ref    = makeDynamicRef name rt
                (rest, c2) <- arbProc funs vars (ref:refs) c1 (n-1)
                return (stm:rest, c2)
         )
@@ -138,23 +140,23 @@ arbProc funs vars refs c n = frequency $
         )]) ++
 
       (if null refs then [] else
-      [ (1, do r@(_,t)   <- elements refs
+      [ (1, do r         <- elements refs
                (name,c1) <- fresh c
-               let t'    = dereference t
+               let t'    = dereference $ refType r
                (rest,c2) <- arbProc funs ((name, t'):vars) refs c1 (n-1)
                let stm   = GetRef name t' r
                return (stm:rest, c2)
         )
       
-      , (1, do r@(_,t) <- elements refs
-               e       <- choose (0,3) >>= arbExp (dereference t) vars refs
+      , (1, do r       <- elements refs
+               e       <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm = SetRef r e
                return (stm:rest, c')
         )
       
-      , (1, do r@(_,t)  <- elements refs
-               v        <- choose (0,3) >>= arbExp (dereference t) vars refs
+      , (1, do r        <- elements refs
+               v        <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
                (rest,c') <- arbProc funs vars refs c (n-1)
                delay     <- genDelay
                let stm   = After delay r v
@@ -168,19 +170,19 @@ arbProc funs vars refs c n = frequency $
       ])
   where
       -- | Generate a fresh name.
-      fresh :: Monad m => Int -> m (Name, Int)
-      fresh c = return $ (Fresh ("v" ++ show c), c+1)
+      fresh :: Monad m => Int -> m (Ident, Int)
+      fresh c = return $ (Ident ("v" ++ show c) Nothing, c+1)
 
       -- | Take a procedure that should be forked and return the application of
       -- that procedure to randomly generated arguments.
       applyFork :: [Variable]
-                -> [Ref]
-                -> (String, [(String, Type)], [Stm])
-                -> Gen (String, [Either SSMExp Reference])
+                -> [Reference]
+                -> (Ident, [(Ident, Type)], [Stm])
+                -> Gen (Ident, [Either SSMExp Reference])
       applyFork vars refs (n, types, _) = do
           args <- forM types $ \(_,t) ->
             if isReference t
-              then do let okrefs = filter ((==) t . snd) refs
+              then do let okrefs = filter ((==) t . refType) refs
                       Right <$> elements okrefs
               else Left <$> (choose (0,3) >>= arbExp t vars refs)
           return (n, args)
@@ -203,9 +205,9 @@ arbProc funs vars refs c n = frequency $
       -- | Predicate that returns True if the given procedure can be forked.
       -- What determines this is what references we have in scope. If the procedure
       -- requires a reference parameter that we do not have, we can not fork it.
-      canBeCalled :: [Ref] -> (String, [(String, Type)], [Stm]) -> Bool
+      canBeCalled :: [Reference] -> (Ident, [(Ident, Type)], [Stm]) -> Bool
       canBeCalled inscope (_, types, _) =
-          let distinct = nub $ filter isReference $ map snd inscope
+          let distinct = nub $ filter isReference $ map refType inscope
           in all (`elem` distinct) $ filter isReference $ map snd types
 
 -- | Generate a SSMExp.
@@ -222,15 +224,16 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
     -- | Generator of SSMExp literals.
     litGen :: Gen SSMExp
     litGen = case t of
-      TInt32 -> return  . Lit TInt32  . LInt32    =<< choose (0, 215)
-      TInt64 -> return  . Lit TInt64  . LInt64  =<< choose (-55050, 55050)
+      TInt32  -> return . Lit TInt32  . LInt32  =<< choose (0, 215)
+      TInt64  -> return . Lit TInt64  . LInt64  =<< choose (-55050, 55050)
+      TUInt8  -> return . Lit TUInt8  . LUInt8  =<< choose (0,80)
       TUInt64 -> return . Lit TUInt64 . LUInt64 =<< choose (0, 65500)
       TBool  -> return  . Lit TBool   . LBool   =<< arbitrary
       TEvent -> return $ Lit TEvent LEvent
 
     -- | Generator that returns a randomly selected variable from the set of variables.
     varGen :: [Gen SSMExp]
-    varGen = [ return (Var t' (getVarName n)) | (n,t') <- vars, t == t']
+    varGen = [ return (Var t' n) | (n,t') <- vars, t == t']
 
     changedGen :: [Gen SSMExp]
     changedGen = if null refs

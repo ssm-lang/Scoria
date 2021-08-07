@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c93c89dd4a8690450940a6d9c7af772969bdd18659377d6890ff0b37510a8068
+-- hash: 002d06de1762ad6c32f459b4ecfdc8a6987fdd5fe89b87dfe25fc9c2427f32b4
 
 name:           ssm
 version:        0.1.0.0
@@ -31,6 +31,7 @@ library
       SSM.Backend.C.Compile
       SSM.Backend.C.Exp
       SSM.Backend.C.Identifiers
+      SSM.Backend.C.MainLoop
       SSM.Backend.C.Types
       SSM.Compile
       SSM.Core.Syntax
@@ -41,6 +42,7 @@ library
       SSM.Interpret.Internal
       SSM.Interpret.Interpreter
       SSM.Interpret.Trace
+      SSM.Interpret.TraceParser
       SSM.Interpret.Types
       SSM.Language
       SSM.Pretty
@@ -48,6 +50,7 @@ library
       SSM.Util.Default
       SSM.Util.HughesList
       SSM.Util.Operators
+      SSM.Util.State
   other-modules:
       Paths_ssm
   hs-source-dirs:
@@ -61,9 +64,37 @@ library
     , extra
     , language-c-quote
     , mainland-pretty
+    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
+    , text
+    , time
+  default-language: Haskell2010
+
+test-suite 0-trace-parser
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_ssm
+  hs-source-dirs:
+      test/trace-parser
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      BinderAnn
+    , QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , extra
+    , hspec
+    , language-c-quote
+    , mainland-pretty
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , ssm
     , text
     , time
   default-language: Haskell2010
@@ -107,6 +138,7 @@ test-suite 1-regression-high
     , hspec
     , language-c-quote
     , mainland-pretty
+    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
@@ -165,6 +197,7 @@ test-suite 2-regression-low
     , hspec
     , language-c-quote
     , mainland-pretty
+    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
@@ -211,6 +244,7 @@ test-suite 3-arbitrary
     , hspec
     , language-c-quote
     , mainland-pretty
+    , megaparsec
     , mtl
     , parser-combinators
     , prettyprinter
