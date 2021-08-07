@@ -27,11 +27,11 @@ p = Program
                  (BOp TInt32 (Var TInt32 (Ident "v0" Nothing)) (Var TInt32 (Ident "v0" Nothing)) OTimes)
                  OLT
             )
-            [ After (Lit TUInt64 (LUInt64 2))
+            [ After (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
                     (Dynamic ((Ident "v0" Nothing), Ref TInt32))
                     (Lit TInt32 (LInt32 0))
             ]
-            [ After (Lit TUInt64 (LUInt64 2))
+            [ After (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
                     (Dynamic ((Ident "v0" Nothing), Ref TInt32))
                     (Lit TInt32 (LInt32 1))
             ]

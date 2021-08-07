@@ -49,7 +49,12 @@ module SSM.Frontend.Language
     , event'
 
     --- *** Time wrappers
+    , nsecs
+    , usecs
+    , msecs
     , secs
+    , mins
+    , hrs
 
       -- ** Primitive statements
       {- | These are the primitive statements of the SSM language. Your procedure
@@ -257,6 +262,12 @@ mins (Exp e) = SSMTime e SSMMinute
 hrs :: Exp Word64 -> SSMTime
 hrs (Exp e) = SSMTime e SSMHour
 
+(+) :: SSMTime -> SSMTime -> SSMTime
+t1 + t2 = t1
+
+(-) :: SSMTime -> SSMTime -> SSMTime
+t1 - t2 = t1
+
 -- | Dereference a reference and get an expression holding the result
 deref :: Ref a -> SSM (Exp a)
 deref (Ptr r) = do
@@ -280,8 +291,8 @@ wait r = emit $ Wait (map (\(Ptr r') -> r') r)
 
 {- | Scheduled assignment. @after d r v@ means that after @d@ units of time, the
 reference @r@ should receive the value @v@. -}
-after :: Exp Word64 -> Ref a -> Exp a -> SSM ()
-after (Exp e) (Ptr r) (Exp v) = emit $ After (secs $ Exp e) r v
+after :: SSMTime -> Ref a -> Exp a -> SSM ()
+after d (Ptr r) (Exp v) = emit $ After d r v
 
 -- | Fork one or more procedures.
 fork :: [SSM ()] -> SSM ()

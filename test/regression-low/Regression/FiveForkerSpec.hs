@@ -235,7 +235,7 @@ p = Program
             , If
               (BOp TBool (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OLT)
               [ After
-                (Lit TUInt64 (LUInt64 1112))
+                (SSMTime (Lit TUInt64 (LUInt64 1112)) SSMNanosecond)
                 (Dynamic (Ident "ref1" Nothing, Ref TInt32))
                 (BOp
                   TInt32
@@ -579,14 +579,14 @@ p = Program
           , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32)]
           , GetRef ((Ident "v5" Nothing)) TUInt64 (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
           , GetRef ((Ident "v6" Nothing)) TUInt64 (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
-          , After (Lit TUInt64 (LUInt64 3525))
+          , After (SSMTime (Lit TUInt64 (LUInt64 3525)) SSMNanosecond)
                   (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   (Lit TUInt64 (LUInt64 167))
           , GetRef ((Ident "v11" Nothing)) TUInt64 (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
           , Wait [(Dynamic (Ident "ref1" Nothing, Ref TInt32))]
           , Wait [(Dynamic (Ident "ref4" Nothing, Ref TUInt64))]
           , After
-            (Lit TUInt64 (LUInt64 4696))
+            (SSMTime (Lit TUInt64 (LUInt64 4696)) SSMNanosecond)
             (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
             (BOp
               TUInt64
