@@ -18,6 +18,7 @@ data TypeError = TypeError {expected::Type, actual::Type, msg::String}
 -- | data type for the entries in our environment
 data Entry = VarEntry {ty::Type} 
            | ProcEntry {params::[(String, Type)]}
+        --    | RefEntry {ty::Type}
 
 -- | Helper function to check whether the type is an integer
 isInt :: Type -> Bool 
@@ -28,6 +29,7 @@ isInt _ = True
 -- | Helper function to take parameters out of a procedure entry
 takeParams :: Entry -> [(String, Type)]
 takeParams VarEntry {ty=_} = []
+-- takeParams RefEntry {ty=_} = []
 takeParams ProcEntry {params=_params} = _params
 
 -- | Unwrap the result of typeCheckExp
@@ -107,12 +109,14 @@ typeCheckProgram Program {entry=e, args=as, funs=fs} env = do
         params = maybe [] takeParams (Map.lookup e env)
         newEnv = enterProcs env fs
 
--- | Typechecks an expression
+-- | Typechecks an expression, meanwhile figuring out the type of the expression
 typeCheckExp :: SSMExp -> Map.Map String Entry -> Either TypeError Type 
 typeCheckExp (Var ty str) env = 
     case Map.lookup str env of Nothing -> 
                                 Left TypeError {expected=ty, actual=TUInt8, msg="The variable is undefined"}
                                Just VarEntry {ty=_ty} -> Right _ty
+                               Just _ -> 
+                                Left TypeError {expected=ty, actual=TUInt8, msg="The name is not for a variable"}
 typeCheckExp (Lit ty lit) env = 
     if actualTy == ty then Right ty
     else Left TypeError {expected=ty, actual=actualTy, msg="The literal's type doesn't match the claimed type"}
