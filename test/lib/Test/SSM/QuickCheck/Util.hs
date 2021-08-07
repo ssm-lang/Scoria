@@ -119,12 +119,10 @@ removeVars = go
 
         Skip           -> Skip : go invalid validrefs xs
 
-        After d r v    ->
+        After (SSMTime tv tu) r v    ->
             if not $ r `elem` validrefs
                 then Skip : go invalid validrefs xs
-                else let tv = timeValue d
-                         tu = timeUnit d
-                     in After (SSMTime (rewriteExp tv invalid validrefs) tu)
+                else After (SSMTime (rewriteExp tv invalid validrefs) tu)
                                r
                               (rewriteExp v invalid validrefs) :
                         go invalid validrefs xs

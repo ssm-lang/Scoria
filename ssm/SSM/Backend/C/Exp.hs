@@ -4,6 +4,7 @@ module SSM.Backend.C.Exp
       SSM language. Since expressions may refer to variable expressions, an
       environment containing the variables in scope must be supplied. -}
       genExp
+    , genTimeDelay
     ) where
 
 import SSM.Core.Syntax
@@ -40,3 +41,12 @@ genExp ls (BOp ty e1 e2 op)
   gen OTimes = [cexp|$exp:c1 * $exp:c2|]
   gen OLT    = [cexp|$exp:c1 < $exp:c2|]
   gen OEQ    = [cexp|$exp:c1 == $exp:c2|]
+
+genTimeDelay :: [Reference] -> SSMTime -> C.Exp
+genTimeDelay ls (SSMTime d u) = [cexp|$exp:(genExp ls d) * $id:(units_ u)|]
+genTimeDelay ls (SSMTimeAdd t1 t2) = let t1' = genTimeDelay ls t1
+                                         t2' = genTimeDelay ls t2
+                                     in [cexp|($exp:t1') + ($exp:t2')|]
+genTimeDelay ls (SSMTimeSub t1 t2) = let t1' = genTimeDelay ls t1
+                                         t2' = genTimeDelay ls t2
+                                     in [cexp|($exp:t1') - ($exp:t2')|]

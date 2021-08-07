@@ -133,10 +133,10 @@ step = do
       Skip        -> continue
 
       After d r v -> do
-        d' <- getUInt64 <$> eval (timeValue d)
+        let d' = genTimeDelay d
         v' <- eval v
         n' <- getNow
-        scheduleEvent r (n' + applyUnit d' (timeUnit d)) v'
+        scheduleEvent r (n' + d') v'
         continue
 
       Wait refs -> do

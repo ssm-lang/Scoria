@@ -427,17 +427,16 @@ genCase (After d r v) = do
   locs <- gets locals
   let lvar = refIdent r
       t    = refType r
-      del  = genExp locs $ timeValue d
-      units = units_ $ timeUnit d
+      del  = genTimeDelay locs d
       lhs  = refPtr r locs
       rhs  = genExp locs v
   -- Note that the semantics of 'After' and 'later_' differ---the former
   -- expects a relative time, whereas the latter takes an absolute time.
   -- Thus we add now() in the code we generate.
   case baseType t of
-    TEvent -> return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + ($id:units * $exp:del));|]]
+    TEvent -> return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del);|]]
     _      -> return
-      [[cstm| $id:(later_ t)($exp:lhs, $id:now() + ($id:units * $exp:del), $exp:rhs);|]]
+      [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
 genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts

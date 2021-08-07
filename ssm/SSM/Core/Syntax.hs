@@ -57,8 +57,6 @@ module SSM.Core.Syntax
       {- Exposes units of time to wrap Word64 expressions. -}
     , SSMTimeUnit(..)
     , SSMTime(..)
-    , timeValue
-    , timeUnit
 
       -- ** Statements
       {- | Statements that make up an SSM program take any of these forms. A program
@@ -266,15 +264,9 @@ data SSMTimeUnit
 
 -- | Time values with units to be resolved by CodeGen. Used in `after` stmts.
 data SSMTime = SSMTime SSMExp SSMTimeUnit
+             | SSMTimeAdd SSMTime SSMTime
+             | SSMTimeSub SSMTime SSMTime
     deriving (Eq, Show, Read)
-
--- | Get the unit of a SSMTime
-timeUnit :: SSMTime -> SSMTimeUnit
-timeUnit (SSMTime _ u) = u
-
--- | Get the value of a SSMTime
-timeValue :: SSMTime -> SSMExp
-timeValue (SSMTime v _) = v
 
 -- Programs
 

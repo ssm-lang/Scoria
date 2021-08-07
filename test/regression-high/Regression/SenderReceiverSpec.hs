@@ -12,7 +12,7 @@ import qualified Test.SSM.Prop                 as T
 
 sender :: Ref () -> SSM ()
 sender = box "sender" ["myEvent"] $ \myEvent -> do
-    after (nsecs 2) myEvent event'
+    after (mins 1 + secs 1) myEvent event'
 
         
 receiver :: Ref () -> SSM ()

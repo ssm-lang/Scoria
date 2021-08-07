@@ -262,11 +262,13 @@ mins (Exp e) = SSMTime e SSMMinute
 hrs :: Exp Word64 -> SSMTime
 hrs (Exp e) = SSMTime e SSMHour
 
-(+) :: SSMTime -> SSMTime -> SSMTime
-t1 + t2 = t1
-
-(-) :: SSMTime -> SSMTime -> SSMTime
-t1 - t2 = t1
+instance Num SSMTime where
+    t1 + t2       = SSMTimeAdd t1 t2
+    t1 - t2       = SSMTimeSub t1 t2
+    t1 * t2       = undefined
+    fromInteger _ = undefined
+    abs _         = undefined
+    signum _      = undefined
 
 -- | Dereference a reference and get an expression holding the result
 deref :: Ref a -> SSM (Exp a)

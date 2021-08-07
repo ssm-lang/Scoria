@@ -16,8 +16,6 @@ import SSM.Core.Syntax
       SSMExp(..),
       SSMLit(..),
       SSMTime(..),
-      timeValue,
-      timeUnit,
       Type(..),
       UnaryOpE(..),
       UnaryOpR(..),
@@ -116,8 +114,7 @@ prettyStm stm = case stm of
     Skip           -> return ()
 
     After d r v    -> emit $ concat [ "after "
-                                    , prettySSMExp $ timeValue d
-                                    , show $ timeUnit d
+                                    , prettySSMTime d
                                     , " then "
                                     , refName r
                                     , " = "
@@ -198,3 +195,8 @@ prettyBinop op = case op of
     OTimes -> "*"
     OLT    -> "<"
     OEQ    -> "=="
+
+prettySSMTime :: SSMTime -> String
+prettySSMTime (SSMTime d u) = (prettySSMExp d) ++ show u
+prettySSMTime (SSMTimeAdd t1 t2) = (prettySSMTime t1) ++ "+" ++ (prettySSMTime t2)
+prettySSMTime (SSMTimeSub t1 t2) = (prettySSMTime t1) ++ "-" ++ (prettySSMTime t2)
