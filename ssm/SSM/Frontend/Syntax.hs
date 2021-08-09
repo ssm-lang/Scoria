@@ -65,8 +65,6 @@ import qualified SSM.Core.Syntax as S
 
 import qualified Data.Map as Map
 
-import Debug.Trace
-
 import Control.Monad.State
     ( gets, get, put, modify, execState, runState, forM, MonadState, State, StateT(StateT) )
 import qualified System.Console.GetOpt as S
