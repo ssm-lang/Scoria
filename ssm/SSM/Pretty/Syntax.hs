@@ -55,7 +55,7 @@ prettyProgram ssm = let wr = runReaderT (prettyProgram' ssm) 0
 prettyProgram' :: Program -> PP ()
 prettyProgram' p = do
     emit "entrypoint:"
-    indent $ emit $ prettyApp (entry p, args p)
+    indent $ emit $ prettyApp (entry p, [])
     emit ""
     emit "global variables:"
     prettyGlobals (globalReferences p)
@@ -145,7 +145,7 @@ prettyType t = case t of
     TUInt64 -> "uint64"
     TBool   -> "bool"
     TEvent  -> "event"
-    Ref t   -> "*" ++ prettyType t
+    Ref t   -> prettyType t ++ "*"
 
 prettyLit :: SSMLit -> String
 prettyLit l = case l of

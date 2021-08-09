@@ -65,6 +65,8 @@ import qualified SSM.Core.Syntax as S
 
 import qualified Data.Map as Map
 
+import Debug.Trace
+
 import Control.Monad.State
     ( gets, get, put, modify, execState, runState, forM, MonadState, State, StateT(StateT) )
 import qualified System.Console.GetOpt as S
@@ -143,8 +145,8 @@ getProcedureName _               = error "not a procedure"
 the frontend representation into something that it can generate code for. Just compiling
 a program does not introduce any global variables. -}
 instance S.SSMProgram (SSM ()) where
-  toProgram p = let (n,a,f) = transpile p
-                in S.Program n a f []
+  toProgram p = let (n,f) = transpile p
+                in S.Program n f []
 
 -- compile monad
 
@@ -199,8 +201,8 @@ using the @Compile@ monad. This instance makes sure that you can compile and int
 something that is a program with such global variables. -}
 instance S.SSMProgram (Compile (SSM ())) where
   toProgram (Compile p) = let (a,s) = runState p (CompileSt 0 [])
-                              (n,ar,f) = transpile a
-                          in S.Program n ar f $ generatedGlobals s
+                              (n,f) = transpile a
+                          in S.Program n f $ generatedGlobals s
 
 {-********** Transpiling to core syntax **********-}
 
@@ -213,36 +215,31 @@ data TranspileState = TranspileState
       procedures  :: Map.Map S.Ident S.Procedure
       -- | List of procedure names that have already been seen.
     , generated   :: [S.Ident]
-      -- | Last known SSM name-generating state
+      {- | Last known SSM name-generating state. A SSM computation can generate names,
+      but it also contains recursive SSM computations. What we want to do is essentially
+      to run all of these SSM computations with a single name generating state. This
+      component is that state, and we pass it in to the SSM run-function when we need
+      the statements. -}
     , namecounter :: Int
-      {- | Name of the procedure that was the program entrypoint?
-      This is the first that that will be populated in the state during execution. -}
-    , mainname    :: Maybe S.Ident
-      -- | Parameter names and types of the program entrypoint.
-    , mainargs    :: [(S.Ident, S.Type)]
-      -- | What values were the program entrypoint applied to?
-    , mainargvals :: [Either S.SSMExp S.Reference]
     }
 
 {- | Transpile a program of the high level syntax to the low level syntax as defined
 in "SSM.Core.Syntax". -}
-transpile :: SSM ()
-          -> ( S.Ident                        -- Entry-point of the program
-             , [Either S.SSMExp S.Reference]  -- Arguments to apply it to
-             , Map.Map S.Ident S.Procedure    -- Rest of procedures in the program
-             )
-transpile program = case mainname st of
-
-    Nothing -> error $ "no name found for the program entrypoint - did you forget to use box?"
-
-    Just n  -> if n `elem` (Map.keys $ procedures st)
-      then (n, mainargvals st, procedures st)
-      else let p = (S.Procedure n (mainargs st) main)
-           in (n, mainargvals st, Map.insert n p (procedures st))
+transpile :: SSM () -> (S.Ident, Map.Map S.Ident S.Procedure)
+transpile program =
+  let n     = getProcedureName stmts
+      procs = procedures st
+      {- A procedure is only inserted in the resulting map if it was reached
+      through a fork. If the entry point was not accessed by another procedure by a
+      fork, we need to manually insert it in the map. -}
+      funs  = if not $ n `elem` Map.keys procs
+                then Map.insert n (S.Procedure n [] main) procs
+                else procs
+  in (n, funs)
   where
       (main,st)  = runState comp state
       (stmts, c) = genStmts 0 program
-      state      = TranspileState Map.empty [] c Nothing [] []
+      state      = TranspileState Map.empty [] c
       comp       = transpileProcedure stmts
 
 
@@ -269,18 +266,8 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       procs' <- mapM getCall procs
       return $ [S.Fork procs']
 
-    Procedure n    -> do
-      -- Only update the mainname value if it is `Nothing`, otherwise keep
-      -- the previous value.
-      modify $ \st -> st { mainname = maybe (Just n) Just $ mainname st }
-      return []
-    Argument n x a -> do 
-      let arginfo = (x, either S.expType S.refType a)
-      let a'      = either Left (Right . flip S.renameRef x) a
-      modify $ \st -> st { mainargs    = mainargs st ++ [arginfo]
-                         , mainargvals = mainargvals st ++ [a']
-                         }
-      return []
+    Procedure n    -> return []
+    Argument n x a -> return []
     Result n       -> return []
   where
       {- | Run a recursive SSM computation by using the last known name generating state.
@@ -307,22 +294,11 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
               then return () -- we've seen it before, do nothing
               else do
                   put $ st { generated = name : generated st }
-                  nstmts <- recursive $ transpileProcedure stmts
+                  nstmts <- transpileProcedure stmts
                   let fun = S.Procedure name arginfo nstmts
                   modify $ \st -> st { procedures = Map.insert name fun (procedures st) }
           
           return (name, args)
-
-      {- | Perform a transpilation action without overwriting the mainname, mainargs
-      & mainvals state components. Return the result of the given transpilation action -}
-      recursive :: Transpile a -> Transpile a
-      recursive tr = do
-        old <- get
-        a <- tr
-        modify $ \st -> st { mainname    = mainname old
-                           , mainargs    = mainargs old
-                           , mainargvals = mainargvals old}
-        return a
 
       {-| Return a tuple where the first component contains information about name
       and type about the arguments, and the second compoment is a list of the actual arguments. -}

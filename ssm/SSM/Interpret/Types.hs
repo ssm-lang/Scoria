@@ -109,18 +109,17 @@ mkProc
   :: InterpretConfig          -- ^ Configuration
   -> Program                  -- ^ Program
   -> Procedure                -- ^ Entry point
-  -> Map.Map Ident (Var s)   -- ^ Parameters
   -> Proc s
-mkProc conf p fun vars = Proc { procName        = identName $ entry p
-                              , priority        = rootPriority conf
-                              , depth           = rootDepth conf
-                              , runningChildren = 0
-                              , parent          = Nothing
-                              , variables       = vars
-                              , localrefs       = Map.empty
-                              , waitingOn       = Nothing
-                              , continuation    = body fun
-                              }
+mkProc conf p fun = Proc { procName        = identName $ entry p
+                         , priority        = rootPriority conf
+                         , depth           = rootDepth conf
+                         , runningChildren = 0
+                         , parent          = Nothing
+                         , variables       = Map.empty
+                         , localrefs       = Map.empty
+                         , waitingOn       = Nothing
+                         , continuation    = body fun
+                         }
 
 
 {- | The show instance will only render the priority (this was initially

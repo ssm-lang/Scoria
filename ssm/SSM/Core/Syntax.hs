@@ -283,13 +283,10 @@ data Procedure = Procedure
     , body       :: [Stm]
     } deriving (Eq, Show, Read)
 
-{- | A program has an entry point, arguments to that entry point and a map that maps
-procedure names to their definitions. -}
+-- | Program definition
 data Program = Program
     { -- | Name of the procedure that is the program entrypoint.
       entry :: Ident
-      -- | Arguments the entrypoint was applied to.
-    , args :: [Either SSMExp Reference]
       -- | Map that associates procedure names with their definitions.
     , funs :: Map.Map Ident Procedure
       -- | Name and type of references that exist in the global scope.
