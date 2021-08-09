@@ -86,12 +86,6 @@ prettyStm stm = case stm of
                                     , " = var "
                                     , prettySSMExp e
                                     ]
-    GetRef n t r   -> emit $ concat [ prettyType t
-                                    , " "
-                                    , identName n
-                                    , " = *"
-                                    , refName r
-                                    ]
     SetRef r e     -> emit $ concat [ refName r
                                     , " = "
                                     , prettySSMExp e
@@ -184,6 +178,7 @@ prettyUnaryOpE op e = case op of
 prettyUnaryOpR :: UnaryOpR -> Reference -> String
 prettyUnaryOpR op r = case op of
     Changed -> '@' : refName r
+    Deref   -> '*' : refName r
 
 prettyBinop :: BinOp -> String
 prettyBinop op = case op of

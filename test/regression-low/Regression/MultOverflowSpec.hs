@@ -24,7 +24,7 @@ p = Program
           , If
             (BOp TBool
                  (Lit TInt32 (LInt32 0))
-                 (BOp TInt32 (Var TInt32 (Ident "v0" Nothing)) (Var TInt32 (Ident "v0" Nothing)) OTimes)
+                 (BOp TInt32 (UOpR TInt32 (Dynamic (Ident "v0" Nothing, Ref TInt32)) Deref) (UOpR TInt32 (Dynamic (Ident "v0" Nothing, Ref TInt32)) Deref) OTimes)
                  OLT
             )
             [ After (Lit TUInt64 (LUInt64 2))

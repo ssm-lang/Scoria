@@ -109,7 +109,6 @@ test-suite 1-regression-high
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
       Test.SSM.QuickCheck.Shrink.Fork
-      Test.SSM.QuickCheck.Shrink.GetRefs
       Test.SSM.QuickCheck.Shrink.If
       Test.SSM.QuickCheck.Shrink.ProcedureArity
       Test.SSM.QuickCheck.Shrink.Procedures
@@ -158,7 +157,6 @@ test-suite 2-regression-low
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
       Test.SSM.QuickCheck.Shrink.Fork
-      Test.SSM.QuickCheck.Shrink.GetRefs
       Test.SSM.QuickCheck.Shrink.If
       Test.SSM.QuickCheck.Shrink.ProcedureArity
       Test.SSM.QuickCheck.Shrink.Procedures
@@ -217,7 +215,6 @@ test-suite 3-arbitrary
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
       Test.SSM.QuickCheck.Shrink.Fork
-      Test.SSM.QuickCheck.Shrink.GetRefs
       Test.SSM.QuickCheck.Shrink.If
       Test.SSM.QuickCheck.Shrink.ProcedureArity
       Test.SSM.QuickCheck.Shrink.Procedures

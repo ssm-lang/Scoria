@@ -12,7 +12,6 @@ import Test.SSM.QuickCheck.Shrink.Wait ( waits )
 import Test.SSM.QuickCheck.Shrink.Fork ( forks )
 import Test.SSM.QuickCheck.Shrink.ProcedureArity ( arities )
 import Test.SSM.QuickCheck.Shrink.Statements ( statements )
-import Test.SSM.QuickCheck.Shrink.GetRefs ( getrefs )
 import Test.SSM.QuickCheck.Shrink.Expressions ( expressions )
 
 {- | Shrink a program into several sub-programs. Please refer to the separate modules
@@ -26,7 +25,6 @@ shrinkProgram p =
                           , arities
                           , ifs
                           , refs
-                          , getrefs
                           , statements
                           , forks
                           , waits
