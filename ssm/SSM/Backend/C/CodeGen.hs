@@ -265,9 +265,7 @@ genEnter = do
 
   -- | initialize a parameter
   initParam :: (Ident, Type) -> [C.Stm]
-  initParam (n, t)
-    | isReference t = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
-    | otherwise     = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
+  initParam (n, t) = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
 
   -- | Initialize a local reference
   initLocal :: Reference -> [C.Stm]
