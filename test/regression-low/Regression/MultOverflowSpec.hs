@@ -13,7 +13,6 @@ import qualified Test.SSM.Prop                 as T
 p :: Program
 p = Program
   { entry = Ident "fun1" Nothing
-  , args  = []
   , funs  = fromList
     [ ( Ident "fun1" Nothing
       , Procedure
@@ -24,7 +23,7 @@ p = Program
           , If
             (BOp TBool
                  (Lit TInt32 (LInt32 0))
-                 (BOp TInt32 (Var TInt32 (Ident "v0" Nothing)) (Var TInt32 (Ident "v0" Nothing)) OTimes)
+                 (BOp TInt32 (UOpR TInt32 (Dynamic (Ident "v0" Nothing, Ref TInt32)) Deref) (UOpR TInt32 (Dynamic (Ident "v0" Nothing, Ref TInt32)) Deref) OTimes)
                  OLT
             )
             [ After (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)

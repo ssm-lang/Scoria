@@ -42,14 +42,12 @@ interpret config program = runST $ do
     Just p' -> return p'
     Nothing ->
       error $ "Interpreter error: cannot find entry point: " ++ identName (entry p)
-  vars        <- params p
   globs       <- globals p
   -- Run the interpret action and produce it's output
   (_, events) <- runWriterT $ runStateT run $ initState config p 0 globs $ mkProc
     config
     p
     fun
-    vars
   return $ fromHughes events
 
 -- | Run the interpreter, serving the role of the @main@ function.
@@ -104,11 +102,6 @@ step = do
     Just stm -> case stm of
       NewRef n _ e -> do
         newRef n e
-        continue
-
-      GetRef n _ r -> do
-        v <- readRef r
-        newRef n v
         continue
 
       SetRef r e -> do

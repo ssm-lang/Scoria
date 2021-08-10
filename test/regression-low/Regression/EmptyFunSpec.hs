@@ -10,7 +10,7 @@ import qualified Test.Hspec as H
 import qualified Test.Hspec.QuickCheck as H
 
 p :: Program
-p = Program {entry = Ident "fun1" Nothing, args = [], funs = fromList [(Ident "fun1" Nothing,Procedure {name = Ident "fun1" Nothing, arguments = [], body = []})], globalReferences = []}
+p = Program {entry = Ident "fun1" Nothing, funs = fromList [(Ident "fun1" Nothing,Procedure {name = Ident "fun1" Nothing, arguments = [], body = []})], globalReferences = []}
 
 spec :: H.Spec
 spec = T.correctSpec "EmptyFun" p

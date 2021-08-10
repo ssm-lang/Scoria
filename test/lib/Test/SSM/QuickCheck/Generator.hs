@@ -58,7 +58,7 @@ instance Arbitrary Program where
     funTypes <- genListOfLength typesiggen =<< choose (0,5)
 
     -- Designate entrypoint procedure, with no arguments.
-    let entry@(entryPoint, entryArgs) = (Ident "fun0" Nothing, [])
+    let entry@(entryPoint, _) = (Ident "fun0" Nothing, [])
 
     -- List of all functions.
     let funs = entry:[(Ident ("fun" ++ show i) Nothing, as) | (as,i) <- zip funTypes [1..]]
@@ -90,7 +90,7 @@ instance Arbitrary Program where
     let procedures = Map.fromList
           [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
 
-    return $ Program entryPoint entryArgs procedures globals
+    return $ Program entryPoint procedures globals
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program
@@ -140,15 +140,7 @@ arbProc funs vars refs c n = frequency $
         )]) ++
 
       (if null refs then [] else
-      [ (1, do r         <- elements refs
-               (name,c1) <- fresh c
-               let t'    = dereference $ refType r
-               (rest,c2) <- arbProc funs ((name, t'):vars) refs c1 (n-1)
-               let stm   = GetRef name t' r
-               return (stm:rest, c2)
-        )
-      
-      , (1, do r       <- elements refs
+      [ (1, do r       <- elements refs
                e       <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm = SetRef r e
@@ -225,6 +217,7 @@ arbExp :: Type        -- ^ Type of expression to generate
 arbExp t vars refs 0 = oneof $ concat [ [litGen]
                                       , varGen
                                       , if t == TBool then changedGen else []
+                                      , derefGen
                                       ]
   where
     -- | Generator of SSMExp literals.
@@ -241,10 +234,19 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
     varGen :: [Gen SSMExp]
     varGen = [ return (Var t' n) | (n,t') <- vars, t == t']
 
+    -- | Generator that returns applications of the @changed@ operator
     changedGen :: [Gen SSMExp]
     changedGen = if null refs
                    then []
                    else [ return $ UOpR TBool r Changed | r <- refs]
+
+    -- | Generator that returns dereferenced references
+    derefGen :: [Gen SSMExp]
+    derefGen = if null refs
+      then []
+      else [ return $ UOpR (dereference (refType r)) r Deref
+           | r <- refs, dereference (refType r) == t
+           ]
 
 arbExp t vars refs n = case t of
   TBool -> oneof $ [ do e1 <- arbExp TInt32 vars refs (n `div` 2)

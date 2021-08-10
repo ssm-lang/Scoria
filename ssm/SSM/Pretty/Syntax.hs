@@ -56,7 +56,7 @@ prettyProgram ssm = let wr = runReaderT (prettyProgram' ssm) 0
 prettyProgram' :: Program -> PP ()
 prettyProgram' p = do
     emit "entrypoint:"
-    indent $ emit $ prettyApp (entry p, args p)
+    indent $ emit $ prettyApp (entry p, [])
     emit ""
     emit "global variables:"
     prettyGlobals (globalReferences p)
@@ -82,16 +82,10 @@ prettyProcedure p = do
 prettyStm :: Stm -> PP ()
 prettyStm stm = case stm of
     NewRef n t e   -> emit $ concat [ prettyType t
-                                    , " "
+                                    , " *"
                                     , identName n
                                     , " = var "
                                     , prettySSMExp e
-                                    ]
-    GetRef n t r   -> emit $ concat [ prettyType t
-                                    , " "
-                                    , identName n
-                                    , " = *"
-                                    , refName r
                                     ]
     SetRef r e     -> emit $ concat [ refName r
                                     , " = "
@@ -154,7 +148,7 @@ prettyType t = case t of
     TUInt64 -> "uint64"
     TBool   -> "bool"
     TEvent  -> "event"
-    Ref t   -> "*" ++ prettyType t
+    Ref t   -> prettyType t ++ "*"
 
 prettyLit :: SSMLit -> String
 prettyLit l = case l of
@@ -187,6 +181,7 @@ prettyUnaryOpE op e = case op of
 prettyUnaryOpR :: UnaryOpR -> Reference -> String
 prettyUnaryOpR op r = case op of
     Changed -> '@' : refName r
+    Deref   -> '*' : refName r
 
 prettyBinop :: BinOp -> String
 prettyBinop op = case op of

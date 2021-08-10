@@ -23,7 +23,6 @@ spec = T.correctSpec "LaterWaitSpec" p
 p :: Program
 p = Program
   { entry = Ident "fun0" Nothing
-  , args  = []
   , funs  = fromList
     [ ( Ident "fun0" Nothing
       , Procedure
@@ -33,7 +32,6 @@ p = Program
                  , After (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
                          (Dynamic (Ident "v0" Nothing, Ref TInt32))
                          (Lit TInt32 (LInt32 1))
-                 , GetRef (Ident "v3" Nothing) TInt32 (Dynamic (Ident "v0" Nothing, Ref TInt32))
                  , Wait [Dynamic (Ident "v0" Nothing, Ref TInt32)]
                  ]
         }

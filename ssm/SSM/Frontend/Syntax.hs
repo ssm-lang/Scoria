@@ -79,7 +79,6 @@ in "SSM.Core.Syntax", but with some changes (@Fork@, @If@, @While@, most notably
 data SSMStm
     -- | Variable/Stream operations
     = NewRef S.Ident S.SSMExp       -- ^ Create a new named reference with an initial value
-    | GetRef S.Ident S.Reference    -- ^ Dereference a reference, place the result in a var
     | SetRef S.Reference S.SSMExp  -- ^ Set a reference
     {-| Set a local variable. Expression variables can currently only be created when
     they are given to a procedure as an argument, or by dereferencing a reference. -}
@@ -117,6 +116,13 @@ newtype SSM a = SSM (State SSMSt a)
 runSSM :: SSM a -> [SSMStm]
 runSSM (SSM program) = statements $ execState program (SSMSt 0 [])
 
+{- | Run a SSM program with an initial state and get the statements as well as the
+final state. -}
+genStmts :: Int -> SSM a -> ([SSMStm], Int)
+genStmts i (SSM program) =
+  let (_,st) = runState program (SSMSt i [])
+  in (statements st, counter st)
+
 -- | Take a list of statements and turn them into an SSM computation.
 pureSSM :: [SSMStm] -> SSM ()
 pureSSM stmts = modify $ \st -> st { statements = stmts }
@@ -137,138 +143,12 @@ getProcedureName :: [SSMStm] -> S.Ident
 getProcedureName (Procedure n:_) = n
 getProcedureName _               = error "not a procedure"
 
-{- To get access to a program in this lower, more convenient form, we do a transpilation
-pass over the high level syntax. A core purpose of this transpilation is to make the fork
-statements more flat (not recursive).
-
-When a fork statement is seen the forked procedures will contain @[SSMStm]@. What we do is
-that we inspect the head of this list to see if the name of the procedure is one we have
-already seen (is it in our map of procedures?). If we have seen it, we just refer to it
-by name and move on. If we have not seen it before, we do the same things but we also
-recursively transpile the forked procedure before we put it into the map of procedures. -}
-
--- | Transpilation monad
-type Transpile a = State TranspileState a
-
--- | Transpilation state
-data TranspileState = TranspileState
-    { -- | Map that associate procedure names with their Procedure definition.
-      procedures  :: Map.Map S.Ident S.Procedure
-      -- | List of procedure names that have already been seen.
-    , generated   :: [S.Ident]
-      {- | Name of the procedure that was the program entrypoint?
-      This is the first that that will be populated in the state during execution. -}
-    , mainname    :: Maybe S.Ident
-      -- | Parameter names and types of the program entrypoint.
-    , mainargs    :: [(S.Ident, S.Type)]
-      -- | What values were the program entrypoint applied to?
-    , mainargvals :: [Either S.SSMExp S.Reference]
-    }
-
-{- | Transpile a program of the high level syntax to the low level syntax as defined
-in "SSM.Core.Syntax". -}
-transpile :: SSM ()
-          -> ( S.Ident                         -- Entry-point of the program
-             , [Either S.SSMExp S.Reference]  -- Arguments to apply it to
-             , Map.Map S.Ident S.Procedure     -- Rest of procedures in the program
-             )
-transpile program = case mainname st of
-
-    Nothing -> error $ "no name found for the program entrypoint - did you forget to use box?"
-
-    Just n  -> if n `elem` (Map.keys $ procedures st)
-      then (n, mainargvals st, procedures st)
-      else let p = (S.Procedure n (mainargs st) main)
-           in (n, mainargvals st, Map.insert n p (procedures st))
-  where
-      (main,st) = runState comp state
-      state     = TranspileState Map.empty [] Nothing [] []
-      comp      = transpileProcedure $ runSSM program
-
--- | Transpile a list of high level statements to a list of low level statements.
-transpileProcedure :: [SSMStm] -> Transpile [S.Stm]
-transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
-    NewRef n e     -> return $ [S.NewRef n (S.expType e) e]
-    GetRef n r     -> return $ [S.GetRef n (S.dereference (S.refType r)) r]
-    SetRef r e     -> return $ [S.SetRef r e]
-    SetLocal (S.Var t n) e2 -> return $ [S.SetLocal n t e2]
-    SetLocal _ _ -> error "Trying to set a local variable that is not a variable"
-
-    If c thn els -> do
-      thn' <- transpileProcedure (runSSM thn)
-      els' <- case els of
-                Just els' -> transpileProcedure (runSSM els')
-                Nothing -> return $ [S.Skip]
-      return $ [S.If c thn' els']
-    While c bdy  -> do
-        bdy' <- transpileProcedure (runSSM bdy)
-        return $ [S.While c bdy']
-    
-    After d r v -> return $ [S.After d r v]
-    Wait refs   -> return $ [S.Wait refs]
-    Fork procs  -> do
-      procs' <- mapM getCall procs
-      return $ [S.Fork procs']
-
-    Procedure n    -> do
-      -- Only update the mainname value if it is `Nothing`, otherwise keep
-      -- the previous value.
-      modify $ \st -> st { mainname = maybe (Just n) Just $ mainname st }
-      return []
-    Argument n x a -> do 
-      let arginfo = (x, either S.expType S.refType a)
-      let a'      = either Left (Right . flip S.renameRef x) a
-      modify $ \st -> st { mainargs    = mainargs st ++ [arginfo]
-                         , mainargvals = mainargvals st ++ [a']
-                         }
-      return []
-    Result n       -> return []
-  where
-      {- | Converts a `SSM ()` computation to a description of the call, and if necessary,
-      this function will also update the environment to contain a mapping from the argument
-      procedure to it's body. -}
-      getCall :: SSM () -> Transpile (S.Ident, [Either S.SSMExp S.Reference])
-      getCall ssm = do
-          let stmts           = runSSM ssm
-          let name            = getProcedureName stmts
-          let (arginfo, args) = unzip $ getArgs stmts
-          st                  <- get
-
-          if name `elem` generated st
-              then return () -- we've seen it before, do nothing
-              else do
-                  put $ st { generated = name : generated st }
-                  nstmts <- recursive $ transpileProcedure stmts
-                  let fun = S.Procedure name arginfo nstmts
-                  modify $ \st -> st { procedures = Map.insert name fun (procedures st) }
-          
-          return (name, args)
-
-      {- | Perform a transpilation action without overwriting the mainname, mainargs
-      & mainvals state components. Return the result of the given transpilation action -}
-      recursive :: Transpile a -> Transpile a
-      recursive tr = do
-        old <- get
-        a <- tr
-        modify $ \st -> st { mainname    = mainname old
-                           , mainargs    = mainargs old
-                           , mainargvals = mainargvals old}
-        return a
-
-      {-| Return a tuple where the first component contains information about name
-      and type about the arguments, and the second compoment is a list of the actual arguments. -}
-      getArgs :: [SSMStm] -> [((S.Ident, S.Type), Either S.SSMExp S.Reference)]
-      getArgs []                    = []
-      getArgs (Procedure _: xs)     = getArgs xs
-      getArgs (Argument _ x a:xs)   = ((x, either S.expType S.refType a), a) : getArgs xs
-      getArgs _                     = []
-
 {- | Instance of `SSM.Core.Syntax.SSMProgram`, so that the compiler knows how to turn
 the frontend representation into something that it can generate code for. Just compiling
 a program does not introduce any global variables. -}
 instance S.SSMProgram (SSM ()) where
-  toProgram p = let (n,a,f) = transpile p
-                in S.Program n a f []
+  toProgram p = let (n,f) = transpile p
+                in S.Program n f []
 
 -- compile monad
 
@@ -310,7 +190,7 @@ hasSameGlobalsAs st1 st2 = generatedGlobals st1 == generatedGlobals st2
 {- | Rename the newst declared global reference by giving it the name that is supplied
 to this function.
 
-NOTE: This function is only meant to be called by the BinderAdd library. -}
+NOTE: This function is only meant to be called by the BinderAnn library. -}
 renameNewestGlobal :: S.Ident -> Compile ()
 renameNewestGlobal name = do
   st <- get
@@ -323,5 +203,109 @@ using the @Compile@ monad. This instance makes sure that you can compile and int
 something that is a program with such global variables. -}
 instance S.SSMProgram (Compile (SSM ())) where
   toProgram (Compile p) = let (a,s) = runState p (CompileSt 0 [])
-                              (n,ar,f) = transpile a
-                          in S.Program n ar f $ generatedGlobals s
+                              (n,f) = transpile a
+                          in S.Program n f $ generatedGlobals s
+
+{-********** Transpiling to core syntax **********-}
+
+-- | Transpilation monad
+type Transpile a = State TranspileState a
+
+-- | Transpilation state
+data TranspileState = TranspileState
+    { -- | Map that associate procedure names with their Procedure definition.
+      procedures  :: Map.Map S.Ident S.Procedure
+      -- | List of procedure names that have already been seen.
+    , generated   :: [S.Ident]
+      {- | Last known SSM name-generating state. A SSM computation can generate names,
+      but it also contains recursive SSM computations. What we want to do is essentially
+      to run all of these SSM computations with a single name generating state. This
+      component is that state, and we pass it in to the SSM run-function when we need
+      the statements. -}
+    , namecounter :: Int
+    }
+
+{- | Transpile a program of the high level syntax to the low level syntax as defined
+in "SSM.Core.Syntax". -}
+transpile :: SSM () -> (S.Ident, Map.Map S.Ident S.Procedure)
+transpile program =
+  let n     = getProcedureName stmts
+      procs = procedures st
+      {- A procedure is only inserted in the resulting map if it was reached
+      through a fork. If the entry point was not accessed by another procedure by a
+      fork, we need to manually insert it in the map. -}
+      funs  = if not $ n `elem` Map.keys procs
+                then Map.insert n (S.Procedure n [] main) procs
+                else procs
+  in (n, funs)
+  where
+      (main,st)  = runState comp state
+      (stmts, c) = genStmts 0 program
+      state      = TranspileState Map.empty [] c
+      comp       = transpileProcedure stmts
+
+
+transpileProcedure :: [SSMStm] -> Transpile [S.Stm]
+transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
+    NewRef n e     -> return $ [S.NewRef n (S.expType e) e]
+    SetRef r e     -> return $ [S.SetRef r e]
+    SetLocal (S.Var t n) e2 -> return $ [S.SetLocal n t e2]
+    SetLocal _ _ -> error "Trying to set a local variable that is not a variable"
+
+    If c thn els -> do
+      thn' <- transpileProcedure =<< getStmts thn
+      els' <- case els of
+                Just els' -> transpileProcedure =<< getStmts els'
+                Nothing -> return $ [S.Skip]
+      return $ [S.If c thn' els']
+    While c bdy  -> do
+        bdy' <- transpileProcedure =<< getStmts bdy
+        return $ [S.While c bdy']
+    
+    After d r v -> return $ [S.After d r v]
+    Wait refs   -> return $ [S.Wait refs]
+    Fork procs  -> do
+      procs' <- mapM getCall procs
+      return $ [S.Fork procs']
+
+    Procedure n    -> return []
+    Argument n x a -> return []
+    Result n       -> return []
+  where
+      {- | Run a recursive SSM computation by using the last known name generating state.
+      The last known name-generating state is updated to reflect if any new names were
+      generated while running this computation. -}
+      getStmts :: SSM () -> Transpile [SSMStm]
+      getStmts p = do
+        counter <- gets namecounter
+        let (stmts, counter') = genStmts counter p
+        modify $ \st -> st { namecounter = counter' }
+        return stmts
+
+      {- | Converts a `SSM ()` computation to a description of the call, and if necessary,
+      this function will also update the environment to contain a mapping from the argument
+      procedure to it's body. -}
+      getCall :: SSM () -> Transpile (S.Ident, [Either S.SSMExp S.Reference])
+      getCall ssm = do
+          let stmts           = runSSM ssm
+          let name            = getProcedureName stmts
+          let (arginfo, args) = unzip $ getArgs stmts
+          st                  <- get
+
+          if name `elem` generated st
+              then return () -- we've seen it before, do nothing
+              else do
+                  put $ st { generated = name : generated st }
+                  nstmts <- transpileProcedure stmts
+                  let fun = S.Procedure name arginfo nstmts
+                  modify $ \st -> st { procedures = Map.insert name fun (procedures st) }
+          
+          return (name, args)
+
+      {-| Return a tuple where the first component contains information about name
+      and type about the arguments, and the second compoment is a list of the actual arguments. -}
+      getArgs :: [SSMStm] -> [((S.Ident, S.Type), Either S.SSMExp S.Reference)]
+      getArgs []                    = []
+      getArgs (Procedure _: xs)     = getArgs xs
+      getArgs (Argument _ x a:xs)   = ((x, either S.expType S.refType a), a) : getArgs xs
+      getArgs _                     = []

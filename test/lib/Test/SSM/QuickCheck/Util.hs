@@ -86,14 +86,6 @@ removeVars = go
                 else NewRef n t (rewriteExp e invalid validrefs) :
                      go invalid (makeDynamicRef n t:validrefs) xs
 
-        GetRef n t r   ->
-            if n `elem` invalid
-                then Skip : go invalid validrefs xs
-                else
-            if not $ r `elem` validrefs
-                then Skip : go (n:invalid) validrefs xs
-                else x : go invalid validrefs xs
-
         SetRef r e     ->
             if not $ r `elem` validrefs
                 then Skip : go invalid validrefs xs
@@ -156,6 +148,9 @@ removeVars = go
               Changed -> if r `elem` validrefs
                   then UOpR t r Changed
                   else Lit TBool (LBool True)
+              Deref -> if r `elem` validrefs
+                  then UOpR t r Deref
+                  else defaultExp t
           BOp t e1 e2 op ->
               BOp t
                   (rewriteExp e1 invalid validrefs)
