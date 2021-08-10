@@ -208,7 +208,7 @@ genStruct = do
   -- | Turn a @(Ident, Type)@ pair into a C function parameter
   param :: (Ident, Type) -> C.FieldGroup
   param (n, t) | isReference t = [csdecl|$ty:(svt_ t) *$id:(identName n);|]
-               | otherwise     = [csdecl|$ty:(svt_ t) $id:(identName n);|]
+               | otherwise     = [csdecl|$ty:(basetype t) $id:(identName n);|]
 
   {- | Return a scheduled variable field, of the same type and name as the
   argument reference. -}
@@ -265,17 +265,7 @@ genEnter = do
 
   -- | initialize a parameter
   initParam :: (Ident, Type) -> [C.Stm]
-  initParam (n, t)
-    | isReference t
-    = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
-    | baseType t == TEvent
-    = [ [cstm|$id:(initialize_ t)(&$id:acts->$id:(identName n));|]
-      , [cstm|$id:(assign_ t)(&$id:acts->$id:(identName n), $id:actg->priority);|]
-      ]
-    | otherwise
-    = [ [cstm|$id:(initialize_ t)(&acts->$id:(identName n));|]
-      , [cstm|acts->$id:(identName n).value = $id:(identName n);|]
-      ]
+  initParam (n, t) = [[cstm|acts->$id:(identName n) = $id:(identName n);|]]
 
   -- | Initialize a local reference
   initLocal :: Reference -> [C.Stm]
@@ -335,7 +325,7 @@ genStep = do
 
       val :: C.Exp
       val | isReference t = [cexp|$id:acts->$id:(identName n)->value|]
-          | otherwise     = [cexp|$id:acts->$id:(identName n).value|]
+          | otherwise     = [cexp|$id:acts->$id:(identName n)|]
 
     -- | Dequeue any outstanding event on a reference
     dequeue :: Reference -> C.Stm
@@ -397,10 +387,7 @@ genCase (SetLocal n t e) = do
   let lvar = identName n
       lhs  = [cexp|&$id:acts->$id:lvar|]
       rhs  = genExp locs e
-  case baseType t of
-    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
-    _ ->
-      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
+  return [[cstm| $id:acts->$id:(identName n) = $exp:rhs;|]]
 genCase (If c t e) = do
   locs <- gets locals
   let cnd = genExp locs c
