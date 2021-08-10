@@ -64,6 +64,7 @@ import SSM.Util.State
 import qualified SSM.Core.Syntax as S
 
 import qualified Data.Map as Map
+import Data.Maybe
 
 import Control.Monad.State
     ( gets, get, put, modify, execState, runState, forM, MonadState, State, StateT(StateT) )
@@ -211,8 +212,13 @@ type Transpile a = State TranspileState a
 data TranspileState = TranspileState
     { -- | Map that associate procedure names with their Procedure definition.
       procedures  :: Map.Map S.Ident S.Procedure
+      -- | Name of the procedure we are transpiling right now
+    , currentProc :: S.Ident
       -- | List of procedure names that have already been seen.
     , generated   :: [S.Ident]
+      {- | If a procedure need to have its name forcibly changed to produce a type-safe
+      core representation, this map associates source names with specialized variants. -}
+    , specialized :: Map.Map S.Ident [S.Ident]
       {- | Last known SSM name-generating state. A SSM computation can generate names,
       but it also contains recursive SSM computations. What we want to do is essentially
       to run all of these SSM computations with a single name generating state. This
@@ -220,6 +226,10 @@ data TranspileState = TranspileState
       the statements. -}
     , namecounter :: Int
     }
+
+instance IntState TranspileState where
+  getInt = namecounter
+  setInt i ts = ts { namecounter = i }
 
 {- | Transpile a program of the high level syntax to the low level syntax as defined
 in "SSM.Core.Syntax". -}
@@ -237,7 +247,7 @@ transpile program =
   where
       (main,st)  = runState comp state
       (stmts, c) = genStmts 0 program
-      state      = TranspileState Map.empty [] c
+      state      = TranspileState Map.empty (getProcedureName stmts) [] Map.empty c
       comp       = transpileProcedure stmts
 
 
@@ -277,6 +287,14 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
         let (stmts, counter') = genStmts counter p
         modify $ \st -> st { namecounter = counter' }
         return stmts
+      
+      recursiveTranspile :: [SSMStm] -> Transpile [S.Stm]
+      recursiveTranspile stmts = do
+        n <- gets currentProc
+        modify $ \st -> st { currentProc = getProcedureName stmts }
+        stmts' <- transpileProcedure stmts
+        modify $ \st -> st { currentProc = n }
+        return stmts'
 
       {- | Converts a `SSM ()` computation to a description of the call, and if necessary,
       this function will also update the environment to contain a mapping from the argument
@@ -290,15 +308,52 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
           st                  <- get
 
           if specializedName `elem` generated st
-              then return () -- we've seen it before, do nothing
+
+              then do nstmts     <- transpileProcedure stmts
+                      procs      <- gets procedures
+                      let fstmts = S.body $ fromJust $ Map.lookup specializedName procs
+
+                      if nstmts == fstmts
+                        then return (specializedName, args)
+                        else do f <- specializeProcedure specializedName nstmts arginfo
+                                return (f, args)
+
               else do
                   put $ st { generated = specializedName : generated st }
                   nstmts <- transpileProcedure stmts
                   let fun = S.Procedure specializedName arginfo nstmts
                   modify $ \st -> st { procedures =
                     Map.insert specializedName fun (procedures st) }
-          
-          return (specializedName, args)
+                  return (specializedName, args)
+
+      specializeProcedure :: S.Ident -> [S.Stm] -> [(S.Ident, S.Type)] -> Transpile S.Ident
+      specializeProcedure n stmts arginfo = do
+        specializeds <- gets specialized
+        case Map.lookup n specializeds of
+          Just names -> do procs <- gets procedures
+                           ms <- findCorrect names procs
+                           maybe createNewProcedure return ms
+          Nothing    -> createNewProcedure
+        where
+          createNewProcedure :: Transpile S.Ident
+          createNewProcedure = do
+            n' <- S.appendIdent n <$> S.makeIdent <$> fresh
+            let procedure = S.Procedure n' arginfo stmts
+            modify $ \st ->
+              st { specialized = Map.insertWith (++) n [n'] (specialized st)
+                 , procedures = Map.insert n' procedure (procedures st)
+                 }
+            return n'
+
+          findCorrect :: [S.Ident]
+                      -> Map.Map S.Ident S.Procedure
+                      -> Transpile (Maybe S.Ident)
+          findCorrect []      _  = return Nothing
+          findCorrect (n':ns) ps = do
+            let p = fromJust $ Map.lookup n' ps
+            if S.body p == stmts
+              then return $ Just n'
+              else findCorrect ns ps
 
       {-| Return a tuple where the first component contains information about name
       and type about the arguments, and the second compoment is a list of the actual arguments. -}
@@ -318,12 +373,12 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       -}
       typeToMnemonic :: S.Type -> S.Ident
       typeToMnemonic t = case t of
-        S.TUInt8  -> S.makeIdent "UInt8"
-        S.TUInt64 -> S.makeIdent "UInt64"
-        S.TInt32  -> S.makeIdent "Int32"
-        S.TInt64  -> S.makeIdent "Int64"
-        S.TBool   -> S.makeIdent "Bool"
-        S.TEvent  -> S.makeIdent "Event"
+        S.TUInt8  -> S.makeIdent "u8"
+        S.TUInt64 -> S.makeIdent "u64"
+        S.TInt32  -> S.makeIdent "i32"
+        S.TInt64  -> S.makeIdent "i64"
+        S.TBool   -> S.makeIdent "bool"
+        S.TEvent  -> S.makeIdent "event"
         S.Ref ty  -> S.appendIdent (S.makeIdent "Ref") (typeToMnemonic ty)
 
       {- | Specialized an identifier by appending type information at the end. Any

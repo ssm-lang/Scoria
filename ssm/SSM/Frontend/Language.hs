@@ -68,6 +68,7 @@ module SSM.Frontend.Language
       -- ** Global references
       -- | Global references exist in the global scope and are always alive.
     , global
+    , FromLiteral
     ) where
 
 import Data.Int
