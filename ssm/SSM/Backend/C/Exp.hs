@@ -24,7 +24,7 @@ genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename i64) $int:i|]
 genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename u64) $int:i|]
 genExp _  (Lit _ (LBool   True )) = [cexp|true|]
 genExp _  (Lit _ (LBool   False)) = [cexp|false|]
-genExp _  (Lit _ (LEvent       )) = [cexp|0|]
+genExp _  (Lit _ LEvent) = [cexp|0|]
 genExp ls (UOpE _ e Neg         ) = [cexp|- $exp:(genExp ls e)|]
 genExp ls (UOpR t r op) = case op of
   Changed -> [cexp|$id:event_on($exp:(refSV r ls))|]

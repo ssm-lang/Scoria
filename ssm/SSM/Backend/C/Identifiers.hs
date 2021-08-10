@@ -30,9 +30,20 @@ module SSM.Backend.C.Identifiers
   , stepf_t
   , act_t
   , sv_t
-      {- | These are (a subset of the) types that the runtime system includes and uses
-      internally. These are just the ones that the code generator needs to talk about. -}
-  , uint16_t
+
+  , i32
+  , i32_t
+  , u32
+  , u32_t
+  , i64
+  , i64_t
+  , u64
+  , u64_t
+  , u8
+  , u8_t
+  , event
+  , event_t
+  , bool
   , bool_t
 
       -- * Constructing Identifiers from strings
@@ -50,7 +61,6 @@ module SSM.Backend.C.Identifiers
   , initialize_
   , assign_
   , later_
-  , basetype
 
     -- * Debug-/trace-specific macros
   , debug_microtick
@@ -64,7 +74,6 @@ import           Language.C.Quote.GCC           ( cexp
                                                 , cty
                                                 )
 import qualified Language.C.Syntax             as C
-import           SSM.Backend.C.Types
 
 -- | Use snake_case for c literals
 {-# ANN module "HLint: ignore Use camelCase" #-}
@@ -147,14 +156,6 @@ trigger_t = [cty|struct ssm_trigger|]
 stepf_t :: C.Type
 stepf_t = [cty|typename ssm_stepf_t|]
 
--- | C type that represents 16 bit unsigned integers
-uint16_t :: C.Type
-uint16_t = [cty|typename uint16_t|]
-
--- | C type that represents booleans
-bool_t :: C.Type
-bool_t = [cty|typename bool|]
-
 {---- Activation record identifiers ----}
 
 -- | The type of the activation record base class.
@@ -183,24 +184,63 @@ trig_ i = "trig" ++ show i
 sv_t :: C.Type
 sv_t = [cty|struct sv|]
 
--- | Obtain the name of the scheduled variable type for an SSM `Type`.
-svt_ :: Type -> C.Type
-svt_ ty = [cty|typename $id:("ssm_" ++ baseTypeId ty ++ "_t")|]
+i32 :: CIdent
+i32 = "i32"
 
-basetype :: Type -> C.Type
-basetype t = [cty|typename $id:(baseTypeId t)|]
+i32_t :: C.Type
+i32_t = [cty|typename $id:i32|]
 
--- | Obtain the name of the initialize method for an SSM `Type`.
-initialize_ :: Type -> CIdent
-initialize_ ty = "ssm_initialize_" ++ baseTypeId ty
+u32 :: CIdent
+u32 = "u32"
+
+u32_t :: C.Type
+u32_t = [cty|typename $id:u32|]
+
+i64 :: CIdent
+i64 = "i64"
+
+i64_t :: C.Type
+i64_t = [cty|typename $id:i64|]
+
+u64 :: CIdent
+u64 = "u64"
+
+u64_t :: C.Type
+u64_t = [cty|typename $id:u64|]
+
+u8 :: CIdent
+u8 = "u8"
+
+u8_t :: C.Type
+u8_t = [cty|typename $id:u8|]
+
+event :: CIdent
+event = "event"
+
+event_t :: C.Type
+event_t = [cty|typename $id:event|]
+
+bool :: CIdent
+bool = "bool"
+
+bool_t :: C.Type
+bool_t = [cty|typename $id:bool|]
+
+-- | Obtain the name of the scheduled variable type.
+svt_ :: CIdent -> C.Type
+svt_ ty = [cty|typename $id:("ssm_" ++ ty ++ "_t")|]
+
+-- | Obtain the name of the initialize method.
+initialize_ :: CIdent -> CIdent
+initialize_ ty = "ssm_initialize_" ++ ty
 
 -- | Obtain the name of the assign method for an SSM `Type`.
-assign_ :: Type -> CIdent
-assign_ ty = "ssm_assign_" ++ baseTypeId ty
+assign_ :: CIdent -> CIdent
+assign_ ty = "ssm_assign_" ++ ty
 
 -- | Obtain the name of the later method for an SSM `Type`.
-later_ :: Type -> CIdent
-later_ ty = "ssm_later_" ++ baseTypeId ty
+later_ :: CIdent -> CIdent
+later_ ty = "ssm_later_" ++ ty
 
 debug_microtick :: CIdent
 debug_microtick = "SSM_DEBUG_MICROTICK"
