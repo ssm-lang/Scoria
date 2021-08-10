@@ -287,14 +287,6 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
         let (stmts, counter') = genStmts counter p
         modify $ \st -> st { namecounter = counter' }
         return stmts
-      
-      recursiveTranspile :: [SSMStm] -> Transpile [S.Stm]
-      recursiveTranspile stmts = do
-        n <- gets currentProc
-        modify $ \st -> st { currentProc = getProcedureName stmts }
-        stmts' <- transpileProcedure stmts
-        modify $ \st -> st { currentProc = n }
-        return stmts'
 
       {- | Converts a `SSM ()` computation to a description of the call, and if necessary,
       this function will also update the environment to contain a mapping from the argument
@@ -307,17 +299,26 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
               specializedName = specializeIdent name $ map snd arginfo 
           st                  <- get
 
+          -- Have we already generated code for this procedure?
           if specializedName `elem` generated st
 
+                   {- If we have already generated code for a procedure with this name,
+                   check if the already-generated one is the same as this one. If it is
+                   not, rename this procedure and call the new name instead. -}
               then do nstmts     <- transpileProcedure stmts
                       procs      <- gets procedures
                       let fstmts = S.body $ fromJust $ Map.lookup specializedName procs
 
+                      -- does the bodies match?
                       if nstmts == fstmts
+                        -- if they do, it's the same procedure, and we call it
                         then return (specializedName, args)
+                        {- otherwise we need to specialize the name by looking up another
+                        name or by generating a new one to rename the current one. -}
                         else do f <- specializeProcedure specializedName nstmts arginfo
                                 return (f, args)
 
+              -- if we have not, we will create a Procedure and call it
               else do
                   put $ st { generated = specializedName : generated st }
                   nstmts <- transpileProcedure stmts
@@ -326,6 +327,13 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
                     Map.insert specializedName fun (procedures st) }
                   return (specializedName, args)
 
+      {- | @specializeProcedure n body arginfo@ is called when a procedure with name @n@
+      was called, but a different procedure with name @n@ have already been
+      transpiled. In this case we might have already specialized calls to @n@ to calls of
+      another procedure, so we will cycle through such procedures. If it is found we just
+      return the name of that procedure, but if it was not we are going to specialize a
+      new name of @n@ and return that name instead. Equality of procedures is determined
+      by matching names and identical procedure bodies. -}
       specializeProcedure :: S.Ident -> [S.Stm] -> [(S.Ident, S.Type)] -> Transpile S.Ident
       specializeProcedure n stmts arginfo = do
         specializeds <- gets specialized
@@ -335,16 +343,24 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
                            maybe createNewProcedure return ms
           Nothing    -> createNewProcedure
         where
+          -- | Create a new procedure by appending a fresh suffix to the current name
           createNewProcedure :: Transpile S.Ident
           createNewProcedure = do
+            -- generate new name
             n' <- S.appendIdent n <$> S.makeIdent <$> fresh
+            -- bundle everything up as a procedure
             let procedure = S.Procedure n' arginfo stmts
             modify $ \st ->
+                   {- remember that we've specialized a procedure with name @n@ to a new
+                   one with name @n'@. -}
               st { specialized = Map.insertWith (++) n [n'] (specialized st)
                  , procedures = Map.insert n' procedure (procedures st)
                  }
             return n'
 
+          {- | Look at the already specialized procedures. If one of them matches the
+          current procedure, return the same identifier. Otherwise signal that no such
+          procedure existed by returning @Nothing@. -}
           findCorrect :: [S.Ident]
                       -> Map.Map S.Ident S.Procedure
                       -> Transpile (Maybe S.Ident)
