@@ -480,3 +480,32 @@ genCase (Fork cs) = do
        , [cstm| case $int:caseNum: ; |]
        ]
 genCase Skip = return []
+
+{- | Given a reference and a list of local references, this function will return
+a C expression that holds a pointer to the reference. -}
+refPtr :: Reference -> [Reference] -> C.Exp
+refPtr r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| &acts->$id:(refName r) |]
+    else [cexp| acts->$id:(refName r)  |]
+-- Static references can be referenced without an activation record
+refPtr r@(Static _) _ = [cexp| &$id:(refName r) |]
+
+{- | Given a reference and a list of local references, this function will return a
+C expression that holds a pointer to the internal sv-component of the processes
+activation record. -}
+refSV :: Reference -> [Reference] -> C.Exp
+refSV r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| &acts->$id:(refName r).sv |]
+    else [cexp| &acts->$id:(refName r)->sv|]
+refSV r@(Static _) _ = [cexp| &$id:(refName r).sv|]
+
+{- | Given a Reference, this function will return a C expression that holds
+the value of that reference. -}
+refVal :: Reference -> [Reference] -> C.Exp
+refVal r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| acts->$id:(refName r).value|]
+    else [cexp| acts->$id:(refName r)->value|]
+refVal r@(Static _) _      = [cexp| $id:(refName r).value |]
