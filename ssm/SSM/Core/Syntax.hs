@@ -11,6 +11,8 @@ module SSM.Core.Syntax
       by these identifiers. In some places information is grabbed from the Haskell
       source file and added to the identifier. -}
       Ident(..)
+    , makeIdent
+    , appendIdent
     , SrcInformation(..)
 
       -- ** Types
@@ -83,6 +85,16 @@ import Control.Monad.State.Lazy
 -- | Data type of Identifiers
 data Ident = Ident { identName :: String, identSrcInfo :: Maybe SrcInformation}
   deriving (Show, Read)
+
+{- | Create an identifier without source information, from a @String@ representation
+of the identifier. -}
+makeIdent :: String -> Ident
+makeIdent = flip Ident Nothing
+
+{- | @appendIdent i1 i2@ appends the identifier @i2@ to the end of the identifier
+@i1@. No source information is retained. -}
+appendIdent :: Ident -> Ident -> Ident
+appendIdent i1 i2 = makeIdent $ identName i1 ++ identName i2
 
 instance Eq Ident where
   Ident n _ == Ident m _ = n == m

@@ -284,19 +284,21 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       getCall :: SSM () -> Transpile (S.Ident, [Either S.SSMExp S.Reference])
       getCall ssm = do
           let stmts           = runSSM ssm
-          let name            = getProcedureName stmts
-          let (arginfo, args) = unzip $ getArgs stmts
+              name            = getProcedureName stmts
+              (arginfo, args) = unzip $ getArgs stmts
+              specializedName = specializeIdent name $ map snd arginfo 
           st                  <- get
 
-          if name `elem` generated st
+          if specializedName `elem` generated st
               then return () -- we've seen it before, do nothing
               else do
-                  put $ st { generated = name : generated st }
+                  put $ st { generated = specializedName : generated st }
                   nstmts <- transpileProcedure stmts
-                  let fun = S.Procedure name arginfo nstmts
-                  modify $ \st -> st { procedures = Map.insert name fun (procedures st) }
+                  let fun = S.Procedure specializedName arginfo nstmts
+                  modify $ \st -> st { procedures =
+                    Map.insert specializedName fun (procedures st) }
           
-          return (name, args)
+          return (specializedName, args)
 
       {-| Return a tuple where the first component contains information about name
       and type about the arguments, and the second compoment is a list of the actual arguments. -}
@@ -305,3 +307,33 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       getArgs (Procedure _: xs)     = getArgs xs
       getArgs (Argument _ x a:xs)   = ((x, either S.expType S.refType a), a) : getArgs xs
       getArgs _                     = []
+
+      {- | Turns a `SSM.Core.Syntax.Type` into an `SSM.Core.Syntax.Ident` that represents
+      the type.
+      
+      @
+      > typeToMnemonic TUInt8
+      "UInt8"
+      @
+      -}
+      typeToMnemonic :: S.Type -> S.Ident
+      typeToMnemonic t = case t of
+        S.TUInt8  -> S.makeIdent "UInt8"
+        S.TUInt64 -> S.makeIdent "UInt64"
+        S.TInt32  -> S.makeIdent "Int32"
+        S.TInt64  -> S.makeIdent "Int64"
+        S.TBool   -> S.makeIdent "Bool"
+        S.TEvent  -> S.makeIdent "Event"
+        S.Ref ty  -> S.appendIdent (S.makeIdent "Ref") (typeToMnemonic ty)
+
+      {- | Specialized an identifier by appending type information at the end. Any
+      source information found in the identifier initially is not retained.
+      
+      @
+      > specializeIdent "fun1" [TInt32, TBool]
+      "fun1Int32Bool"
+      @
+      -}
+      specializeIdent :: S.Ident -> [S.Type] -> S.Ident
+      specializeIdent name argtypes =
+        foldl S.appendIdent name $ map typeToMnemonic argtypes
