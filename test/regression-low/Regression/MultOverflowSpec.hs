@@ -13,7 +13,6 @@ import qualified Test.SSM.Prop                 as T
 p :: Program
 p = Program
   { entry = Ident "fun1" Nothing
-  , args  = []
   , funs  = fromList
     [ ( Ident "fun1" Nothing
       , Procedure

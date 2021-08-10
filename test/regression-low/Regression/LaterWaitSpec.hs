@@ -23,7 +23,6 @@ spec = T.correctSpec "LaterWaitSpec" p
 p :: Program
 p = Program
   { entry = Ident "fun0" Nothing
-  , args  = []
   , funs  = fromList
     [ ( Ident "fun0" Nothing
       , Procedure

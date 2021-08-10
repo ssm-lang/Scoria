@@ -49,7 +49,7 @@ instance Arbitrary Program where
     funTypes <- genListOfLength typesiggen =<< choose (0,5)
 
     -- Designate entrypoint procedure, with no arguments.
-    let entry@(entryPoint, entryArgs) = (Ident "fun0" Nothing, [])
+    let entry@(entryPoint, _) = (Ident "fun0" Nothing, [])
 
     -- List of all functions.
     let funs = entry:[(Ident ("fun" ++ show i) Nothing, as) | (as,i) <- zip funTypes [1..]]
@@ -81,7 +81,7 @@ instance Arbitrary Program where
     let procedures = Map.fromList
           [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
 
-    return $ Program entryPoint entryArgs procedures globals
+    return $ Program entryPoint procedures globals
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program

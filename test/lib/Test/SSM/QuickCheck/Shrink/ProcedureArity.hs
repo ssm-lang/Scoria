@@ -29,10 +29,7 @@ arities p =
 
     {- update the program to contain the new procedures. If the shrunk procedure was
     the entry point, remove the ith argument from it. -}
-    in if n == (entry p)
-          then p { args = removeNth i (args p)
-                 , funs = funs'}
-          else p { funs = funs' }
+    in p { funs = funs' }
 
   | (n,procedure) <- Map.toList $ funs p
   , (i,arg)       <- zip [0..] (arguments procedure)
