@@ -14,7 +14,6 @@ module SSM.Interpret.Internal
   , procName
   , variableStorage
   , initState
-  , params
   , globals
 
   -- * Model time helpers
@@ -111,31 +110,6 @@ globals p = do
     v <- newVar' initval maxBound
     return (id, v)
   return $ Map.fromList vars
-
-{- | Creates the initial variable storage for a program.
-
-Expressions are just allocated in an @STRef@, while references are given
-a default value and then allocated in an @STRef@.
-
-TODO: coordinate with expected entry point signature
--}
-params :: Program -> ST s (Map.Map Ident (Var s))
-params p = do
-  let process =
-        fromMaybe (error $ "Intepreter: cannot find function: " ++ identName (entry p))
-          $ Map.lookup (entry p) (funs p)
-
-  m <- mapM createParam $ zip (arguments process) (args p)
-
-  return $ Map.fromList m
- where
-  createParam :: ((a, Type), Either SSMExp b) -> ST s (a, Var s)
-  createParam ((n, t), Left e) = do
-    v <- newVar' e 0
-    return (n, v)
-  createParam ((n, t), Right e) = do
-    v <- newVar' (defaultValue $ dereference t) 0
-    return (n, v)
 
 -- | Default values for SSM types.
 defaultValue :: Type -> SSMExp
@@ -649,6 +623,7 @@ eval e = do
     Lit _ l     -> return e
     UOpR _ r op -> case op of
       Changed -> wasWritten r
+      Deref   -> readRef r
     UOpE _ e Neg -> do
       e' <- eval e
       return $ neg e'

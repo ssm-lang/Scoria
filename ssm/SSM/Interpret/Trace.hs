@@ -10,13 +10,14 @@ loops, these microticks will be placed at the beginning of each loop iteration,
 and at the beginning of each step function. The running microtick count persists
 between instants, so that it increases monotonically throughout the execution.
 -}
-
+{-# LANGUAGE OverloadedStrings #-}
 module SSM.Interpret.Trace where
 
+import qualified Data.Text                     as T
 import           Data.Word
-import           SSM.Core.Syntax                ( SSMLit
-                                                , Type
-                                                )
+import           SSM.Core.Syntax
+
+import           Test.QuickCheck
 
 -- | What transpired during the execution of an SSM program.
 type Trace = [Event]
@@ -127,3 +128,107 @@ instance Show ConcreteValue where
   show (IntegralVal i) = "(IntegralVal " ++ show i ++ ")"
   show (IntegralFmt f) = "(IntegralVal " ++ f ++ ")"
   show UnitType        = "UnitType"
+
+actStepBegin :: T.Text
+actStepBegin = "ActStepBegin"
+
+actActivate :: T.Text
+actActivate = "ActActivate"
+
+varVal :: T.Text
+varVal = "VarVal"
+
+actVar :: T.Text
+actVar = "ActVar"
+
+driverEventQueueStatus :: T.Text
+driverEventQueueStatus = "DriverEventQueueStatus"
+
+actSensitize :: T.Text
+actSensitize = "ActSensitize"
+
+terminatedOk :: T.Text
+terminatedOk = "TerminatedOk"
+
+exhaustedMicrotick :: T.Text
+exhaustedMicrotick = "ExhaustedMicrotick"
+
+exhaustedActQueue :: T.Text
+exhaustedActQueue = "ExhaustedActQueue"
+
+exhaustedEventQueue :: T.Text
+exhaustedEventQueue = "ExhaustedEventQueue"
+
+exhaustedMemory :: T.Text
+exhaustedMemory = "ExhaustedMemory"
+
+exhaustedPriority :: T.Text
+exhaustedPriority = "ExhaustedPriority"
+
+crashInvalidTime :: T.Text
+crashInvalidTime = "CrashInvalidTime"
+
+crashArithmeticError :: T.Text
+crashArithmeticError = "CrashArithmeticError"
+
+crashUnforeseen :: T.Text
+crashUnforeseen = "CrashUnforeseen"
+
+integralVal :: T.Text
+integralVal = "IntegralVal"
+
+unitType :: T.Text
+unitType = "UnitType"
+
+ref :: T.Text
+ref = "Ref"
+
+{-********** Generate random traces **********-}
+
+instance Arbitrary Type where
+  arbitrary = elements $ basetypes ++ Prelude.map Ref basetypes
+    where basetypes = [TUInt8, TUInt64, TInt32, TInt64, TBool, TEvent]
+
+instance Arbitrary ConcreteValue where
+  arbitrary = oneof [IntegralVal <$> arbitrary, return UnitType]
+
+instance Arbitrary VarVal where
+  arbitrary = do
+    i <- arbitrary :: Gen Word8
+    let varIdent = "v" ++ show i
+    t  <- arbitrary
+    cv <- arbitrary
+    return $ VarVal varIdent t cv
+
+instance Arbitrary Event where
+  arbitrary = oneof
+    [ return ExhaustedActQueue
+    , return ExhaustedEventQueue
+    , return ExhaustedMicrotick
+    , return ExhaustedPriority
+    , return ExhaustedMemory
+    , return CrashArithmeticError
+    , return CrashInvalidTime
+    , do
+      reason <- oneof [return "error1", return "error2", return "error3"]
+      return $ CrashUnforeseen reason
+    , return TerminatedOk
+    , ActSensitize <$> arbVar
+    , ActActivate <$> arbAct
+    , ActVar <$> arbitrary
+    , ActStepBegin <$> arbAct
+    , do
+      i <- arbitrary
+      t <- arbitrary
+      return $ DriverEventQueueStatus i t
+    ]
+   where
+    arbVar :: Gen String
+    arbVar = do
+      i <- arbitrary :: Gen Word8
+      return $ "v" ++ show i
+
+    arbAct :: Gen String
+    arbAct = do
+      i <- arbitrary :: Gen Word8
+      return $ "fun" ++ show i
