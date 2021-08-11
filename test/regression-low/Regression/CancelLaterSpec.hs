@@ -15,9 +15,8 @@ p = Program
                 , Procedure
                   { name = Ident "fun0" Nothing
                   , arguments = []
-                  , body = [ NewRef (Ident "v0" Nothing)
-                                    TInt32
-                                    (Lit TInt32 (LInt32 0))
+                  , body = [ CreateRef (Ident "v0" Nothing) (Ref TInt32)
+                           , SetRef (Dynamic (Ident "v0" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 0))
                            , After (SSMTime (Lit TUInt64 (LUInt64 2))
                                             SSMNanosecond)
                                    (Dynamic (Ident "v0" Nothing, Ref TInt32))

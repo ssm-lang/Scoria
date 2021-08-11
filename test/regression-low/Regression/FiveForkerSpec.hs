@@ -19,9 +19,12 @@ p = Program
         { name      = Ident "fun0" Nothing
         , arguments = []
         , body      =
-          [ NewRef (Ident "ref1" Nothing) TInt32 (Lit TInt32 (LInt32 0))
-          , NewRef (Ident "ref2" Nothing) TUInt64 (Lit TUInt64 (LUInt64 0))
-          , NewRef (Ident "ref4" Nothing) TUInt64 (Lit TUInt64 (LUInt64 0))
+          [ CreateRef (Ident "ref1" Nothing) (Ref TInt32)
+          , SetRef (Dynamic (Ident "ref1" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 0))
+          , CreateRef (Ident "ref2" Nothing) (Ref TUInt64)
+          , SetRef (Dynamic (Ident "ref2" Nothing, Ref TUInt64)) (Lit TUInt64 (LUInt64 0))
+          , CreateRef (Ident "ref4" Nothing) (Ref TUInt64)
+          , SetRef (Dynamic (Ident "ref4" Nothing, Ref TUInt64)) (Lit TUInt64 (LUInt64 0))
           , Fork
             [ ( Ident "fun5" Nothing
               , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))

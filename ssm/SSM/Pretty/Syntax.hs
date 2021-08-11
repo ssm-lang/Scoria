@@ -81,13 +81,11 @@ prettyProcedure p = do
 
 prettyStm :: Stm -> PP ()
 prettyStm stm = case stm of
-    NewRef n t e   -> emit $ concat [ prettyType t
-                                    , " *"
-                                    , identName n
-                                    , " = var "
-                                    , prettySSMExp e
-                                    ]
-    SetRef r e     -> emit $ concat [ refName r
+    CreateRef n t  -> emit $ concat [ prettyType t
+                                    , " "
+                                    , identName n]
+    SetRef r e     -> emit $ concat [ "*"
+                                    , refName r
                                     , " = "
                                     , prettySSMExp e
                                     ]

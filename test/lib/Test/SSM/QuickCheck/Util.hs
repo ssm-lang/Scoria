@@ -73,18 +73,16 @@ removeVars :: [Ident] -> [Reference] -> [Stm] -> [Stm]
 removeVars = go
   where
       -- | Transforms a procedure body to contain no reference of the invalid identifiers
-      go :: [Ident]          -- ^ Names of invalid identifiers
+      go :: [Ident]      -- ^ Names of invalid identifiers
          -> [Reference]  -- ^ Names & Types of valid references
-         -> [Stm]             -- ^ Statements to transform
+         -> [Stm]        -- ^ Statements to transform
          -> [Stm]
       go _ _ []           = []
       go invalid validrefs (x:xs) = case x of
-
-        NewRef n t e   ->
+        CreateRef n t  ->
             if n `elem` invalid
                 then Skip : go invalid validrefs xs
-                else NewRef n t (rewriteExp e invalid validrefs) :
-                     go invalid (makeDynamicRef n t:validrefs) xs
+                else x : go invalid (makeDynamicRef n t:validrefs) xs
 
         SetRef r e     ->
             if not $ r `elem` validrefs

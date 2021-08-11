@@ -39,7 +39,7 @@ module SSM.Interpret.Internal
   , pushInstructions
 
   -- * Reference helpers
-  , newRef
+  , createRef
   , writeRef
   , writeLocal
   , readRef
@@ -311,14 +311,21 @@ createVar e = do
   n <- getNow
   lift' $ newVar' v n
 
-{- | Create a new reference with an initial value.
+{- | Create a new reference. The initial value of this reference tries to mirror a
+zero-initialized value as much as possible, but don't try on this.
 
-Note: it is added to the map containing the local variables. -}
-newRef :: Ident -> SSMExp -> Interp s ()
-newRef n e = do
-    ref <- createVar e
-    p <- gets process
-    modify $ \st -> st { process = p { localrefs = Map.insert n ref (localrefs p) } }
+Note: it is added to the map containing local variables. -}
+createRef :: Ident -> Type -> Interp s ()
+createRef n t = newRef n $ defaultValue (dereference t)
+  where
+    {- | Create a new reference with an initial value.
+
+    Note: it is added to the map containing the local variables. -}
+    newRef :: Ident -> SSMExp -> Interp s ()
+    newRef n e = do
+        ref <- createVar e
+        p <- gets process
+        modify $ \st -> st { process = p { localrefs = Map.insert n ref (localrefs p) } }
 
 {- | Create a new variable with an initial value, and adds it to the current process's
 variable storage. When a variable is created it is considered written to.

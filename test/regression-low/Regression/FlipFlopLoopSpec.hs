@@ -19,7 +19,8 @@ p = Program
                 , Procedure
                   { name = Ident "fun0" Nothing
                   , arguments = []
-                  , body = [ NewRef (Ident "ref2" Nothing) TBool (Lit TBool (LBool True))
+                  , body = [ CreateRef (Ident "ref2" Nothing) (Ref TBool)
+                           , SetRef (Dynamic (Ident "ref2" Nothing, Ref TBool)) (Lit TBool (LBool True))
                            , Fork [(Ident "fun1" Nothing, [Right (Dynamic (Ident "ref2" Nothing, Ref TBool))])]
                            ]
                   }

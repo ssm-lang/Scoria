@@ -20,13 +20,13 @@ p = Program
         { name      = Ident "fun0" Nothing
         , arguments = []
         , body      =
-          [ NewRef (Ident "v0" Nothing) TBool (Lit TBool (LBool False))
-          , After (SSMTime (Lit TUInt64 (LUInt64 1)) SSMNanosecond)
+          [ CreateRef (Ident "v0" Nothing) (Ref TBool)
+          , SetRef (Dynamic (Ident "v0" Nothing, Ref TBool)) (Lit TBool (LBool False))
+          , After (SSMTime (Lit TUInt64 (LUInt64 1)) (SSMNanosecond)
                   (Dynamic (Ident "v0" Nothing, Ref TBool))
                   (Lit TBool (LBool True))
-          , NewRef (Ident "v1" Nothing)
-                   TBool
-                   (UOpR TBool (Dynamic (Ident "v0" Nothing, Ref TBool)) Changed)
+          , CreateRef (Ident "v1" Nothing) (Ref TBool)
+          , SetRef (Dynamic (Ident "v1" Nothing, Ref TBool)) (UOpR TBool (Dynamic (Ident "v0" Nothing, Ref TBool)) Changed)
           , After (SSMTime (Lit TUInt64 (LUInt64 3872)) SSMNanosecond)
                   (Dynamic (Ident "v1" Nothing, Ref TBool))
                   (Lit TBool (LBool False))

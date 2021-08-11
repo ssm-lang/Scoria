@@ -35,7 +35,7 @@ allRefs p = refs $ body p
   where
     refs :: [Stm] -> [Reference]
     refs xs = concat $ for xs $ \x -> case x of
-      NewRef n t e -> [makeDynamicRef n t]
+      CreateRef n t -> [makeDynamicRef n t]
       If _ thn els -> refs thn ++ refs els
       While _ bdy  -> refs bdy
       _            -> []

@@ -247,7 +247,12 @@ transpile program =
 
 transpileProcedure :: [SSMStm] -> Transpile [S.Stm]
 transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
-    NewRef n e     -> return $ [S.NewRef n (S.expType e) e]
+    NewRef n e     -> let rt  = S.mkReference $ S.expType e
+                          ref = S.makeDynamicRef n rt
+                      in return $ [ S.CreateRef n rt
+                                  , S.SetRef ref e
+
+                                  ]
     SetRef r e     -> return $ [S.SetRef r e]
     SetLocal (S.Var t n) e2 -> return $ [S.SetLocal n t e2]
     SetLocal _ _ -> error "Trying to set a local variable that is not a variable"

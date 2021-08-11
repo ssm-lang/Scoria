@@ -100,9 +100,12 @@ step = do
     Nothing  -> leave
 
     Just stm -> case stm of
-      NewRef n _ e -> do
-        newRef n e
+      CreateRef n t -> do
+        createRef n t
         continue
+--      NewRef n _ e -> do
+--        newRef n e
+--        continue
 
       SetRef r e -> do
         writeRef r e

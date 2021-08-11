@@ -16,9 +16,8 @@ p = Program
       , Procedure
         { name      = Ident "fun0" Nothing
         , arguments = []
-        , body      = [ NewRef (Ident "ref2" Nothing)
-                                TUInt64
-                                (Lit TUInt64 (LUInt64 0))
+        , body      = [ CreateRef (Ident "ref2" Nothing) (Ref TUInt64)
+                      , SetRef (Dynamic (Ident "ref2" Nothing, Ref TUInt64)) (Lit TUInt64 (LUInt64 0))
                       , Fork [(Ident "fun1" Nothing, [Right $ Dynamic (Ident "ref2" Nothing, Ref TUInt64)])]
                       ]
         }

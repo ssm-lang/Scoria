@@ -362,16 +362,19 @@ support return statements. This could be fixed by generating a break, and
 moving the leave call to outside of the switch statement in 'genStep'.
 -}
 genCase :: Stm -> TR [C.Stm]
-genCase (NewRef n t v) = do
-  locs <- gets locals
-  let lvar = identName n
-      lhs  = [cexp|&$id:acts->$id:lvar|]
-      rhs  = genExp locs v
-  addLocal $ makeDynamicRef n (mkReference t)
-  case baseType t of
-    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
-    _ ->
-      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
+genCase (CreateRef n t) = do
+  addLocal $ makeDynamicRef n t
+  return []
+--genCase (NewRef n t v) = do
+--  locs <- gets locals
+--  let lvar = identName n
+--      lhs  = [cexp|&$id:acts->$id:lvar|]
+--      rhs  = genExp locs v
+--  addLocal $ makeDynamicRef n (mkReference t)
+--  case baseType t of
+--    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
+--    _ ->
+--      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (SetRef r e) = do
   locs <- gets locals
   let lvar = refIdent r
