@@ -103,9 +103,6 @@ step = do
       CreateRef n t -> do
         createRef n t
         continue
---      NewRef n _ e -> do
---        newRef n e
---        continue
 
       SetRef r e -> do
         writeRef r e
