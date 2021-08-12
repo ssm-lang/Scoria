@@ -27,12 +27,11 @@ import qualified Language.C.Syntax             as C
 
 -- import           Data.Bifunctor                 ( second )
 import           Data.List                      ( sortOn )
+import           GHC.Stack                      ( HasCallStack )
 import           SSM.Backend.C.Identifiers
 import           SSM.Backend.C.Types
 import           SSM.Core.Syntax
 import qualified SSM.Interpret.Trace           as T
-
--- TODOs: remove hard-coded identifiers.
 
 -- | Given a 'Program', returns a tuple containing the compiled program and
 -- a list of all `include` statements.
@@ -99,6 +98,8 @@ maxWaits :: Int -> TR ()
 maxWaits rs = modify $ \st -> st { numwaits = rs `max` numwaits st }
 
 {-------- Code generation --------}
+
+-- TODOs: remove hard-coded identifiers like 'caller', 'priority', 'value', etc.
 
 -- | Identifier for generic (inner) struct act.
 actg :: CIdent
@@ -204,7 +205,7 @@ genStruct = do
   {- | Return a scheduled variable field, of the same type and name as the
   argument reference. -}
   local :: Reference -> C.FieldGroup
-  local ref = [csdecl|$ty:(svt_ (refType ref)) $id:(refName ref);|]
+  local ref = [csdecl|$ty:(svt_ $ stripRef $ refType ref) $id:(refName ref);|]
 
   -- | Return a trigger field, identified by the @Int@ argument
   trig :: Int -> C.FieldGroup
@@ -262,7 +263,9 @@ genEnter = do
   -- | Initialize a local reference
   initLocal :: Reference -> [C.Stm]
   initLocal ref = [[cstm| $exp:init;|]]
-    where init = initialize_ (refType ref) [cexp|&$id:acts->$id:(refName ref)|]
+   where
+    init =
+      initialize_ (stripRef $ refType ref) [cexp|&$id:acts->$id:(refName ref)|]
 
   -- | Initialize a trigger
   initTrig :: Int -> C.Stm
@@ -282,32 +285,29 @@ genStep = do
   cases <- concat <$> mapM genCase (body p)
   locs  <- gets locals
   final <- nextCase
-  let actname       = identName $ name p
-      act           = [cty|typename $id:actt|]
-      actt          = act_ actname -- hack to use this typename as expr in macros
-      step          = step_ actname
+  let
+    actname       = identName $ name p
+    act           = [cty|typename $id:actt|]
+    actt          = act_ actname -- hack to use this typename as expr in macros
+    step          = step_ actname
 
-      actStepBeginS = show $ T.ActStepBegin actname
+    actStepBeginS = show $ T.ActStepBegin actname
 
-      -- actLocalVarS nt = show $ T.ActVar $ varFmt nt
+    debugLocal :: Reference -> C.Stm
+    debugLocal r =
+      [cstm|if ($exp:last_updated != $id:never) $exp:(trace_ ty name val);|]
+     where
+      last_updated = [cexp|$id:acts->$id:(refName r).sv.last_updated|]
+      (ty, name)   = (stripRef $ refType r, refIdent r)
+      val          = [cexp|$id:acts->$id:(refName r).value|]
 
-      debugLocal :: Reference -> C.Stm
-      debugLocal r =
-        [cstm|if ($exp:last_updated != $id:never) $exp:(trace_ ty name val);|]
-       where
-        last_updated = [cexp|$id:acts->$id:(refName r).sv.last_updated|]
-        (ty, name)   = (refType r, refIdent r)
-        val          = [cexp|$id:acts->$id:(refName r).value|]
+    debugArg :: (Ident, Type) -> C.Exp
+    debugArg (n, Ref t) = trace_ t n [cexp|$id:acts->$id:(identName n)->value|]
+    debugArg (n, t    ) = trace_ t n [cexp|$id:acts->$id:(identName n)|]
 
-      debugArg :: (Ident, Type) -> C.Stm
-      debugArg (n, t) = expToStm $ trace_ t n val
-       where
-        val | isReference t = [cexp|$id:acts->$id:(identName n)->value|]
-            | otherwise     = [cexp|$id:acts->$id:(identName n)|]
-
-      -- | Dequeue any outstanding event on a reference
-      dequeue :: Reference -> C.Stm
-      dequeue r = [cstm|$id:unsched_event(&$id:acts->$id:(refName r).sv);|]
+    -- | Dequeue any outstanding event on a reference
+    dequeue :: Reference -> C.Stm
+    dequeue r = [cstm|$id:unsched_event(&$id:acts->$id:(refName r).sv);|]
 
   return
     ( [cedecl|void $id:step($ty:act_t *$id:actg);|]
@@ -316,7 +316,7 @@ genStep = do
           $ty:act *$id:acts = container_of($id:actg, $id:actt, act);
 
           $id:debug_trace($string:actStepBeginS);
-          $stms:(map debugArg $ sortOn fst $ arguments p)
+          $stms:(map (expToStm . debugArg) $ sortOn fst $ arguments p)
           $stms:(map debugLocal $ sortOn refIdent locs)
           $id:debug_microtick();
 
@@ -332,12 +332,6 @@ genStep = do
         }
       |]
     )
-
-expToStm :: C.Exp -> C.Stm
-expToStm e = [cstm|$exp:e;|]
-
-stmToItem :: C.Stm -> C.BlockItem
-stmToItem s = [citem|$stm:s|]
 
 {- | Generate the list of statements from each 'Stm' in an SSM 'Procedure'.
 
@@ -357,7 +351,7 @@ genCase (NewRef n t v) = do
 genCase (SetRef r e) = do
   locs <- gets locals
   let lvar = refIdent r
-      t    = refType r
+      t    = stripRef $ refType r
       lhs  = refPtr r locs
       prio = [cexp|$id:actg->priority|]
       rhs  = genExp locs e
@@ -382,7 +376,7 @@ genCase (While c b) = do
 genCase (After d r v) = do
   locs <- gets locals
   let lvar = refIdent r
-      t    = refType r
+      t    = stripRef $ refType r
       del  = genExp locs d
       lhs  = refPtr r locs
       -- Note that the semantics of 'After' and 'later_' differ---the former
@@ -508,6 +502,13 @@ genExp ls (BOp ty e1 e2 op) = gen op
   gen OPlus  = [cexp|$exp:c1 + $exp:c2|]
   gen OMinus = [cexp|$exp:c1 - $exp:c2|]
   gen OTimes = [cexp|$exp:c1 * $exp:c2|]
-  -- TODO: perform casts
-  gen OLT    = [cexp|$exp:c1 < $exp:c2|]
   gen OEQ    = [cexp|$exp:c1 == $exp:c2|]
+  gen OLT    = [cexp|$exp:(signed_ (expType e1) c1) < $exp:(signed_ (expType e2) c2)|]
+
+-- | Promote a C expression to a C statement.
+expToStm :: C.Exp -> C.Stm
+expToStm e = [cstm|$exp:e;|]
+
+-- | Promote a C statement to a C block item.
+stmToItem :: C.Stm -> C.BlockItem
+stmToItem s = [citem|$stm:s|]
