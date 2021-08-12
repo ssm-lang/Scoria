@@ -33,7 +33,7 @@ base TUInt64 = u64
 base TUInt8  = u64
 base TBool   = bool
 base TEvent  = event
-base (Ref t) = error $ "No base data type for reference: " ++ t
+base (Ref t) = error $ "No base data type for reference: " ++ show t
 
 -- | Obtain C type we use to represent data of SSM 'Type'.
 base_ :: Type -> C.Type
