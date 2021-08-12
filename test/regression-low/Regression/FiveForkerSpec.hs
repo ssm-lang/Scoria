@@ -12,14 +12,14 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = Ident "fun0" Nothing
-  , funs  = fromList
+  { entry            = Ident "fun0" Nothing
+  , funs             = fromList
     [ ( Ident "fun0" Nothing
       , Procedure
         { name      = Ident "fun0" Nothing
         , arguments = []
         , body      =
-          [ NewRef (Ident "ref1" Nothing) TInt32 (Lit TInt32 (LInt32 0))
+          [ NewRef (Ident "ref1" Nothing) TInt32  (Lit TInt32 (LInt32 0))
           , NewRef (Ident "ref2" Nothing) TUInt64 (Lit TUInt64 (LUInt64 0))
           , NewRef (Ident "ref4" Nothing) TUInt64 (Lit TUInt64 (LUInt64 0))
           , Fork
@@ -51,16 +51,18 @@ p = Program
           ]
         }
       )
-    , (Ident "fun2" Nothing, Procedure { name = Ident "fun2" Nothing, arguments = [], body = [] })
+    , ( Ident "fun2" Nothing
+      , Procedure { name = Ident "fun2" Nothing, arguments = [], body = [] }
+      )
     , ( Ident "fun5" Nothing
       , Procedure
         { name      = Ident "fun5" Nothing
         , arguments = [ (Ident "ref1" Nothing, Ref TInt32)
                       , (Ident "ref2" Nothing, Ref TUInt64)
                       , (Ident "ref4" Nothing, Ref TUInt64)
-                      , ((Ident "var5" Nothing), TInt32)
-                      , ((Ident "var6" Nothing), TBool)
-                      , ((Ident "var7" Nothing), TInt32)
+                      , (Ident "var5" Nothing, TInt32)
+                      , (Ident "var6" Nothing, TBool)
+                      , (Ident "var7" Nothing, TInt32)
                       ]
         , body      =
           [ If
@@ -92,25 +94,45 @@ p = Program
                   , Left
                     (BOp
                       TBool
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OPlus)
-                      (BOp TInt32 (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OPlus)
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var5" Nothing))
+                           OPlus
+                      )
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var7" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OPlus
+                      )
                       OLT
                     )
                   , Left
                     (BOp
                       TInt32
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OPlus)
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OPlus)
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OPlus
+                      )
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OPlus
+                      )
                       OPlus
                     )
                   ]
                 )
               , ( Ident "fun5" Nothing
-                , [ Right (Dynamic ((Ident "ref1" Nothing), Ref TInt32))
-                  , Right (Dynamic ((Ident "ref4" Nothing), Ref TUInt64))
-                  , Right (Dynamic ((Ident "ref4" Nothing), Ref TUInt64))
+                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
+                  , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                   , Left
-                    (BOp TInt32 (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OMinus)
+                    (BOp TInt32
+                         (Var TInt32 (Ident "var7" Nothing))
+                         (Var TInt32 (Ident "var5" Nothing))
+                         OMinus
+                    )
                   , Left
                     (BOp TBool
                          (Lit TBool (LBool True))
@@ -130,15 +152,26 @@ p = Program
                     (BOp
                       TBool
                       (UOpE TInt32 (Lit TInt32 (LInt32 19)) Neg)
-                      (BOp TInt32 (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OTimes
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var7" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OTimes
                       )
                       OLT
                     )
                   , Left
                     (BOp
                       TInt32
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OPlus)
-                      (BOp TInt32 (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OPlus)
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OPlus
+                      )
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var7" Nothing))
+                           (Var TInt32 (Ident "var5" Nothing))
+                           OPlus
+                      )
                       OMinus
                     )
                   ]
@@ -161,7 +194,10 @@ p = Program
                            (Var TInt32 (Ident "var5" Nothing))
                            OPlus
                       )
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OTimes
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OTimes
                       )
                       OPlus
                     )
@@ -172,7 +208,11 @@ p = Program
                   , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                   , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                   , Left
-                    (BOp TInt32 (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OMinus)
+                    (BOp TInt32
+                         (Var TInt32 (Ident "var7" Nothing))
+                         (Var TInt32 (Ident "var5" Nothing))
+                         OMinus
+                    )
                   , Left
                     (BOp
                       TBool
@@ -181,7 +221,11 @@ p = Program
                            (Lit TBool (LBool True))
                            OEQ
                       )
-                      (BOp TBool (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OLT)
+                      (BOp TBool
+                           (Var TInt32 (Ident "var7" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OLT
+                      )
                       OEQ
                     )
                   , Left
@@ -232,7 +276,11 @@ p = Program
               , (Ident "fun2" Nothing, [])
               ]
             , If
-              (BOp TBool (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OLT)
+              (BOp TBool
+                   (Var TInt32 (Ident "var7" Nothing))
+                   (Var TInt32 (Ident "var7" Nothing))
+                   OLT
+              )
               [ After
                 (Lit TUInt64 (LUInt64 1112))
                 (Dynamic (Ident "ref1" Nothing, Ref TInt32))
@@ -243,7 +291,11 @@ p = Program
                        (Lit TInt32 (LInt32 38))
                        OMinus
                   )
-                  (BOp TInt32 (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OTimes)
+                  (BOp TInt32
+                       (Var TInt32 (Ident "var7" Nothing))
+                       (Var TInt32 (Ident "var7" Nothing))
+                       OTimes
+                  )
                   OTimes
                 )
               , Fork
@@ -320,7 +372,11 @@ p = Program
                       , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                       , Left (Var TInt32 (Ident "var7" Nothing))
                       , Left
-                        (BOp TBool (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OLT)
+                        (BOp TBool
+                             (Var TInt32 (Ident "var5" Nothing))
+                             (Var TInt32 (Ident "var5" Nothing))
+                             OLT
+                        )
                       , Left
                         (BOp TInt32
                              (Var TInt32 (Ident "var5" Nothing))
@@ -375,7 +431,10 @@ p = Program
                   , (Ident "fun2" Nothing, [])
                   ]
               ]
-            , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32), Dynamic (Ident "ref2" Nothing, Ref TUInt64)]
+            , Wait
+              [ Dynamic (Ident "ref1" Nothing, Ref TInt32)
+              , Dynamic (Ident "ref2" Nothing, Ref TUInt64)
+              ]
             ]
             [ Fork
               [ ( Ident "fun5" Nothing
@@ -387,7 +446,11 @@ p = Program
                   , Left
                     (BOp
                       TInt32
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OPlus)
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var5" Nothing))
+                           OPlus
+                      )
                       (BOp TInt32
                            (Lit TInt32 (LInt32 24))
                            (Var TInt32 (Ident "var5" Nothing))
@@ -422,12 +485,19 @@ p = Program
                            (Lit TInt32 (LInt32 201))
                            OMinus
                       )
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OTimes
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OTimes
                       )
                       OLT
                     )
                   , Left
-                    (BOp TInt32 (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OMinus)
+                    (BOp TInt32
+                         (Var TInt32 (Ident "var7" Nothing))
+                         (Var TInt32 (Ident "var5" Nothing))
+                         OMinus
+                    )
                   ]
                 )
               , ( Ident "fun5" Nothing
@@ -462,9 +532,15 @@ p = Program
                   , Left
                     (BOp
                       TInt32
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OTimes
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var5" Nothing))
+                           OTimes
                       )
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OTimes
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OTimes
                       )
                       OMinus
                     )
@@ -491,7 +567,10 @@ p = Program
                            (Lit TInt32 (LInt32 208))
                            OPlus
                       )
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OTimes
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OTimes
                       )
                       OTimes
                     )
@@ -509,7 +588,11 @@ p = Program
                            (Var TInt32 (Ident "var7" Nothing))
                            OMinus
                       )
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OPlus)
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var5" Nothing))
+                           OPlus
+                      )
                       OTimes
                     )
                   , Left
@@ -520,7 +603,11 @@ p = Program
                            (Lit TBool (LBool True))
                            OEQ
                       )
-                      (BOp TBool (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OLT)
+                      (BOp TBool
+                           (Var TInt32 (Ident "var7" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OLT
+                      )
                       OEQ
                     )
                   , Left
@@ -531,7 +618,10 @@ p = Program
                            (Var TInt32 (Ident "var7" Nothing))
                            OPlus
                       )
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OMinus
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OMinus
                       )
                       OMinus
                     )
@@ -555,7 +645,10 @@ p = Program
                   , Left
                     (BOp
                       TBool
-                      (BOp TInt32 (Var TInt32 (Ident "var5" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OMinus
+                      (BOp TInt32
+                           (Var TInt32 (Ident "var5" Nothing))
+                           (Var TInt32 (Ident "var7" Nothing))
+                           OMinus
                       )
                       (BOp TInt32
                            (Var TInt32 (Ident "var7" Nothing))
@@ -565,7 +658,11 @@ p = Program
                       OLT
                     )
                   , Left
-                    (BOp TInt32 (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var5" Nothing)) OPlus)
+                    (BOp TInt32
+                         (Var TInt32 (Ident "var7" Nothing))
+                         (Var TInt32 (Ident "var5" Nothing))
+                         OPlus
+                    )
                   ]
                 )
               , (Ident "fun2" Nothing, [])
@@ -577,17 +674,21 @@ p = Program
           , After (Lit TUInt64 (LUInt64 3525))
                   (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   (Lit TUInt64 (LUInt64 167))
-          , Wait [(Dynamic (Ident "ref1" Nothing, Ref TInt32))]
-          , Wait [(Dynamic (Ident "ref4" Nothing, Ref TUInt64))]
+          , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32)]
+          , Wait [Dynamic (Ident "ref4" Nothing, Ref TUInt64)]
           , After
             (Lit TUInt64 (LUInt64 4696))
             (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
             (BOp
               TUInt64
-              (BOp TUInt64
-                   (Lit TUInt64 (LUInt64 7582))
-                   (UOpR TUInt64 (Dynamic (Ident "ref2" Nothing, Ref TUInt64)) Deref)
-                   OMinus
+              (BOp
+                TUInt64
+                (Lit TUInt64 (LUInt64 7582))
+                (UOpR TUInt64
+                      (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+                      Deref
+                )
+                OMinus
               )
               (BOp TUInt64
                    (Lit TUInt64 (LUInt64 17605))
@@ -602,7 +703,8 @@ p = Program
         }
       )
     ]
-  , globalReferences = []}
+  , globalReferences = []
+  }
 
 spec :: H.Spec
-spec = T.semanticIncorrectSpec "FiveForker" p
+spec = T.correctSpec "FiveForker" p
