@@ -5,7 +5,7 @@
 -- argument. There's something wrong with the logic of how we generate calls to
 -- those functions.
 -- Fix: Fix that logic.
--- Fixed: notyet
+-- Fixed: a4b1cc141f086b17200cbfef8a3d304cf177f9ab
 module Regression.NewEventSpec where
 
 import           Data.Map                       ( fromList )
