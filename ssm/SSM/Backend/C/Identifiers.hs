@@ -32,19 +32,12 @@ module SSM.Backend.C.Identifiers
   , sv_t
 
   , i32
-  , i32_t
   , u32
-  , u32_t
   , i64
-  , i64_t
   , u64
-  , u64_t
   , u8
-  , u8_t
   , event
-  , event_t
   , bool
-  , bool_t
 
       -- * Constructing Identifiers from strings
       -- | These functions create identifiers from some known [pre|suf]fix.
@@ -57,10 +50,10 @@ module SSM.Backend.C.Identifiers
       {- | Some identifiers need to be prefixed or suffixed with some type information,
       such as @later_int@, @later_bool@ etc. We create identifiers like these and others
       by using these functions. -}
-  , svt_
-  , initialize_
-  , assign_
-  , later_
+  , svt
+  , initialize
+  , assign
+  , later
 
     -- * Debug-/trace-specific macros
   , debug_microtick
@@ -187,60 +180,39 @@ sv_t = [cty|struct sv|]
 i32 :: CIdent
 i32 = "i32"
 
-i32_t :: C.Type
-i32_t = [cty|typename $id:i32|]
-
 u32 :: CIdent
 u32 = "u32"
-
-u32_t :: C.Type
-u32_t = [cty|typename $id:u32|]
 
 i64 :: CIdent
 i64 = "i64"
 
-i64_t :: C.Type
-i64_t = [cty|typename $id:i64|]
-
 u64 :: CIdent
 u64 = "u64"
-
-u64_t :: C.Type
-u64_t = [cty|typename $id:u64|]
 
 u8 :: CIdent
 u8 = "u8"
 
-u8_t :: C.Type
-u8_t = [cty|typename $id:u8|]
-
 event :: CIdent
 event = "event"
-
-event_t :: C.Type
-event_t = [cty|typename $id:event|]
 
 bool :: CIdent
 bool = "bool"
 
-bool_t :: C.Type
-bool_t = [cty|typename $id:bool|]
-
 -- | Obtain the name of the scheduled variable type.
-svt_ :: CIdent -> C.Type
-svt_ ty = [cty|typename $id:("ssm_" ++ ty ++ "_t")|]
+svt :: CIdent -> CIdent
+svt ty = "ssm_" ++ ty ++ "_t"
 
 -- | Obtain the name of the initialize method.
-initialize_ :: CIdent -> CIdent
-initialize_ ty = "ssm_initialize_" ++ ty
+initialize :: CIdent -> CIdent
+initialize ty = "ssm_initialize_" ++ ty
 
 -- | Obtain the name of the assign method for an SSM `Type`.
-assign_ :: CIdent -> CIdent
-assign_ ty = "ssm_assign_" ++ ty
+assign :: CIdent -> CIdent
+assign ty = "ssm_assign_" ++ ty
 
 -- | Obtain the name of the later method for an SSM `Type`.
-later_ :: CIdent -> CIdent
-later_ ty = "ssm_later_" ++ ty
+later :: CIdent -> CIdent
+later ty = "ssm_later_" ++ ty
 
 debug_microtick :: CIdent
 debug_microtick = "SSM_DEBUG_MICROTICK"
