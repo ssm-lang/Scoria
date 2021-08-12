@@ -112,16 +112,18 @@ prettyStm stm = case stm of
                                     , " = "
                                     , prettySSMExp v
                                     ]
-
-    Wait refs      -> emit $ concat [ "wait ["
-                                    , intercalate ", " (map refName refs)
-                                    , "]"
+    Sensitize r    -> emit $ concat [ "sensitize "
+                                    , refName r
+                                    ]
+    Desensitize r  -> emit $ concat [ "desensitize "
+                                    , refName r
                                     ]
     Fork procs     -> do
         let procs' = map prettyApp procs
         sep <- separator
         ind <- ask
         emit $ concat ["fork [ ", intercalate sep procs', "\n", replicate (ind + 5) ' ', "]"]
+    Yield -> emit "yield"
     where
         separator :: PP String
         separator = do

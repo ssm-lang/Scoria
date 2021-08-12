@@ -10,6 +10,8 @@ import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 
 import SSM.Compile
+import SSM.Interpret
+import SSM.Util.Default
 
 p :: Program
 p = Program
@@ -22,6 +24,7 @@ p = Program
                   , body = [ CreateRef (Ident "ref2" Nothing) (Ref TBool)
                            , SetRef (Dynamic (Ident "ref2" Nothing, Ref TBool)) (Lit TBool (LBool True))
                            , Fork [(Ident "fun1" Nothing, [Right (Dynamic (Ident "ref2" Nothing, Ref TBool))])]
+                           , Yield
                            ]
                   }
                 )
@@ -35,12 +38,16 @@ p = Program
                                                      SSMNanosecond)
                                             (Dynamic (Ident "ref2" Nothing, Ref TBool))
                                             (Lit TBool (LBool False))
-                                    , Wait [Dynamic (Ident "ref2" Nothing, Ref TBool)]
+                                    , Sensitize (Dynamic (Ident "ref2" Nothing, Ref TBool))
+                                    , Yield
+                                    , Desensitize (Dynamic (Ident "ref2" Nothing, Ref TBool))
                                     , After (SSMTime (Lit TUInt64 (LUInt64 2))
                                                      SSMNanosecond)
                                             (Dynamic (Ident "ref2" Nothing, Ref TBool))
                                             (Lit TBool (LBool True))
-                                    , Wait [Dynamic (Ident "ref2" Nothing, Ref TBool)]
+                                    , Sensitize (Dynamic (Ident "ref2" Nothing, Ref TBool))
+                                    , Yield
+                                    , Desensitize (Dynamic (Ident "ref2" Nothing, Ref TBool))
                                     ]
                                 ]
                   }

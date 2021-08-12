@@ -35,3 +35,10 @@ intFmt = fmt . baseType
 varFmt :: (Ident, Type) -> T.VarVal
 varFmt (n, t) | baseType t == TEvent = T.VarVal (identName n) (baseType t) T.UnitType
               | otherwise = T.VarVal (identName n) (baseType t) $ T.IntegralFmt $ intFmt t
+
+{- | Data type that annotates a procedures body with unique line-numbers. Used to be able
+to refer to individual statements in auxiliary data objects. -}
+data CStm = Numbered Int Stm              -- ^ Annotate a statement with a number
+          | CWhile Int SSMExp [CStm]      -- ^ While with recursive @CStm@ instead of @Stm@
+          | CIf Int SSMExp [CStm] [CStm]  -- ^ If, by the same principle as @CWhile@
+  deriving Show

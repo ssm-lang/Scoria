@@ -45,8 +45,10 @@ module SSM.Interpret.Internal
   , readRef
 
   -- * Wait, fork, and leave + helpers
-  , wait
+--  , wait
   , fork
+  , sensitize
+  , desensitize
   , setRunningChildren
   , addressToSelf
   , pds
@@ -442,10 +444,12 @@ writeVar_ ref e prio = do
   (variable, waits, _, me, mv) <- lift' $ readSTRef ref
   lift' $ writeSTRef variable e -- actually update the variable value
 
+  -- keep = processes to not wake up, towake = processes that should be woken up
   let (keep, towake) = Map.split prio waits
 
   -- wake up and desensitize the processes
-  mapM_ desensitize towake
+--  mapM_ desensitize towake
+  mapM_ enqueue towake
 
   -- update the variable to be written to in this instant and give it knowledge
   -- of which processes are still waiting on it
@@ -453,13 +457,13 @@ writeVar_ ref e prio = do
   lift' $ writeSTRef ref (variable, keep, n, me, mv)
  where
   -- | Wake up a process, remove it from all trigger lists, and enqueueing it.
-  desensitize :: Proc s -> Interp s ()
-  desensitize p = do
-    let variables = fromJust $ waitingOn p
-    forM_ variables $ \r -> do
-      (ref, procs, b, me, mv) <- lift' $ readSTRef r
-      lift' $ writeSTRef r (ref, Map.delete (priority p) procs, b, me, mv)
-    enqueue $ p { waitingOn = Nothing }
+--  desensitize :: Proc s -> Interp s ()
+--  desensitize p = do
+--    let variables = fromJust $ waitingOn p
+--    forM_ variables $ \r -> do
+--      (ref, procs, b, me, mv) <- lift' $ readSTRef r
+--      lift' $ writeSTRef r (ref, Map.delete (priority p) procs, b, me, mv)
+--    enqueue $ p { waitingOn = Nothing }
 
 -- | Look up a variable associated with a reference
 lookupRef :: Reference -> Interp s (Var s)
@@ -493,6 +497,13 @@ sensitize ref = do
         then return ()
         else lift' $ writeSTRef r (ref, Map.insert (priority p) p procs,b,me,mv)
 
+desensitize :: Reference -> Interp s ()
+desensitize ref = do
+  p <- gets process
+  r <- lookupRef ref
+  (ref,procs,b,me,mv) <- lift' $ readSTRef r
+  lift' $ writeSTRef r (ref, Map.delete (priority p) procs, b, me, mv)
+
 -- | This function will, if told how many new processes are being forked, compute
 -- new priorities and depths for them.
 pds :: Int -> Interp s [(Int, Int)]
@@ -510,11 +521,11 @@ pds k = do
 {- | This function will make sure that the current process will block until any
 of the references in the list @refs@ have been written to.
 -}
-wait :: [Reference] -> Interp s ()
-wait refs = do
-  refs' <- mapM lookupRef refs
-  modify $ \st -> st { process = (process st) { waitingOn = Just refs' } }
-  mapM_ sensitize refs
+--wait :: [Reference] -> Interp s ()
+--wait refs = do
+--  refs' <- mapM lookupRef refs
+--  modify $ \st -> st { process = (process st) { waitingOn = Just refs' } }
+--  mapM_ sensitize refs
 
 
 
@@ -546,7 +557,7 @@ fork :: (Ident, [Either SSMExp Reference])   -- ^ Procedure to fork (name and ar
 fork (n,args) prio dep par = do
     p <- lookupProcedure n
     variables <- params $ (map fst . arguments) p
-    enqueue $ Proc (identName n) prio dep 0 (Just par) variables Map.empty Nothing (body p)
+    enqueue $ Proc (identName n) prio dep 0 (Just par) variables Map.empty (body p)
   where
       -- | Return an initial variable storage for the new process. Expression arguments are turned into
       -- new STRefs while reference arguments are passed from the calling processes variable storage.

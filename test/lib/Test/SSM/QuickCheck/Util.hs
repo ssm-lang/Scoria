@@ -117,11 +117,17 @@ removeVars = go
                            (rewriteExp v invalid validrefs) :
                         go invalid validrefs xs
 
-        Wait refs      ->
-            let refs' = filter (`elem` validrefs) refs
-            in if null refs'
+        Sensitize ref ->
+            if refIdent ref `elem` invalid
                 then Skip : go invalid validrefs xs
-                else Wait refs' : go invalid validrefs xs
+                else Sensitize ref : go invalid validrefs xs
+
+        Desensitize ref ->
+            if refIdent ref `elem` invalid
+                then Skip : go invalid validrefs xs
+                else Desensitize ref : go invalid validrefs xs
+
+        Yield -> Yield : go invalid validrefs xs
 
         Fork procs     ->
             let procs' = concat $ for procs $ \(n,args) ->

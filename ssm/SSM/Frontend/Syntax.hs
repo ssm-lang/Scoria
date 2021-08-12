@@ -268,10 +268,10 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
         return $ [S.While c bdy']
     
     After d r v -> return $ [S.After d r v]
-    Wait refs   -> return $ [S.Wait refs]
+    Wait refs   -> return $ map S.Sensitize refs ++ [S.Yield] ++  map S.Desensitize refs
     Fork procs  -> do
       procs' <- mapM getCall procs
-      return $ [S.Fork procs']
+      return $ [S.Fork procs', S.Yield]
 
     Procedure n    -> return []
     Argument n x a -> return []

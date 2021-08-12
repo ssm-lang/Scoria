@@ -51,6 +51,7 @@ p = Program
                 ]
               )
             ]
+          , Yield
           ]
         }
       )
@@ -148,6 +149,7 @@ p = Program
                 )
               , (Ident "fun2" Nothing, [])
               ]
+            , Yield
             , Fork
               [ (Ident "fun2" Nothing, [])
               , ( Ident "fun5" Nothing
@@ -234,6 +236,7 @@ p = Program
                 )
               , (Ident "fun2" Nothing, [])
               ]
+            , Yield
             , If
               (BOp TBool (Var TInt32 (Ident "var7" Nothing)) (Var TInt32 (Ident "var7" Nothing)) OLT)
               [ After
@@ -314,6 +317,7 @@ p = Program
                 , (Ident "fun2" Nothing, [])
                 , (Ident "fun2" Nothing, [])
                 ]
+              , Yield
               ]
               [ Fork
                   [ (Ident "fun2" Nothing, [])
@@ -377,8 +381,11 @@ p = Program
                   , (Ident "fun2" Nothing, [])
                   , (Ident "fun2" Nothing, [])
                   ]
+              , Yield
               ]
-            , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32), Dynamic (Ident "ref2" Nothing, Ref TUInt64)]
+            , Sensitize (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+            , Yield
+            , Desensitize (Dynamic (Ident "ref1" Nothing, Ref TInt32))
             ]
             [ Fork
               [ ( Ident "fun5" Nothing
@@ -457,6 +464,7 @@ p = Program
                   ]
                 )
               ]
+            , Yield
             , Fork
               [ ( Ident "fun5" Nothing
                 , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
@@ -574,14 +582,23 @@ p = Program
               , (Ident "fun2" Nothing, [])
               , (Ident "fun2" Nothing, [])
               ]
+            , Yield
             ]
-          , Wait [Dynamic (Ident "ref2" Nothing, Ref TUInt64)]
-          , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32)]
+          , Sensitize (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+          , Yield
+          , Desensitize (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+          , Sensitize (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+          , Yield
+          , Desensitize (Dynamic (Ident "ref1" Nothing, Ref TInt32))
           , After (SSMTime (Lit TUInt64 (LUInt64 3525)) SSMNanosecond)
                   (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   (Lit TUInt64 (LUInt64 167))
-          , Wait [(Dynamic (Ident "ref1" Nothing, Ref TInt32))]
-          , Wait [(Dynamic (Ident "ref4" Nothing, Ref TUInt64))]
+          , Sensitize (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+          , Yield
+          , Desensitize (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+          , Sensitize (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
+          , Yield
+          , Desensitize (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
           , After
             (SSMTime (Lit TUInt64 (LUInt64 4696)) SSMNanosecond)
             (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
@@ -600,7 +617,9 @@ p = Program
               OMinus
             )
           , Fork [(Ident "fun2" Nothing, [])]
+          , Yield
           , Fork [(Ident "fun2" Nothing, [])]
+          , Yield
           ]
         }
       )

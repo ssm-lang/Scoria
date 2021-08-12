@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 6573f29e908523f235835605a7bebd57b40eb94a62d4814901bb19aff3972368
+-- hash: 0ad0929e4602c4758fd406557510901ce0830bde9d2ee8f0ed2215c9aa709b01
 
 name:           ssm
 version:        0.1.0.0
@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+      SSM.Backend.C.Analysis.WaitAnalysis
       SSM.Backend.C.CodeGen
       SSM.Backend.C.Compile
       SSM.Backend.C.Exp

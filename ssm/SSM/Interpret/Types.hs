@@ -98,7 +98,7 @@ data Proc s = Proc
     on them when a process is terminating. -}
   , localrefs       :: Map.Map Ident (Var s)
     -- | Variables this process is waiting for, if any
-  , waitingOn       :: Maybe [Var s]
+--  , waitingOn       :: Maybe [Var s]
     -- | The work left to do for this process
   , continuation    :: [Stm]
   }
@@ -117,7 +117,7 @@ mkProc conf p fun = Proc { procName        = identName $ entry p
                          , parent          = Nothing
                          , variables       = Map.empty
                          , localrefs       = Map.empty
-                         , waitingOn       = Nothing
+--                         , waitingOn       = Nothing
                          , continuation    = body fun
                          }
 

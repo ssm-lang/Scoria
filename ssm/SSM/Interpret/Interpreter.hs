@@ -132,10 +132,20 @@ step = do
         scheduleEvent r (n' + d') v'
         continue
 
-      Wait refs -> do
-        forM_ refs $ \r -> tellEvent $ T.ActSensitize $ refName r
-        wait refs
-        yield
+      Yield -> yield
+
+      Sensitize ref -> do
+        tellEvent $ T.ActSensitize $ refName ref
+        sensitize ref
+        continue
+      Desensitize ref -> do
+        desensitize ref
+        continue
+
+--      Wait refs -> do
+--        forM_ refs $ \r -> tellEvent $ T.ActSensitize $ refName r
+--        wait refs
+--        yield
 
       Fork procs -> do
         setRunningChildren (length procs)
@@ -143,7 +153,7 @@ step = do
         pdeps  <- pds (length procs)
         forM_ procs $ \(f, _) -> tellEvent $ T.ActActivate $ identName f
         forM_ (zip procs pdeps) $ \(f, (prio, dep)) -> fork f prio dep parent
-        yield
+        continue
 
  where
   -- | Convenience names for local control flow.

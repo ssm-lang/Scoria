@@ -116,7 +116,7 @@ data Type
     | TBool     -- ^ Boolean type
     | TEvent    -- ^ Event type
     | Ref Type  -- ^ A reference to another type
-    deriving (Eq, Show, Read)
+    deriving (Eq, Ord, Show, Read)
 
 -- | Dereference a type. Throws an error if the type is not a reference.
 dereference :: Type -> Type
@@ -179,7 +179,7 @@ data Reference
     reside in an activation record in the generated C-code. It can be referenced from any
     context. -}
     | Static Ref
-    deriving (Eq, Show, Read)
+    deriving (Eq, Ord, Show, Read)
 
 -- | Type of a reference
 refType :: Reference -> Type
@@ -296,7 +296,10 @@ data Stm
     {- | @After d r v@ - After @d@ units of time the reference @r@ should get the new
     value @v@. -}
     | After SSMTime Reference SSMExp
-    | Wait [Reference]  -- ^ Wait for any of the references to be written to
+--    | Wait [Reference]  -- ^ Wait for any of the references to be written to
+    | Sensitize Reference
+    | Desensitize Reference
+    | Yield
     {-| Fork procedures. The procedures are now identified by their name, and the fork
     site contains only that name and the arguments to apply the function to. -}
     | Fork [(Ident, [Either SSMExp Reference])]

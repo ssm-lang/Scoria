@@ -21,6 +21,5 @@ shrinkStmts stm = case stm of
   SetRef _ _     -> [Skip]
   SetLocal _ _ _ -> [Skip]
   After _ _ _    -> [Skip]
-  Wait _         -> [Skip]
   Fork _         -> [Skip]
   _              -> []

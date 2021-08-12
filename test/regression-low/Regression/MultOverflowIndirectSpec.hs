@@ -35,7 +35,9 @@ p = Program
                       []
                     , CreateRef (Ident "v3" Nothing) (Ref TInt32)
                     , SetRef (Dynamic (Ident "v3" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 0))
-                    , Wait [Dynamic (Ident "v3" Nothing, Ref TInt32)]
+                    , Sensitize (Dynamic (Ident "v3" Nothing, Ref TInt32))
+                    , Yield
+                    , Desensitize (Dynamic (Ident "v3" Nothing, Ref TInt32))
                     ]
                   }
                 )

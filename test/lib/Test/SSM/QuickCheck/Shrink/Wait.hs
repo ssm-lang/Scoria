@@ -20,8 +20,8 @@ shrinkWaitProcedure p =
     [ p { body = body' } | body' <- distributeMutate (body p) shrinkWaits ]
 
 shrinkWaits :: Stm -> [Stm]
-shrinkWaits stm = case stm of
-    Wait refs -> let sublists         = map (\r -> delete r refs) refs
-                     nonemptysublists = filter (not . null) sublists
-                 in map Wait nonemptysublists
-    _ -> []
+shrinkWaits stm = [] --case stm of
+--    Wait refs -> let sublists         = map (\r -> delete r refs) refs
+--                     nonemptysublists = filter (not . null) sublists
+--                 in map Wait nonemptysublists
+--    _ -> []

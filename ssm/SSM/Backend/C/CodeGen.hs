@@ -11,11 +11,16 @@
 
 module SSM.Backend.C.CodeGen
   ( compile_
+  , exampleProcedure
+  , analyseWait
   ) where
 
 import           Control.Monad.State.Lazy       ( State
                                                 , evalState
+                                                , runState
                                                 , gets
+                                                , get
+                                                , put
                                                 , modify
                                                 )
 
@@ -30,6 +35,7 @@ import           Data.List                      ( sortOn )
 import           SSM.Backend.C.Exp
 import           SSM.Backend.C.Identifiers
 import           SSM.Backend.C.Types
+import           SSM.Backend.C.Analysis.WaitAnalysis
 import           SSM.Core.Syntax
 import qualified SSM.Interpret.Trace           as T
 
@@ -71,8 +77,8 @@ should be computed first, before this information is used to generate the act
 struct and enter definitions.
 -}
 data TRState = TRState
-  { procedure :: Procedure    -- ^ Procedure we are compiling
-  , ncase     :: Int          -- ^ Which number has the next case?
+  { --procedure :: Procedure    -- ^ Procedure we are compiling
+  {-,-} ncase     :: Int          -- ^ Which number has the next case?
   , numwaits  :: Int          -- ^ The size of the widest wait
   , locals    :: [Reference]  -- ^ Local references declared with var
   }
@@ -81,8 +87,8 @@ data TRState = TRState
 type TR a = State TRState a
 
 -- | Run a TR computation on a procedure.
-runTR :: Procedure -> TR a -> a
-runTR p tra = evalState tra $ TRState p 0 0 []
+runTR :: TR a -> a
+runTR tra = evalState tra $ TRState 0 0 []
 
 -- | Read and increment the number of cases in a procedure, i.e., `ncase++`.
 nextCase :: TR Int
@@ -172,6 +178,40 @@ includes = [cunit|
 $esc:("#include \"ssm-platform.h\"")
 |]
 
+exampleProcedure :: Procedure
+exampleProcedure = Procedure
+  (Ident "example" Nothing)
+  [ (Ident "r1" Nothing, Ref TInt32)
+  , (Ident "r2" Nothing, Ref TInt32)
+  , (Ident "r3" Nothing, Ref TInt32)
+  , (Ident "r4" Nothing, Ref TInt32)
+  , (Ident "r5" Nothing, Ref TInt32)
+  ]
+  [ CreateRef (Ident "l1" Nothing) (Ref TUInt64)
+  , SetRef (Dynamic (Ident "l1" Nothing, Ref TUInt64)) (Lit TUInt64 (LUInt64 0))
+  , Sensitize (Dynamic (Ident "r1" Nothing, Ref TInt32))
+  , Sensitize (Dynamic (Ident "r2" Nothing, Ref TInt32))
+  , Sensitize (Dynamic (Ident "r3" Nothing, Ref TInt32))
+  , Sensitize (Dynamic (Ident "r4" Nothing, Ref TInt32))
+  , Yield
+  , Desensitize (Dynamic (Ident "r1" Nothing, Ref TInt32))
+  , Desensitize (Dynamic (Ident "r2" Nothing, Ref TInt32))
+  , Desensitize (Dynamic (Ident "r3" Nothing, Ref TInt32))
+  , Desensitize (Dynamic (Ident "r4" Nothing, Ref TInt32))
+  , SetRef (Dynamic (Ident "r1" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 5))
+  , If (Lit TBool (LBool True))
+      [ Sensitize (Dynamic (Ident "r1" Nothing, Ref TInt32))
+      , Yield
+      , Desensitize (Dynamic (Ident "r1" Nothing, Ref TInt32))
+      ]
+      [ Sensitize (Dynamic (Ident "r2" Nothing, Ref TInt32))
+      , Sensitize (Dynamic (Ident "r1" Nothing, Ref TInt32))
+      , Yield
+      , Desensitize (Dynamic (Ident "r2" Nothing, Ref TInt32))
+      , Desensitize (Dynamic (Ident "r1" Nothing, Ref TInt32))
+      ]
+  ]
+
 {- | Generate definitions for an SSM 'Procedure'.
 
 The fst element of the returned tuple contains the struct definition and
@@ -179,19 +219,18 @@ function prototype declarations, while the snd element contains the function
 definitions.
 -}
 genProcedure :: Procedure -> ([C.Definition], [C.Definition])
-genProcedure p = runTR p $ do
-  (stepDecl , stepDefn ) <- genStep
-  (enterDecl, enterDefn) <- genEnter
-  structDefn             <- genStruct
+genProcedure p = runTR $ do
+  (stepDecl , stepDefn ) <- genStep p
+  (enterDecl, enterDefn) <- genEnter p
+  structDefn             <- genStruct p
   return ([structDefn, enterDecl, stepDecl], [enterDefn, stepDefn])
 
 {- | Generate struct definition for an SSM 'Procedure'.
 
 This is where local variables, triggers, and parameter values are stored.
 -}
-genStruct :: TR C.Definition
-genStruct = do
-  p  <- gets procedure
+genStruct :: Procedure -> TR C.Definition
+genStruct p = do
   ts <- gets numwaits
   ls <- gets locals
   return [cedecl|
@@ -224,9 +263,8 @@ genStruct = do
 Its struct is allocated and initialized (partially; local variables' values are
 left uninitialized).
 -}
-genEnter :: TR (C.Definition, C.Definition)
-genEnter = do
-  p  <- gets procedure
+genEnter :: Procedure -> TR (C.Definition, C.Definition)
+genEnter p = do
   ts <- gets numwaits
   ls <- gets locals
   let actname = identName $ name p
@@ -283,11 +321,12 @@ This function just defines the function definition and switch statement that
 wraps the statements of the procedure. The heavy lifting is performed by
 'genCase'.
 -}
-genStep :: TR (C.Definition, C.Definition)
-genStep = do
-  p     <- gets procedure
+genStep :: Procedure -> TR (C.Definition, C.Definition)
+genStep p = do
+  let (cstmts, sensitizemap, desensitizemap, widestwait) = analyseWait p
+  modify $ \st -> st { numwaits = widestwait }
   _     <- nextCase -- Toss away 0th case
-  cases <- concat <$> mapM genCase (body p)
+  cases <- concat <$> mapM (genCase' sensitizemap desensitizemap) cstmts -- (body p)
   locs  <- gets locals
   final <- nextCase
   let
@@ -355,6 +394,128 @@ genStep = do
       |]
     )
 
+genCase' :: Map.Map Int Int -> Map.Map Int Int -> CStm -> TR [C.Stm]
+genCase' sensitizemap desensitizemap (Numbered n stm)  = case stm of
+
+  CreateRef n t -> do
+    addLocal $ makeDynamicRef n t
+    return []
+
+  SetRef r e -> do
+    locs <- gets locals
+    let lvar = refIdent r
+        t    = refType r
+        lhs  = refPtr r locs
+        rhs  = genExp locs e
+    case baseType t of
+      TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
+      _ ->
+        return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
+
+  SetLocal n t e -> do
+    locs <- gets locals
+    let lvar = identName n
+        lhs  = [cexp|&$id:acts->$id:lvar|]
+        rhs  = genExp locs e
+    return [[cstm| $id:acts->$id:(identName n) = $exp:rhs;|]]
+
+  If c thn els -> error "error while generating C - wait analysis failed (found If)"
+  While c bdy -> error "error while generating C - wait analysis failed (found While)"
+
+  Skip -> return []
+
+  After d r v -> do
+    locs <- gets locals
+    let lvar = refIdent r
+        t    = refType r
+        del  = genExp locs d
+        lhs  = refPtr r locs
+        rhs  = genExp locs v
+    -- Note that the semantics of 'After' and 'later_' differ---the former
+    -- expects a relative time, whereas the latter takes an absolute time.
+    -- Thus we add now() in the code we generate.
+    case baseType t of
+      TEvent -> return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del);|]]
+      _      -> return
+        [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
+
+  Sensitize r -> do
+    -- fetch the id of the trigger to sensitize on
+    let trigid = case Map.lookup n sensitizemap of
+          Just id -> id
+          Nothing -> error $ 
+            "wait analysis failed -- no trigger ID found for line " ++ show n ++
+            " when sensitizing"
+    svvar <- refSV r <$> gets locals
+    return [ [cstm|$id:debug_trace($string:(show $ T.ActSensitize $ refName r)); |]
+           , [cstm|$id:sensitize($exp:svvar, &$id:acts->$id:(trig_ trigid)); |]
+           ]
+
+  Desensitize r -> do
+    let trigid = case Map.lookup n desensitizemap of
+          Just id -> id
+          Nothing -> error $
+            "wait analysis failed -- no trigger ID found for line " ++ show n ++
+            " when desensitizing"
+    return [[cstm|$id:desensitize(&$id:acts->$id:(trig_ trigid));|]]
+
+  Yield -> do
+    caseNum <- nextCase
+    return [ [cstm| $id:actg->pc = $int:caseNum; |]
+           , [cstm| return; |]
+           , [cstm| case $int:caseNum: ; |]
+           ]
+
+  Fork cs -> do
+    locs <- gets locals
+    let
+      genCall :: Int -> (Ident, [Either SSMExp Reference]) -> C.Stm
+      genCall i (r, as) =
+        [cstm|$id:fork($id:(enter_ (identName r))($args:enterArgs));|]
+         where
+          enterArgs =
+            [ [cexp|actg|]
+            , [cexp|actg->priority + $int:i * (1 << $exp:newDepth)|]
+            , newDepth
+            ]
+            ++ map genArg as
+          genArg :: Either SSMExp Reference -> C.Exp
+          genArg (Left  e) = genExp locs e
+          genArg (Right r) = refPtr r locs
+
+      newDepth :: C.Exp
+      newDepth = [cexp|actg->depth - $int:depthSub|]
+
+      depthSub :: Int
+      depthSub =
+        (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Int
+
+      checkNewDepth :: C.Stm
+      checkNewDepth = [cstm|
+        if ($id:actg->depth < $int:depthSub)
+          $id:throw($exp:exhausted_priority); |]
+
+      genTrace :: (Ident, [Either SSMExp Reference]) -> C.Stm
+      genTrace (r, _) = [cstm|$id:debug_trace($string:event);|]
+        where event = show $ T.ActActivate $ identName r
+
+    return
+      $  checkNewDepth
+      :  map genTrace cs
+      ++ zipWith genCall [0 :: Int ..] cs
+
+genCase' sensitizemap desensitizemap (CIf n c thn els) = do
+  locs <- gets locals
+  let cnd = genExp locs c
+  thn' <- concat <$> mapM (genCase' sensitizemap desensitizemap) thn
+  els' <- concat <$> mapM (genCase' sensitizemap desensitizemap) els
+  return [[cstm| if ($exp:cnd) { $stms:thn' } else { $stms:els' } |]]
+genCase' sensitizemap desensitizemap (CWhile n c bdy)  = do
+  locs   <- gets locals
+  let cnd = genExp locs c
+  bod    <- concat <$> mapM (genCase' sensitizemap desensitizemap) bdy
+  return [[cstm| while ($exp:cnd) { $id:debug_microtick(); $stms:bod } |]]
+
 {- | Generate the list of statements from each 'Stm' in an SSM 'Procedure'.
 
 Note that this compilation scheme might not work if the language were to
@@ -365,16 +526,6 @@ genCase :: Stm -> TR [C.Stm]
 genCase (CreateRef n t) = do
   addLocal $ makeDynamicRef n t
   return []
---genCase (NewRef n t v) = do
---  locs <- gets locals
---  let lvar = identName n
---      lhs  = [cexp|&$id:acts->$id:lvar|]
---      rhs  = genExp locs v
---  addLocal $ makeDynamicRef n (mkReference t)
---  case baseType t of
---    TEvent -> return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority);|]]
---    _ ->
---      return [[cstm|$id:(assign_ t)($exp:lhs, $id:actg->priority, $exp:rhs);|]]
 genCase (SetRef r e) = do
   locs <- gets locals
   let lvar = refIdent r
@@ -416,7 +567,7 @@ genCase (After d r v) = do
     TEvent -> return [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del);|]]
     _      -> return
       [[cstm| $id:(later_ t)($exp:lhs, $id:now() + $exp:del, $exp:rhs);|]]
-genCase (Wait ts) = do
+{-genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts
   locs <- gets locals
@@ -439,7 +590,14 @@ genCase (Wait ts) = do
 
   getTrace :: Reference -> C.Stm
   getTrace r = [cstm|$id:debug_trace($string:event);|]
-    where event = show $ T.ActSensitize $ refName r
+    where event = show $ T.ActSensitize $ refName r-}
+genCase (Sensitize ref) = do
+  return [ [cstm| $id:debug_trace($string:(show $ T.ActSensitize $ refName ref));|]
+         , undefined]
+  where
+    trace = [cstm| $id:debug_trace($string:(show $ T.ActSensitize $ refName ref));|]
+genCase (Desensitize ref) = undefined
+genCase Yield = undefined
 genCase (Fork cs) = do
   locs    <- gets locals
   caseNum <- nextCase

@@ -157,8 +157,8 @@ arbProc funs vars refs c n = frequency $
         )
       , (1, do refs'  <- sublistOf refs `suchThat` (not . null)
                (rest,c') <- arbProc funs vars refs c (n-1)
-               let stm = Wait refs'
-               return (stm:rest, c')
+               let stms = map Sensitize refs' ++ [Yield] ++ map Desensitize refs'
+               return (stms ++ rest, c')
         )
       ])
   where
