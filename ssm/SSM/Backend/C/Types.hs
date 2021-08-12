@@ -28,7 +28,7 @@ stripRef t       = error $ "Not a reference: " ++ show t
 -- Only supports non-Ref types; use 'stripRef' to strip away 'Ref' when needed.
 base :: HasCallStack => Type -> CIdent
 base TInt32  = u32
-base TInt64  = u32
+base TInt64  = u64
 base TUInt64 = u64
 base TUInt8  = u8
 base TBool   = bool
@@ -73,7 +73,7 @@ trace_ TEvent n v = [cexp|$id:debug_trace($string:fmt)|]
  where
   fmt :: String
   fmt = show $ T.ActVar $ T.VarVal (identName n) TEvent T.UnitType
-trace_ t n v = [cexp|$id:debug_trace($string:fmt, $exp:v)|]
+trace_ t n v = [cexp|$id:debug_trace($string:fmt, $exp:(signed_ t v))|]
  where
   fmt :: String
   fmt = show $ T.ActVar $ T.VarVal (identName n) t $ T.IntegralFmt ifmt
