@@ -44,7 +44,7 @@ compile_ program = (compUnit, includes)
 
   -- | Global reference declarations
   globals :: [C.Definition]
-  globals = genGlobals (globalReferences program)
+  globals = genGlobals program
 
   initProg :: [C.Definition]
   initProg = genInitProgram program
@@ -115,13 +115,12 @@ actm = "act"
 
 {- | Generate the declarations of global variables and the function that initializes
 them. These variables can be accessed without an activation record. -}
-genGlobals :: [(Ident, Type)] -> [C.Definition]
-genGlobals globals = globalvars
+genGlobals :: Program -> [C.Definition]
+genGlobals = map declGlobal . globalReferences
  where
-  -- | The global variable declarations
-  globalvars :: [C.Definition]
-  globalvars =
-    map (\(n, t) -> [cedecl|$ty:(svt_ t) $id:(identName n);|]) globals
+  -- | Declare global variable.
+  declGlobal :: (Ident, Type) -> C.Definition
+  declGlobal (n, t) = [cedecl|$ty:(svt_ $ stripRef t) $id:(identName n);|]
 
 -- | Generate the entry point of a program - the first thing to be ran.
 genInitProgram :: Program -> [C.Definition]
@@ -136,7 +135,7 @@ genInitProgram p = [cunit|
   -- | Initialize global reference.
   initGlobal :: (Ident, Type) -> C.BlockItem
   initGlobal (n, t) = [citem|$exp:init;|]
-    where init = initialize_ t [cexp|&$id:(identName n)|]
+    where init = initialize_ (stripRef t) [cexp|&$id:(identName n)|]
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]
@@ -503,7 +502,8 @@ genExp ls (BOp ty e1 e2 op) = gen op
   gen OMinus = [cexp|$exp:c1 - $exp:c2|]
   gen OTimes = [cexp|$exp:c1 * $exp:c2|]
   gen OEQ    = [cexp|$exp:c1 == $exp:c2|]
-  gen OLT    = [cexp|$exp:(signed_ (expType e1) c1) < $exp:(signed_ (expType e2) c2)|]
+  gen OLT =
+    [cexp|$exp:(signed_ (expType e1) c1) < $exp:(signed_ (expType e2) c2)|]
 
 -- | Promote a C expression to a C statement.
 expToStm :: C.Exp -> C.Stm
