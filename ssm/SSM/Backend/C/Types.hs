@@ -21,7 +21,7 @@ t_ t = [cty|typename $id:t|]
 -- | Helper function to "dereference" an SSM 'Type'.
 stripRef :: HasCallStack => Type -> Type
 stripRef (Ref t) = t
-stripRef t = error $ "Not a reference: " ++ show t
+stripRef t       = error $ "Not a reference: " ++ show t
 
 -- | Obtain typename for the C type we use to represent data of SSM 'Type'.
 --
@@ -30,7 +30,7 @@ base :: HasCallStack => Type -> CIdent
 base TInt32  = u32
 base TInt64  = u32
 base TUInt64 = u64
-base TUInt8  = u64
+base TUInt8  = u8
 base TBool   = bool
 base TEvent  = event
 base (Ref t) = error $ "No base data type for reference: " ++ show t
@@ -47,17 +47,21 @@ svt_ = t_ . svt . base
 initialize_ :: HasCallStack => Type -> C.Exp -> C.Exp
 initialize_ t e = [cexp|$id:(initialize $ base t)($exp:e)|]
 
--- | Synthesize call to assign method of an SV.
+-- | Synthesize call to type-specific assign method of an SV.
 assign_ :: HasCallStack => Type -> C.Exp -> C.Exp -> C.Exp -> C.Exp
-assign_ (Ref ty@TEvent) lhs prio _ =
-  [cexp|$id:(assign $ base ty)($exp:lhs, $exp:prio)|]
+assign_ (Ref t) _ _ _ =
+  error $  "assign_ expects non-reference type, instead got: " ++ show t
+assign_ TEvent lhs prio _ =
+  [cexp|$id:(assign $ base TEvent)($exp:lhs, $exp:prio)|]
 assign_ ty lhs prio rhs =
   [cexp|$id:(assign $ base ty)($exp:lhs, $exp:prio, $exp:rhs)|]
 
--- | Synthesize call to later method of an SV.
+-- | Synthesize call to type-specific later method of an SV.
 later_ :: HasCallStack => Type -> C.Exp -> C.Exp -> C.Exp -> C.Exp
-later_ (Ref ty@TEvent) lhs time _ =
-  [cexp|$id:(later $ base ty)($exp:lhs, $exp:time)|]
+later_ (Ref t) _ _ _ =
+  error $  "later_ expects non-reference type, instead got: " ++ show t
+later_ TEvent lhs time _ =
+  [cexp|$id:(later $ base TEvent)($exp:lhs, $exp:time)|]
 later_ ty lhs time rhs =
   [cexp|$id:(later $ base ty)($exp:lhs, $exp:time, $exp:rhs)|]
 
@@ -91,4 +95,3 @@ signed_ :: Type -> C.Exp -> C.Exp
 signed_ TInt32 e = [cexp|($ty:(t_ i32)) $exp:e|]
 signed_ TInt64 e = [cexp|($ty:(t_ i64)) $exp:e|]
 signed_ _      e = e
-
