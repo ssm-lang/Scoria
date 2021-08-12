@@ -388,7 +388,7 @@ genCase (Wait ts) = do
   caseNum <- nextCase
   maxWaits $ length ts
   locs <- gets locals
-  let trigs = zip [1 ..] $ map (`refSV` locs) ts
+  let trigs = zip [1 ..] $ map (`refPtr` locs) ts
   return
     $  map getTrace      ts
     ++ map sensitizeTrig trigs
@@ -400,7 +400,7 @@ genCase (Wait ts) = do
  where
   sensitizeTrig :: (Int, C.Exp) -> C.Stm
   sensitizeTrig (i, trig) =
-    [cstm|$id:sensitize($exp:trig, &$id:acts->$id:(trig_ i));|]
+    [cstm|$id:sensitize(&$exp:trig->sv, &$id:acts->$id:(trig_ i));|]
 
   desensitizeTrig :: (Int, C.Exp) -> C.Stm
   desensitizeTrig (i, _) = [cstm|$id:desensitize(&$id:acts->$id:(trig_ i));|]
@@ -452,31 +452,12 @@ genCase (Fork cs) = do
        ]
 genCase Skip = return []
 
-{- | Given a reference and a list of local references, this function will return
-a C expression that holds a pointer to the reference. -}
+-- | Produce a C expression that gives a pointer to an SV 'Reference'.
 refPtr :: Reference -> [Reference] -> C.Exp
-refPtr r@(Dynamic _) lrefs = if r `elem` lrefs
-  then [cexp| &$id:acts->$id:(refName r) |]
-  else [cexp| $id:acts->$id:(refName r)  |]
--- Static references can be referenced without an activation record
-refPtr r@(Static _) _ = [cexp| &$id:(refName r) |]
-
-{- | Given a reference and a list of local references, this function will return a
-C expression that holds a pointer to the internal sv-component of the processes
-activation record. -}
-refSV :: Reference -> [Reference] -> C.Exp
-refSV r@(Dynamic _) lrefs = if r `elem` lrefs
-  then [cexp| &$id:acts->$id:(refName r).sv |]
-  else [cexp| &$id:acts->$id:(refName r)->sv|]
-refSV r@(Static _) _ = [cexp| &$id:(refName r).sv|]
-
-{- | Given a Reference, this function will return a C expression that holds
-the value of that reference. -}
-refVal :: Reference -> [Reference] -> C.Exp
-refVal r@(Dynamic _) lrefs = if r `elem` lrefs
-  then [cexp| $id:acts->$id:(refName r).value|]
-  else [cexp| $id:acts->$id:(refName r)->value|]
-refVal r@(Static _) _ = [cexp| $id:(refName r).value |]
+refPtr r@(Dynamic _) locs
+  | r `elem` locs = [cexp|&$id:acts->$id:(refName r)|]
+  | otherwise = [cexp|$id:acts->$id:(refName r)|]
+refPtr r@(Static _) _ = [cexp|&$id:(refName r)|]
 
 -- | Generate C expression from 'SSMExp' and a list of local variables.
 genExp :: [Reference] -> SSMExp -> C.Exp
@@ -489,12 +470,12 @@ genExp _  (Lit _      (LUInt64 i    )) = [cexp|(typename u64) $int:i|]
 genExp _  (Lit _      (LBool   True )) = [cexp|true|]
 genExp _  (Lit _      (LBool   False)) = [cexp|false|]
 genExp _  (Lit _      LEvent         ) = [cexp|0|]
-genExp ls (UOpE _ e Neg              ) = [cexp|- $exp:(genExp ls e)|]
-genExp ls (UOpR t r op               ) = case op of
-  Changed -> [cexp|$id:event_on($exp:(refSV r ls))|]
+genExp locs (UOpE _ e Neg              ) = [cexp|- $exp:(genExp locs e)|]
+genExp locs (UOpR t r op               ) = case op of
+  Changed -> [cexp|$id:event_on(&$exp:(refPtr r locs)->sv)|]
   Deref   -> case t of
     TEvent -> [cexp|0|]
-    _      -> [cexp|$exp:(refVal r ls)|]
+    _      -> [cexp|$exp:(refPtr r locs)->value|]
 genExp ls (BOp ty e1 e2 op) = gen op
  where
   (c1, c2) = (genExp ls e1, genExp ls e2)
