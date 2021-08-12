@@ -24,9 +24,6 @@ genMain program tickLimit =
       int main(void) {
         $ty:act_t top = { .step = $id:top_return };
 
-        /* Initialize variables to be passed to the main SSM procedure */
-        $items:argInits
-
         /* Enter main SSM procedure */
         $id:fork($id:enter($args:enterArgs));
         $ty:time_t next;
@@ -36,35 +33,12 @@ genMain program tickLimit =
           set_now(next);
         } while (next != NO_EVENT_SCHEDULED);
 
-        /* Print the final values of the arguments declared earlier */
-        $items:refPrints
       }
     |]
   ]
  where
   limit = maybe [cexp|ULONG_MAX|] (\i -> [cexp|$int:i|]) tickLimit
 
-  enter = enter_ $ entry program
+  enter = enter_ $ identName $ entry program
   enterArgs =
       [[cexp|&top|], [cexp|PRIORITY_AT_ROOT|], [cexp|DEPTH_AT_ROOT|]]
-      ++ map enterArg (args program)
-  enterArg (Left  ssmExp  ) = genExp [] ssmExp
-  -- ^ TODO: this is buggy if ssmExp contains a var?? Maybe double check what's
-  -- going on with that.
-  enterArg (Right (ref, _)) = [cexp|&$id:ref|]
-
-  argInits = concatMap argInit $ rights $ args program
-  argInit (ref, typ) =
-    [ [citem|$ty:(svt_ typ) $id:ref;|]
-    , [citem|$id:(initialize_ typ)(&$id:ref);|]
-    , [citem|$id:ref.value = 0;|]
-    , [citem|DEBUG_SV_SET_VAR_NAME($id:ref.sv.debug, $string:ref);|]
-      -- Args to the main SSM procedure are always given default values of 0.
-    ]
-
-  refPrints = map refPrint $ rights $ args program
-  refPrint (ref, typ) = [citem|
-    DEBUG_PRINT("result %s %s %s\n", DEBUG_SV_GET_VAR_NAME($id:ref.sv.debug),
-                                     DEBUG_SV_GET_TYPE_NAME($id:ref.sv.debug),
-                                     DEBUG_SV_GET_VALUE_REPR($id:ref.sv.debug,
-                                     &$id:ref.sv));|]

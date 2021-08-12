@@ -1,109 +1,158 @@
-{-| This module exports some identifiers that are commonly reoccuring in the
-generated C code. They are declared here to avoid repetition in the files
-where they are referenced.-}
+{-| This module exports some global identifiers that the generated C code uses,
+as well as some functions used to construct identifiers.
+-}
 {-# LANGUAGE QuasiQuotes #-}
 module SSM.Backend.C.Identifiers
-    ( -- * Identifiers
-      CIdent
-    , top_return
-    , fork
-    , act_enter
-    , act_leave
-    , event_on
-    , sensitize
-    , desensitize
-    , unsched_event
+  ( -- * Type aliases
+    CIdent(..)
 
-      -- * C Types
-    , time_t
-    , trigger_t
-    , priority_t
-    , depth_t
-    , stepf_t
-    , uint16_t
-    , bool_t
-    , act_t
-    , sv_t
+      -- * Identifiers recognized by the C runtime system.
+  , initialize_program
+  , top_return
+  , fork
+  , act_enter
+  , act_leave
+  , event_on
+  , sensitize
+  , desensitize
+  , unsched_event
+  , entry_point
+  , throw
+  , exhausted_priority
+  , now
+  , never
+
+      -- * Type names recognized by the the C runtime system.
+  , time_t
+  , trigger_t
+  , priority_t
+  , depth_t
+  , stepf_t
+  , act_t
+  , sv_t
+      {- | These are (a subset of the) types that the runtime system includes and uses
+      internally. These are just the ones that the code generator needs to talk about. -}
+  , uint16_t
+  , bool_t
 
       -- * Constructing Identifiers from strings
-    , act_
-    , step_
-    , enter_
-    , trig_
+      -- | These functions create identifiers from some known [pre|suf]fix.
+  , act_
+  , step_
+  , enter_
+  , trig_
 
       -- * Constructing Identifiers from types
-    , typeId
-    , svt_
-    , initialize_
-    , assign_
-    , later_
+      {- | Some identifiers need to be prefixed or suffixed with some type information,
+      such as @later_int@, @later_bool@ etc. We create identifiers like these and others
+      by using these functions. -}
+  , svt_
+  , initialize_
+  , assign_
+  , later_
+  , basetype
 
-    ) where
+    -- * Debug-/trace-specific macros
+  , debug_microtick
+  , debug_trace
 
-import SSM.Core.Syntax
+    -- * Accessing references
+    {- | These functions help the code generator compile a reference into a
+    C-expression that references the same reference. -}
+  , refPtr
+  , refVal
+  , refSV
+  ) where
 
-import Language.C.Quote.GCC ( cty )
+import           SSM.Core.Syntax
+
+import           Language.C.Quote.GCC           ( cexp
+                                                , cstm
+                                                , cty
+                                                )
 import qualified Language.C.Syntax             as C
+import           SSM.Backend.C.Types
 
-{-------- C identifiers --------}
--- These variables represent the magic identifiers that must be coordinated
--- between the C runtime and the generated code, as well as some helpers to
--- generate C type nodes for user-defined types.
+-- | Use snake_case for c literals
+{-# ANN module "HLint: ignore Use camelCase" #-}
 
 -- | Type alias for C identifiers.
 type CIdent = String
+
+-- | Name of top level program initialization function
+initialize_program :: CIdent
+initialize_program = "ssm_initialize_program"
 
 -- | Name of top level return step-function
 top_return :: CIdent
 top_return = "top_return"
 
+-- | Name of top level return step-function
+entry_point :: CIdent
+entry_point = "ssm_entry_point"
+
 -- | Name of routine that forks procedures
 fork :: CIdent
-fork = "act_fork"
+fork = "ssm_activate"
 
 -- | Name of routine that initialized an activation record
 act_enter :: CIdent
-act_enter = "act_enter"
+act_enter = "ssm_enter"
 
 -- | Name of routine that deallocates an activation record
 act_leave :: CIdent
-act_leave = "act_leave"
+act_leave = "ssm_leave"
 
 -- | Name of routine that checks if a reference has been written to
 event_on :: CIdent
-event_on = "event_on"
+event_on = "ssm_event_on"
 
 -- | Name of routine that sensitizes a procedure
 sensitize :: CIdent
-sensitize = "sensitize"
+sensitize = "ssm_sensitize"
 
 -- | Name of routine that desensitizes a procedure
 desensitize :: CIdent
-desensitize = "desensitize"
+desensitize = "ssm_desensitize"
 
 -- | Name of routine that dequeues an event from the event queue
 unsched_event :: CIdent
-unsched_event = "unsched_event"
+unsched_event = "ssm_unschedule"
+
+-- | Name of routine that returns the current value of now.
+now :: CIdent
+now = "ssm_now"
+
+-- | Name of routine that returns the current value of now.
+never :: CIdent
+never = "SSM_NEVER"
+
+-- | Name of macro that throws an error.
+throw :: CIdent
+throw = "SSM_THROW"
+
+exhausted_priority :: C.Exp
+exhausted_priority = [cexp|SSM_EXHAUSTED_PRIORITY|]
 
 -- | C type that represents model time
 time_t :: C.Type
-time_t = [cty|typename ssm_time_t |]
+time_t = [cty|typename ssm_time_t|]
 
 -- | C type that represents process priorities
 priority_t :: C.Type
-priority_t = [cty|typename priority_t|]
+priority_t = [cty|typename ssm_priority_t|]
 
 -- | C type that represents process depths
 depth_t :: C.Type
-depth_t = [cty|typename depth_t|]
+depth_t = [cty|typename ssm_depth_t|]
 
 -- | C type that represents triggers, aka processes that are sensitized on variables
 trigger_t :: C.Type
-trigger_t = [cty| struct trigger |]
+trigger_t = [cty|struct ssm_trigger|]
 
 -- | C type that represents the step function of a process
 stepf_t :: C.Type
-stepf_t = [cty|typename stepf_t|]
+stepf_t = [cty|typename ssm_stepf_t|]
 
 -- | C type that represents 16 bit unsigned integers
 uint16_t :: C.Type
@@ -117,7 +166,7 @@ bool_t = [cty|typename bool|]
 
 -- | The type of the activation record base class.
 act_t :: C.Type
-act_t = [cty|struct act|]
+act_t = [cty|struct ssm_act|]
 
 -- | Obtain the name of the activation record struct for a routine.
 act_ :: String -> CIdent
@@ -141,29 +190,56 @@ trig_ i = "trig" ++ show i
 sv_t :: C.Type
 sv_t = [cty|struct sv|]
 
--- | Maps SSM `Type` to identifier of base type.
---
--- Note that this unwraps reference types and returns the base type.
-typeId :: Type -> CIdent
-typeId TInt32  = "i32"
-typeId TInt64  = "i64"
-typeId TUInt64 = "u64"
-typeId TUInt8  = "u8"
-typeId TBool   = "bool"
-typeId (Ref t) = typeId t
-
 -- | Obtain the name of the scheduled variable type for an SSM `Type`.
 svt_ :: Type -> C.Type
-svt_ ty = [cty|typename $id:(typeId ty ++ "_svt")|]
+svt_ ty = [cty|typename $id:("ssm_" ++ baseTypeId ty ++ "_t")|]
+
+basetype :: Type -> C.Type
+basetype t = [cty|typename $id:(baseTypeId t)|]
 
 -- | Obtain the name of the initialize method for an SSM `Type`.
 initialize_ :: Type -> CIdent
-initialize_ ty = "initialize_" ++ typeId ty
+initialize_ ty = "ssm_initialize_" ++ baseTypeId ty
 
 -- | Obtain the name of the assign method for an SSM `Type`.
 assign_ :: Type -> CIdent
-assign_ ty = "assign_" ++ typeId ty
+assign_ ty = "ssm_assign_" ++ baseTypeId ty
 
 -- | Obtain the name of the later method for an SSM `Type`.
 later_ :: Type -> CIdent
-later_ ty = "later_" ++ typeId ty
+later_ ty = "ssm_later_" ++ baseTypeId ty
+
+debug_microtick :: CIdent
+debug_microtick = "SSM_DEBUG_MICROTICK"
+
+debug_trace :: CIdent
+debug_trace = "SSM_DEBUG_TRACE"
+
+{- | Given a reference and a list of local references, this function will return
+a C expression that holds a pointer to the reference. -}
+refPtr :: Reference -> [Reference] -> C.Exp
+refPtr r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| &acts->$id:(refName r) |]
+    else [cexp| acts->$id:(refName r)  |]
+-- Static references can be referenced without an activation record
+refPtr r@(Static _) _ = [cexp| &$id:(refName r) |]
+
+{- | Given a reference and a list of local references, this function will return a
+C expression that holds a pointer to the internal sv-component of the processes
+activation record. -}
+refSV :: Reference -> [Reference] -> C.Exp
+refSV r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| &acts->$id:(refName r).sv |]
+    else [cexp| &acts->$id:(refName r)->sv|]
+refSV r@(Static _) _ = [cexp| &$id:(refName r).sv|]
+
+{- | Given a Reference, this function will return a C expression that holds
+the value of that reference. -}
+refVal :: Reference -> [Reference] -> C.Exp
+refVal r@(Dynamic _) lrefs =
+  if r `elem` lrefs
+    then [cexp| acts->$id:(refName r).value|]
+    else [cexp| acts->$id:(refName r)->value|]
+refVal r@(Static _) _      = [cexp| $id:(refName r).value |]

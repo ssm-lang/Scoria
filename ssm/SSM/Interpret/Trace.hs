@@ -1,256 +1,234 @@
+{-| This module declares a datatype that is used to describe behavior of an SSM
+program. The interpreter directly outputs elements of this type, while the
+generated C code prints lines to the terminal representing the trace items
+(parsed using the 'read').
+
+When compiled for event-trace-based testing, the compiled code will include
+statements that increment a microtick, to guard against divergent computation.
+Since the possible sources of nontermination in SSM are unbounded recursion and
+loops, these microticks will be placed at the beginning of each loop iteration,
+and at the beginning of each step function. The running microtick count persists
+between instants, so that it increases monotonically throughout the execution.
+-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleInstances #-}
 module SSM.Interpret.Trace where
 
-import qualified Data.Text as T
-import Data.Void
-import Data.List
+import qualified Data.Text                     as T
+import           Data.Word
+import           SSM.Core.Syntax
 
-import Text.Megaparsec
-import Text.Megaparsec.Char
-import qualified Text.Megaparsec.Char.Lexer as Lexer
-import Control.DeepSeq
-import GHC.Generics
-import Data.Int
-import Data.Word
+import           Test.QuickCheck
 
-import SSM.Core.Syntax hiding (Fork)
+-- | What transpired during the execution of an SSM program.
+type Trace = [Event]
 
-import System.IO.Unsafe
+-- | The events that characterize an execution of an SSM program.
+data Event =
+  -- | The length and head time of the event queue, reported between ticks.
+    DriverEventQueueStatus Word Word64
 
-trace :: Show a => a -> a
-trace x = unsafePerformIO $ putStrLn (show x) >> return x
+  -- | Enter/re-enter a step function.
+  | ActStepBegin ActIdent
 
-type Parser a = Parsec Void T.Text a
+  -- | Value of initialized variable (arguments + locals) in activation record.
+  --
+  -- Since each activation record maintains multiple variables, it is important
+  -- to discuss the expected order of these events here. Arguments appear first,
+  -- sorted by name, followed by local variables, also sorted by name. Any
+  -- uninitialized variable should not be reported.
+  --
+  -- ActVar events should appear after ActStepBegin, but before any other
+  -- computation in the step function (including the microtick).
+  | ActVar VarVal
 
-data OutputEntry = Instant Word64 Int      -- ^ now, size of eventqueue
-                 | Event Word64 SSMExp     -- ^ now, new variable value
-                 | Fork [String]        -- ^ Fork call, names of forked procedures
-                 | Result String SSMExp -- ^ variable name and final value
-                 | NumConts Int
-                 | Crash
-                 | EventQueueFull
-                 | ContQueueFull
-                 | NegativeDepth
-                 | BadAfter
-  deriving (Show, Eq)
+  -- | Activate another process, in preparation for a fork.
+  --
+  -- If forking multiple processes, these events should appear in fork order.
+  | ActActivate ActIdent
 
-type Output = [OutputEntry]
+  -- | Sensitize to a variable.
+  --
+  -- If sensitizing on multiple variables, these should appear in wait order
+  -- (although this does not have any operational significance).
+  | ActSensitize VarIdent
 
-testoutput = Prelude.unlines [ "event 0 value i32 0"
-                             , "event 1 value bool 1"
-                             , "negative depth"
-                             , "contqueue full"
-                             , "result a u64 2343546543245"
-                             , "event 2 value i32 (-1)"
-                             , "now 3 eventqueuesize 3"
-                             , "bad after"
-                             , "contqueue full"
-                             , "numconts 283"
-                             , "now 5 eventqueuesize 5"
-                             , "fork mywait mywait mysum"
-                             , "event 6 value i32 7"
-                             , "result x i64 1"
-                             , "fork mywait"
-                             , "numconts 325"
-                             , "contqueue full"
-                             , "bad after"
-                             , "negative depth"
-                             , "eventqueue full"
-                             , "result y bool 0"
-                             , "bad after"
-                             , "numconts 0"
-                             , "contqueue full"
-                             , "result zt u64 3423523234"
-                             , "result z bool 1"
-                             , "numconts 28387"
-                             , "negative depth"
-                             , "eventqueue full"
-                             , "contqueue full"
-                             , "bad after"
-                             , "numconts 12345"
-                             ]
+  -- | Terminated gracefully.
+  | TerminatedOk
+  -- | Did not terminate within microtick limit.
+  | ExhaustedMicrotick
+  -- | Tried to queue too many activation records in an instant.
+  | ExhaustedActQueue
+  -- | Tried to schedule too many delayed assignments.
+  | ExhaustedEventQueue
+  -- | Tried to allocate too many activation records.
+  | ExhaustedMemory
+  -- | Tried to fork too deeply.
+  | ExhaustedPriority
+  -- | E.g., tried to schedule a "delayed" assignment for an earlier time.
+  | CrashInvalidTime
+  -- | Tried to compute invalid arithmetic exception.
+  | CrashArithmeticError
+  -- | Interpreter crashed for an unforeseen reason (should be unreachable).
+  | CrashUnforeseen String
+  deriving (Show, Eq, Read)
 
-mkTrace :: String -> Output
-mkTrace inp = fromRight $ parse pTrace "" (T.pack inp)
-  where
-      fromRight :: Show a => Either a b -> b
-      fromRight (Left a)  = error $ "parsing of test results failed: " ++ show a
-      fromRight (Right b) = b
+isTerminal :: Event -> Bool
+isTerminal TerminatedOk         = True
+isTerminal ExhaustedMicrotick   = True
+isTerminal ExhaustedActQueue    = True
+isTerminal ExhaustedEventQueue  = True
+isTerminal ExhaustedMemory      = True
+isTerminal ExhaustedPriority    = True
+isTerminal CrashInvalidTime     = True
+isTerminal CrashArithmeticError = True
+isTerminal (CrashUnforeseen _)  = True
+isTerminal _                    = False
 
-parseLine :: String -> Maybe OutputEntry
-parseLine inp = toMaybe $ parse pTraceItem "" (T.pack inp)
-  where
-      toMaybe :: Show a => Either a b -> Maybe b
-      toMaybe (Left a)  = Nothing
-      toMaybe (Right b) = Just b
+isWellFormed :: Trace -> Bool
+isWellFormed [] = False
+isWellFormed es = isTerminal (last es) && not (any isTerminal (init es))
 
-pTrace :: Parser Output
-pTrace = many (pSpace *> pTraceItem)
+-- | A variable name.
+type VarIdent = String
 
-pTraceItem :: Parser OutputEntry
-pTraceItem = choice [ try pEvent
-                    , try pInstant
-                    , pBadAfter
-                    , pResult
-                    , pFork
-                    , pNumConts
-                    , pCrash
-                    , pEventQueueFull
-                    , pContQueueFull
-                    , pNegativeDepth
-                    ]
+-- | The name of an activation record.
+type ActIdent = String
 
-pFork :: Parser OutputEntry
-pFork = do
-    pSymbol "fork"
-    procs <- some (try pIdent)
-    return $ Fork procs
+-- | The trace representation indicating a variable, its type, and its value.
+--
+-- Even if the variable is a reference, VarVal should contain its base type
+-- (i.e., without the reference) and base value (i.e., dereferenced).
+data VarVal = VarVal VarIdent Type ConcreteValue
+  deriving (Show, Eq, Read)
 
-pNumConts :: Parser OutputEntry
-pNumConts = do
-    pSymbol "numconts"
-    num <- Lexer.lexeme pSpace Lexer.decimal
-    return $ NumConts num
+-- | An untyped, concrete value.
+--
+-- To make things easier for the parser, we use a representation that is more
+-- or less agnostic to the type of the value, i.e., integers.
+data ConcreteValue =
+    -- | A value represented as an integer.
+    --
+    -- Encompasses all Int and UInt types, as well as Bool {0,1}.
+    --
+    -- Use uninitalizedMagicIntegral to represent an uninitialized value.
+      IntegralVal Integer
 
-pCrash :: Parser OutputEntry
-pCrash = do
-    pSymbol "crash"
-    return Crash
+    -- | A placeholder "value"; should not appear in the concrete event trace.
+    --
+    -- Used for injecting formatters into a format string in codegen.
+    | IntegralFmt String
 
-pBadAfter :: Parser OutputEntry
-pBadAfter = do
-    pSymbol "bad"
-    pSymbol "after"
-    return BadAfter
+    -- | A "value" that inhabits a singleton type (such as Event).
+    | UnitType
+    deriving (Eq, Read)
 
-pNegativeDepth :: Parser OutputEntry
-pNegativeDepth = do
-    pSymbol "negative"
-    pSymbol "depth"
-    return NegativeDepth
+-- | Override the default Show intance for @ConcreteVal@ so that shown
+-- formatters can be parsed as values.
+instance Show ConcreteValue where
+  show (IntegralVal i) = "(IntegralVal " ++ show i ++ ")"
+  show (IntegralFmt f) = "(IntegralVal " ++ f ++ ")"
+  show UnitType        = "UnitType"
 
-pEventQueueFull :: Parser OutputEntry
-pEventQueueFull = do
-    pSymbol "eventqueue"
-    pSymbol "full"
-    return EventQueueFull
+actStepBegin :: T.Text
+actStepBegin = "ActStepBegin"
 
-pContQueueFull :: Parser OutputEntry
-pContQueueFull = do
-    pSymbol "contqueue"
-    pSymbol "full"
-    return ContQueueFull
+actActivate :: T.Text
+actActivate = "ActActivate"
 
-pEvent :: Parser OutputEntry
-pEvent = do
-    pSymbol "event"
-    num <- Lexer.lexeme pSpace Lexer.decimal
-    pSymbol "value"
-    res <- pRes
-    return $ Event num res
+varVal :: T.Text
+varVal = "VarVal"
 
-pInstant :: Parser OutputEntry
-pInstant = do
-    now <- pNow
-    eventqueuesize <- pEventqueuesize
-    return $ Instant now eventqueuesize
+actVar :: T.Text
+actVar = "ActVar"
 
-pResult :: Parser OutputEntry
-pResult = do
-    pSymbol "result"
-    refname <- pIdent
-    val <- pRes
-    return $ Result refname val
+driverEventQueueStatus :: T.Text
+driverEventQueueStatus = "DriverEventQueueStatus"
 
-pIdent :: Parser String
-pIdent = do
-    a <- letterChar 
-    as <- many $ choice [letterChar, digitChar, char '_']
-    pSpace
-    let res = a:as
-    if res `elem` keywords
-        then fail "found keyword, expected identifier"
-        else return res
-  where
-      keywords :: [String]
-      keywords = [ "event"
-                 , "fork"
-                 , "crash"
-                 , "now"
-                 , "result"
-                 , "bad"
-                 , "after"
-                 , "eventqueuesize"
-                 , "eventqueue"
-                 , "contqueue"
-                 , "numconts"
-                 , "full"
-                 , "negative"
-                 , "depth"
-                 , "i32"
-                 , "i64"
-                 , "u64"
-                 , "bool"]
-pRes :: Parser SSMExp
-pRes = do
-    -- add more variants here as we add more types
-    choice [pInt64, pUInt64, pInt, pBool]
-  where
-      pInt :: Parser SSMExp
-      pInt = do
-          pSymbol "i32"
-          num <- choice [try (parens signed), signed]
-          return $ Lit TInt32 $ LInt32 num
+actSensitize :: T.Text
+actSensitize = "ActSensitize"
 
-      pInt64 :: Parser SSMExp
-      pInt64 = do
-          pSymbol "i64"
-          num <- choice [ try (parens signed), signed]
-          return $ Lit TInt64 $ LInt64 num
+terminatedOk :: T.Text
+terminatedOk = "TerminatedOk"
 
-      pUInt64 :: Parser SSMExp
-      pUInt64 = do
-          pSymbol "u64"
-          num <- choice [ try (parens signed), Lexer.decimal]
-          return $ Lit TUInt64 $ LUInt64 num
+exhaustedMicrotick :: T.Text
+exhaustedMicrotick = "ExhaustedMicrotick"
 
-      pBool :: Parser SSMExp
-      pBool = do
-          pSymbol "bool"
-          b <- Lexer.lexeme pSpace Lexer.decimal
-          case b of
-              0 -> return $ Lit TBool $ LBool False
-              _ -> return $ Lit TBool $ LBool True
+exhaustedActQueue :: T.Text
+exhaustedActQueue = "ExhaustedActQueue"
 
-      parens :: Parser a -> Parser a
-      parens p = do
-          char '('
-          res <- p
-          char ')'
-          return res
+exhaustedEventQueue :: T.Text
+exhaustedEventQueue = "ExhaustedEventQueue"
 
-      signed :: (Integral a, Num a) => Parser a
-      signed = Lexer.signed pSpace Lexer.decimal
+exhaustedMemory :: T.Text
+exhaustedMemory = "ExhaustedMemory"
 
-pEventqueuesize :: Parser Int
-pEventqueuesize = do
-    pSymbol "eventqueuesize"
-    num <- Lexer.lexeme pSpace Lexer.decimal
-    return num
+exhaustedPriority :: T.Text
+exhaustedPriority = "ExhaustedPriority"
 
-pNow :: Parser Word64
-pNow = do
-    pSymbol "now"
-    num <- Lexer.lexeme pSpace Lexer.decimal 
-    return num
+crashInvalidTime :: T.Text
+crashInvalidTime = "CrashInvalidTime"
 
--- | Try to parse the given text as a symbol
-pSymbol :: T.Text -> Parser T.Text
-pSymbol = Lexer.symbol pSpace
+crashArithmeticError :: T.Text
+crashArithmeticError = "CrashArithmeticError"
 
--- | Characters we don't care about are spaces and newlines. Should probably add clrf etc also.
-pSpace :: Parser ()
-pSpace = do
-    many $ choice [spaceChar, newline]
-    return ()
+crashUnforeseen :: T.Text
+crashUnforeseen = "CrashUnforeseen"
+
+integralVal :: T.Text
+integralVal = "IntegralVal"
+
+unitType :: T.Text
+unitType = "UnitType"
+
+ref :: T.Text
+ref = "Ref"
+
+{-********** Generate random traces **********-}
+
+instance Arbitrary Type where
+  arbitrary = elements $ basetypes ++ Prelude.map Ref basetypes
+    where basetypes = [TUInt8, TUInt64, TInt32, TInt64, TBool, TEvent]
+
+instance Arbitrary ConcreteValue where
+  arbitrary = oneof [IntegralVal <$> arbitrary, return UnitType]
+
+instance Arbitrary VarVal where
+  arbitrary = do
+    i <- arbitrary :: Gen Word8
+    let varIdent = "v" ++ show i
+    t  <- arbitrary
+    cv <- arbitrary
+    return $ VarVal varIdent t cv
+
+instance Arbitrary Event where
+  arbitrary = oneof
+    [ return ExhaustedActQueue
+    , return ExhaustedEventQueue
+    , return ExhaustedMicrotick
+    , return ExhaustedPriority
+    , return ExhaustedMemory
+    , return CrashArithmeticError
+    , return CrashInvalidTime
+    , do
+      reason <- oneof [return "error1", return "error2", return "error3"]
+      return $ CrashUnforeseen reason
+    , return TerminatedOk
+    , ActSensitize <$> arbVar
+    , ActActivate <$> arbAct
+    , ActVar <$> arbitrary
+    , ActStepBegin <$> arbAct
+    , do
+      i <- arbitrary
+      t <- arbitrary
+      return $ DriverEventQueueStatus i t
+    ]
+   where
+    arbVar :: Gen String
+    arbVar = do
+      i <- arbitrary :: Gen Word8
+      return $ "v" ++ show i
+
+    arbAct :: Gen String
+    arbAct = do
+      i <- arbitrary :: Gen Word8
+      return $ "fun" ++ show i

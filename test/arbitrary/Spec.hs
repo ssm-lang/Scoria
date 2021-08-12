@@ -1,3 +1,4 @@
+import           SSM.Core.Syntax                ( Program )
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
 import qualified Test.SSM.Prop                 as T
@@ -30,4 +31,4 @@ main = hspec $ do
     --   $ T.propValgrind T.RandomTest
 
     prop "compiles and runs according to interpreter"
-      $ T.propCorrect T.RandomTest
+         (T.propCorrect T.RandomTest :: Program -> QC.Property)

@@ -1,151 +1,268 @@
+{- | This module declares the different types used by the interpreter to interpret a
+SSM program, represented in the "SSM.Core.Syntax" format. While the interpreter is
+meant to evaluate programs the same way the runtime system does, the model used here
+is slightly simpler. Some of the definitions are similar but not identical to the
+corresponding RTS ones. -}
+{-# LANGUAGE StrictData #-}
 module SSM.Interpret.Types
-    ( -- * Types
+  ( -- * Types
       -- ** Schedulable variables
-      Var
+      {- | A schedulable variable is just a fancy name for the normal variables we
+      have in SSM programs. They can receive immediate assignment etc, but they can
+      also be scheduled to receive an update in the future. -}
+    Var
       -- ** Process activation records
-    , Proc(..)
+      {- | The process activation record very closely resembles the corresponding C
+      version, but jas a few differences. -}
+  , Proc(..)
+  , mkProc
       -- ** Interpretation monad
-    , Interp
+      {- | This is interpretation monad that we use to interpret a program. It is a
+      state+writer monad. -}
+  , Interp
       -- ** State maintained by the interpretation monad
-    , St(..)
+      {- | The main interpretation state. This state is passed around throughout all
+      the interpretation, being constantly modified. There might be some room for
+      improving efficiency here, but by profiling the interpreter I don't see any
+      immediate condidates. -}
+  , St(..)
+  , initState
 
       -- ** Configuration object used to interpret programs
-    , InterpretConfig(..)
+  , InterpretConfig(..)
 
       -- * Utility functions
-    , mkProc
-    , variableStorage
-    , interpState
-    , lift'
-    ) where
+  , variableStorage
+  , lift'
+  , crash
+  , terminate
+  , tellEvent
+  , microtick
+  ) where
 
-import Data.STRef.Lazy
-import Data.Word
-import Data.Maybe
-import Data.List
+import           Data.Bifunctor                 ( second )
+import           Data.List
+import           Data.Maybe
+import           Data.STRef.Lazy
+import           Data.Word
 
-import SSM.Core.Syntax
-import SSM.Util.HughesList
+import           SSM.Core.Syntax
+import           SSM.Util.Default               ( Default(..) )
+import           SSM.Util.HughesList
 
-import Control.Monad.ST.Lazy
-import Control.Monad.State.Lazy
-import Control.Monad.Writer.Lazy
+import           Control.Monad.ST.Lazy
+import           Control.Monad.State.Lazy
+import           Control.Monad.Writer.Lazy
 
-import qualified Data.Map as Map
-import qualified Data.IntMap as IntMap
-import qualified SSM.Interpret.Trace as T
+import qualified Data.IntMap                   as IntMap
+import qualified Data.Map                      as Map
+import qualified SSM.Interpret.Trace           as T
 
-type Var s = STRef s
-  ( -- Reference pointing to the actual value of the variable.
-    STRef s SSMExp
-  , -- List of processes that are waiting for writes to this variable.
-    Map.Map Int (Proc s)
-  , -- The time when this variable was last written to
-    Word64
-    -- The next time there's a scheduled event on this variable
-  , Maybe Word64
-    -- The new value this variable will get at the next event time
-  , Maybe SSMExp
+{- | SSM interpreter variables. A variable is a reference to a 5-tuple.
+The components are
+
+@
+  ( Reference to the actual value of the variable
+  , List of processes that are waiting for writes to this variable
+  , The time when this variable was last written to
+  , The next time there's a scheduled event on this variable
+  , The new value this variable will get at the next event time
   )
+@
+-}
+type Var s
+  = STRef
+      s
+      (STRef s SSMExp, Map.Map Int (Proc s), Word64, Maybe Word64, Maybe SSMExp)
 
--- | State of a single process. Equivalent to the struct in C.
+-- | Process activation records.
 data Proc s = Proc
-  { -- | priority of the process
-    priority        :: Int
+  { -- | Name of the process
+    procName        :: String
+    -- | priority of the process
+  , priority        :: Int
     -- | The depth, which helps give priorities to children
   , depth           :: Int
-  -- | Number of non-terminated child processes
+    -- | Number of alive child processes
   , runningChildren :: Int
-  -- | Parent of this process, Nothing in the case of main
+    {- | Parent of this process, which is @Nothing@ if the current process is the
+    programs entrypoint. Otherwise, this field is always a @Just -something@. -}
   , parent          :: Maybe (STRef s (Proc s))
-  -- | Variables that are either expressions or references passed from a parent
-  , variables       :: Map.Map String (Var s)
-  -- | Variables that are references that are local to this process
-  , localrefs       :: Map.Map String (Var s)
-  -- | Variables this process is waiting for, if any
+    {- | This is a variable storage. The variables found in this map are the
+    expressions or variables that are passed to the process as arguments from
+    a parent. -}
+  , variables       :: Map.Map Ident (Var s)
+    {- | Variables found in this map are those that are local to this process, aka
+    those that are created by the `SSM.Core.Syntax.NewRef` constructor. We need to
+    put them in a separate map so that we can quickly deschedule any outstanding events
+    on them when a process is terminating. -}
+  , localrefs       :: Map.Map Ident (Var s)
+    -- | Variables this process is waiting for, if any
   , waitingOn       :: Maybe [Var s]
-  -- | The work left to do for this process
+    -- | The work left to do for this process
   , continuation    :: [Stm]
   }
   deriving Eq
 
+-- | Create the initial process.
+mkProc
+  :: InterpretConfig          -- ^ Configuration
+  -> Program                  -- ^ Program
+  -> Procedure                -- ^ Entry point
+  -> Proc s
+mkProc conf p fun = Proc { procName        = identName $ entry p
+                         , priority        = rootPriority conf
+                         , depth           = rootDepth conf
+                         , runningChildren = 0
+                         , parent          = Nothing
+                         , variables       = Map.empty
+                         , localrefs       = Map.empty
+                         , waitingOn       = Nothing
+                         , continuation    = body fun
+                         }
+
+
+{- | The show instance will only render the priority (this was initially
+implemented for debug purposes). -}
 instance Show (Proc s) where
-    show p = show $ priority p
+  show p = show $ priority p
 
+-- | Ordering is computed by comparing priorities.
 instance Ord (Proc s) where
-    p1 <= p2 = priority p1 <= priority p2
+  p1 <= p2 = priority p1 <= priority p2
 
--- | The interpreter state.
+-- | The interpreter state maintained while interpreting a program.
 data St s = St
-  { -- | Current time
-    now        :: Word64
-  -- | Outstanding events
-  , events     :: Map.Map Word64 [Var s]
-  -- | Number of outstanding events
-  , numevents  :: Int
-  -- | Processes ready to run, should be a priority queue
-  , readyQueue :: IntMap.IntMap (Proc s)
-  -- | Number of processes in the readyqueue
-  , numconts   :: Int
-  -- | Map that associated names with procedures.
-  , procedures :: Map.Map String Procedure
-  -- | Argment-references given to the entrypoint
-  , inputargs  :: [(String, Var s)]
-  -- | Currently running process
-  , process    :: Proc s
-  , maxContQueueSize :: Int
+  { -- | The current model time
+    now               :: Word64
+    {- | The variables which exist in the global scope and can be referenced from any
+    context. There is no need to have an activation record to look up one of these
+    variables. -}
+  , globalVariables   :: Map.Map Ident (Var s)
+    {- | The outstanding events. Represented as a map from the time at which the
+    event should occur to a list of the variables that should be updated at that time.
+    This representation is faithful to the order in which the events are inserted in
+    the event queue, while the C heap might shuffle events around when they are
+    scheduled for the same instant. -}
+  , events            :: Map.Map Word64 [Var s]
+    {- | Number of outstanding events. Bounded by the number of variables currently
+    allocated in the program, as there can be at most 1 outstanding event per
+    variable. While this number could be derived from the map, that would be a linear
+    complexity computation. If we maintain this state we can look it up in @O(1)@. -}
+  , numevents         :: Int
+    {- | Map that associates priorities to processes. We use a map as it gives us a
+    pleasant complexity for getting the minimum element. This map only holds processes
+    that are scheduled to be evaluated. -}
+  , readyQueue        :: IntMap.IntMap (Proc s)
+    -- | Number of processes in the readyqueue
+  , numacts           :: Int
+    {- | Map that associates procedure names with procedure definitions. Used when we
+    fork a procedure and we need to create an activation record. -}
+  , procedures        :: Map.Map Ident Procedure
+    {- | Argment-references given to the entrypoint. Will probably be removed, depending
+    on how we end up managing input/output in SSM programs. -}
+  , inputargs         :: [(Ident, Var s)]
+    -- | The process that is currently being evaluated
+  , process           :: Proc s
+    -- | The number of microticks counted so far.
+  , microticks        :: Int
+  , microtickLimit    :: Int
+  , maxActQueueSize   :: Int
   , maxEventQueueSize :: Int
   }
   deriving Eq
 
-{- | Alias for creating a process, so we don't expose the internals of the Proc s
-datatype. -}
-mkProc :: Int                       -- ^ Priority
-       -> Int                       -- ^ Depth
-       -> Int                       -- ^ #Running children
-       -> Maybe (STRef s (Proc s))  -- ^ Reference to parent, if any
-       -> Map.Map String (Var s)    -- ^ Variable storage
-       -> Map.Map String (Var s)    -- ^ Local reference storage
-       -> Maybe [Var s]             -- ^ Variables to wait for
-       -> [Stm]                     -- ^ Continuation
-       -> Proc s
-mkProc = Proc
+-- | Create initial state for interpreter.
+initState
+  :: InterpretConfig       -- ^ Configuration
+  -> Program               -- ^ Program
+  -> Word64                -- ^ Start time
+  -> Map.Map Ident (Var s) -- ^ Global references
+  -> Proc s                -- ^ Entry point
+  -> St s
+initState conf p startTime glob entryPoint = St
+  { now               = startTime
+  , globalVariables   = glob
+  , events            = Map.empty
+  , numevents         = 0
+  , readyQueue        = IntMap.singleton 0 entryPoint
+  , numacts           = 1
+  , procedures        = funs p
+  , process           = entryPoint
+  , inputargs         = getReferences p $ variableStorage entryPoint
+  , microticks        = 0
+  , microtickLimit    = boundMicrotick conf
+  , maxActQueueSize   = boundActQueueSize conf
+  , maxEventQueueSize = boundEventQueueSize conf
+  }
+
+{- | Given a program and a map of a variable storage, return a list of
+@(name, variable)@ pairs that make up the references in the variable storage
+that appear as input parameters to the program.
+-}
+getReferences :: Program -> Map.Map Ident (Var s) -> [(Ident, Var s)]
+getReferences p m = case Map.lookup (entry p) (funs p) of
+  Just pr ->
+    let refparams  = filter (isReference . snd) $ arguments pr
+        paramnames = map fst refparams
+        vars       = map (\n -> (n, Map.lookup n m)) paramnames
+        vars'      = filter (isJust . snd) vars
+    in  map (second fromJust) vars'
+  Nothing -> error "interpreter error - robert did something very wrong"
 
 {- | Alias for getting the variable storage from a process, so we don't expose the
-internals of the Proc s datatype. -}
-variableStorage :: Proc s -> Map.Map String (Var s)
+internals of the @Proc s@ datatype. -}
+variableStorage :: Proc s -> Map.Map Ident (Var s)
 variableStorage = variables
 
-{- | Alias for creating the interpretation state, so that we don't expose the internals
-of the St type to the developer. -}
-interpState :: Word64                    -- ^ Now
-            -> Map.Map Word64 [Var s]    -- ^ Events
-            -> Int                       -- ^ #numevents
-            -> IntMap.IntMap (Proc s)    -- ^ Ready queue
-            -> Int                       -- ^ #numcontinuations
-            -> Map.Map String Procedure  -- ^ Procedures
-            -> [(String, Var s)]         -- ^ Input references
-            -> Proc s                    -- ^ Current process
-            -> Int                       -- ^ Max continuation queue size
-            -> Int                       -- ^ Max event queue size
-            -> St s
-interpState = St
+-- | Interpretation monad
+type Interp s a = StateT (St s) (WriterT (Hughes T.Event) (ST s)) a
 
-type Interp s a = StateT (St s) (WriterT (Hughes T.OutputEntry) (ST s)) a
-
--- | Lift a ST computation to the interpretation monad.
+-- | Lift a @ST@ computation to the interpretation monad.
 lift' :: ST s a -> Interp s a
 lift' = lift . lift
+
+-- | Emit event to event log in the interpretation monad.
+tellEvent :: T.Event -> Interp s ()
+tellEvent e = tell $ toHughes [e]
+
+-- | Halt interpretation monad, and report terminal condition.
+terminate :: T.Event -> Interp s a
+terminate t = error $ show t
+
+-- | Crash upon unforeseen failure mode (as reported by string).
+crash :: String -> Interp s a
+crash = terminate . T.CrashUnforeseen
+
+-- | Increment the microtick, and terminate if exceeded limit.
+microtick :: Interp s ()
+microtick = do
+  mt  <- gets microticks
+  mtl <- gets microtickLimit
+  if mtl > 0 && mt >= mtl
+    then terminate T.ExhaustedMicrotick
+    else modify $ \st -> st { microticks = microticks st + 1 }
 
 {- | Data type of interpreter configuration. Need to modify the interpreter to
 interpret a program after loading this information into the interpretation state.
 I can hack this together on monday. -}
-data InterpretConfig
-    = InterpretConfig
-    { -- | Size of continuation queue
-      boundContQueueSize  :: Int
-      -- | Size of event queue
-    , boundEventQueueSize :: Int
-      -- | Program to interpret
-    , program        :: Program
-    }
+data InterpretConfig = InterpretConfig
+  { -- | Size of activation record queue
+    boundActQueueSize   :: Int
+    -- | Size of event queue
+  , boundEventQueueSize :: Int
+    -- | Microtick limit
+  , boundMicrotick      :: Int
+  -- | Priority at root process/entry point
+  , rootPriority        :: Int
+  -- | Depth at root process/entry point
+  , rootDepth           :: Int
+  }
+
+instance Default InterpretConfig where
+  def = InterpretConfig { boundActQueueSize   = 1024
+                        , boundEventQueueSize = 2048
+                        , boundMicrotick      = 100000
+                        , rootPriority        = 0
+                        , rootDepth           = 32
+                        }

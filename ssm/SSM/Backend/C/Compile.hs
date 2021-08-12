@@ -1,22 +1,20 @@
-module SSM.Backend.C.Compile ( compile ) where
+-- | Interface module to the Backend.C subsystem.
+module SSM.Backend.C.Compile
+  ( compile
+  ) where
 
-import SSM.Core.Syntax
-import SSM.Backend.C.CodeGen
-import SSM.Backend.C.MainLoop
+import           SSM.Backend.C.CodeGen
+import           SSM.Core.Syntax
 
-import Data.List ( nub )
+import           Data.List                      ( nub )
 
 import           Text.PrettyPrint.Mainland      ( pretty )
 import           Text.PrettyPrint.Mainland.Class
                                                 ( pprList )
 
-{- | Compile a program. The bool parameter determines if you want to generate a main
-function for testing purposes, and the Maybe Int specifies how many debug items you want
-the generated program to output. -}
-compile :: Program -> Bool -> Maybe Int -> String
-compile p b mi = pretty 120 $ pprList compilationUnit
-  where
-      compilationUnit = nub includes ++ prg ++ m
-
-      (prg, includes) = compile_ p
-      m               = if b then genMain p mi else []
+-- | Compile a program from its Core.Syntax representation to a C String.
+compile :: Program -> String
+compile p = pretty 120 $ pprList compilationUnit
+ where
+  compilationUnit = nub includes ++ prg
+  (prg, includes) = compile_ p

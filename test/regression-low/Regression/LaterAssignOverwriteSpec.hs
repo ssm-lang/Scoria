@@ -1,3 +1,12 @@
+-- | Whether an instantaneous assignment overwrites a previously scheduled
+-- delayed assignment.
+--
+-- fun1 (r1: &bool, r3: &i32) =
+--   after 2, r1 <- True
+--   after 1, r3 <- 3
+--   r3 <- 4
+--   wait r1
+--   wait r3
 module Regression.LaterAssignOverwriteSpec where
 
 import           Data.Map                       ( fromList )
@@ -8,26 +17,38 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = "fun1"
-  , args  = [Right ("ref1", Ref TBool), Right ("ref3", Ref TInt32)]
+  { entry = Ident "fun0" Nothing
   , funs  = fromList
-              [ ( "fun1"
+              [ ( Ident "fun0" Nothing
                 , Procedure
-                  { name = "fun1"
-                  , arguments = [("ref1", Ref TBool), ("ref3", Ref TInt32)]
+                  { name      = Ident "fun0" Nothing
+                  , arguments = []
+                  , body      =
+                    [ NewRef (Ident "ref1" Nothing) TBool  (Lit TBool (LBool True))
+                    , NewRef (Ident "ref3" Nothing) TInt32 (Lit TInt32 (LInt32 0))
+                    , Fork
+                      [(Ident "fun1" Nothing, [Right (Dynamic (Ident "ref1" Nothing, Ref TBool)), Right (Dynamic (Ident "ref3" Nothing, Ref TInt32))])]
+                    ]
+                  }
+                )
+              , ( Ident "fun1" Nothing
+                , Procedure
+                  { name = Ident "fun1" Nothing
+                  , arguments = [(Ident "ref1" Nothing, Ref TBool), (Ident "ref3" Nothing, Ref TInt32)]
                   , body = [ After (Lit TUInt64 (LUInt64 2))
-                                   ("ref1", Ref TBool)
+                                   (Dynamic (Ident "ref1" Nothing, Ref TBool))
                                    (Lit TBool (LBool True))
                            , After (Lit TUInt64 (LUInt64 1))
-                                   ("ref3", Ref TInt32)
+                                   (Dynamic (Ident "ref3" Nothing, Ref TInt32))
                                    (Lit TInt32 (LInt32 3))
-                           , SetRef ("ref3", Ref TInt32) (Lit TInt32 (LInt32 4))
-                           , Wait [("ref1", Ref TBool)]
-                           , Wait [("ref3", Ref TInt32)]
+                           , SetRef (Dynamic (Ident "ref3" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 4))
+                           , Wait [Dynamic (Ident "ref1" Nothing, Ref TBool)]
+                           , Wait [Dynamic (Ident "ref3" Nothing, Ref TInt32)]
                            ]
                   }
                 )
               ]
+  , globalReferences = []
   }
 
 spec :: H.Spec

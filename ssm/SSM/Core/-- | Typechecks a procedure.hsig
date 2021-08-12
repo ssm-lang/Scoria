@@ -1,0 +1,18 @@
+-- | Typechecks a procedure
+typeCheckProcedure :: Procedure -> Map.Map String Entry -> Either TypeError ()
+typeCheckProcedure Procedure {name=n, arguments=args, body=b} env = do
+    res <- typeCheckArgs params args 
+    typeCheckStmLst b
+    where params = maybe [] takeParams (Map.lookup n env)
+
+-- | Checks the functions in a String-Procedure map all have the corret type
+typeCheckProcs :: Map.Map String Procedure -> Either TypeError ()
+typeCheckProcs env = mapM_ typeCheckProcedure (Map.elems env)
+
+-- | Typechecks the arguments of a forked procedure
+typeCheckForkProcArg :: [Either SSMExp Reference] -> Either TypeError ()
+typeCheckForkProcArg [] = Right ()
+typeCheckForkProcArg ((Left expr):t) = do
+    res <- typeCheckExp expr env
+    typeCheckForkProcArg t
+typeCheckForkProcArg ((Right ref):t) = typeCheckForkProcArg t

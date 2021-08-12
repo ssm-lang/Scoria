@@ -1,78 +1,98 @@
 module Test.SSM.Report
   ( (</>)
+  , reportDir
   , reportOnFail
   , reportFileOnFail
+  , reportScriptOnFail
   , reportUnixError
   , reportProgramOnFail
   , Slug(..)
-  , slugStr
   , getSlug
   , TestName(..)
   , reportSlug
   ) where
 
 import qualified Data.ByteString               as B
-import           Data.Time.Clock.POSIX          ( getPOSIXTime )
 import           System.Directory               ( createDirectoryIfMissing
+                                                , doesPathExist
                                                 , getPermissions
+                                                , removePathForcibly
+                                                , setOwnerExecutable
                                                 , setPermissions
                                                 )
 
-import           SSM.Core.Syntax                ( Program )
+import           SSM.Compile                    ( SSMProgram(..) )
 import           SSM.Pretty                     ( prettyProgram )
 
+import           Data.Char                      ( isUpper )
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
 
 -- | Directory where reports are dumped.
 reportDir :: Slug -> FilePath
-reportDir (SlugTimestamp ts) = "trace-report" </> "test-" ++ show ts
-reportDir (SlugNamed     n ) = "trace-report" </> "test-" ++ n
+reportDir sl = "trace-report" </> show sl
 
--- | Character limit for reports.
-reportLimit :: Int
-reportLimit = 120 * 200
-
--- | Timestamps are just unique integers (provided that history doesn't actually
--- repeat itself).
-type Timestamp = Int
+lowRegressionSuiteDir :: FilePath
+lowRegressionSuiteDir = "test/regression-low/Regression"
 
 -- | Used to specify the name of a test case.
 --
--- Specifying RandomTest entails that a random timestamp name will be generated
--- based on the time of the test, which is useful for generated test cases with
--- no user-defined name.
+-- Specifying RandomTest entails that a random timestamp name will be generated,
+-- useful for generated test cases with no user-defined name.
 data TestName = RandomTest | NamedTest String deriving (Show, Eq)
 
--- | Identifier for each test run, used to determine report directory name,
--- among other things.
-data Slug = SlugTimestamp Timestamp | SlugNamed String deriving (Show, Eq)
+-- | Identifier for each test run, used to determine report directory name.
+data Slug = SlugGenerated Int | SlugNamed String deriving Eq
 
--- | Generate Slug from Testname, using the current POSIX time for timestamps.
+instance Show Slug where
+  show (SlugGenerated i) = "Arb" ++ show i
+  show (SlugNamed     n) = n
+
+-- | Generate Slug from TestName, using the current POSIX time for timestamps.
+--
+-- In the case of named directories, delete the directory first.
+--
+-- Fails if the name is not valid, i.e., an empty string or not beginning with
+-- an upper case letter.
 getSlug :: TestName -> IO Slug
-getSlug RandomTest       = SlugTimestamp . round . (* 1000) <$> getPOSIXTime
-getSlug (NamedTest name) = return $ SlugNamed name
-
--- | "Decode" a Slug into its unique String.
-slugStr :: Slug -> [Char]
-slugStr (SlugTimestamp ts) = "Test" ++ show ts
-slugStr (SlugNamed     n ) = n
+getSlug (NamedTest name)
+  | validName name = removePathForcibly (reportDir sl) >> return sl
+  | otherwise      = fail $ "Not a valid test name: '" ++ name ++ "'"
+ where
+  sl = SlugNamed name
+  validName name = (not . null) name && (isUpper . head) name
+getSlug RandomTest = getSlug' 1
+ where
+  getSlug' i = do
+    let sl = SlugGenerated i
+    pathExists <- doesPathExist $ reportDir sl
+    if pathExists then getSlug' (i + 1) else return sl
 
 -- | Report the test directory after a test fails.
 reportSlug :: Monad m => Slug -> QC.PropertyM m ()
 reportSlug slug = QC.monitor $ QC.counterexample $ unlines
   ["", "Report directory: " ++ reportDir slug, ""]
 
--- | Write string s to file at fp if the test fails
+-- | Write string s to file at fp if the test fails.
 reportOnFail :: Monad m => Slug -> FilePath -> String -> QC.PropertyM m ()
 reportOnFail slug fp s = QC.monitor $ QC.whenFail $ do
   createDirectoryIfMissing True $ reportDir slug
   writeFile (reportDir slug </> fp) s
 
--- | Copy contents of src file (as it exists now) to dst if the test fails
+-- | Write string s to file with exec permissions at fp if the test fails.
+reportScriptOnFail
+  :: Monad m => Slug -> FilePath -> String -> QC.PropertyM m ()
+reportScriptOnFail slug fp s = QC.monitor $ QC.whenFail $ do
+  createDirectoryIfMissing True $ reportDir slug
+  writeFile path s
+  perm <- getPermissions path
+  setPermissions path $ setOwnerExecutable True perm
+  where path = reportDir slug </> fp
+
+-- | Copy contents of src file (as it exists now) to dst if the test fails.
 reportFileOnFail :: Slug -> FilePath -> FilePath -> QC.PropertyM IO ()
 reportFileOnFail slug src dst = do
-  -- We must read this strictly because subsequent shrinks may overwrite it
+  -- Read file strictly because subsequent shrinks may overwrite it
   exec <- QC.run $ B.readFile src
   perm <- QC.run $ getPermissions src
 
@@ -83,14 +103,26 @@ reportFileOnFail slug src dst = do
 
 -- | Leave both pretty-printed and regression-testable stub of program in report
 -- directory if the test fails.
-reportProgramOnFail :: Monad m => Slug -> Program -> QC.PropertyM m ()
+reportProgramOnFail
+  :: (Monad m, SSMProgram p) => Slug -> p -> QC.PropertyM m ()
 reportProgramOnFail slug program = do
-  reportOnFail slug (slugStr slug ++ ".ssm") $ prettyProgram program
-  reportOnFail slug (slugStr slug ++ "Spec.hs") regressionSpec
+  reportOnFail slug (show slug ++ ".ssm") $ prettyProgram $ toProgram program
+  reportOnFail slug (show slug ++ "Spec.hs") regressionSpec
+  reportScriptOnFail slug "save-regression" saveSpecScript
  where
   -- | Format a spec that can be added to the low-regression test suite
   regressionSpec = unlines
-    [ "module Regression." ++ slugStr slug ++ "Spec where"
+    [ "-- | FIXME: add documentation about this regression test."
+    , "--"
+    , "-- Use template below when appropriate."
+    , "--"
+    , "-- Bug encountered: (what happened)"
+    , "-- (Suspected) cause: (why it happened)"
+    , "-- Fix: (suggestion/plan for how to fix)"
+    , "-- Fixed: (include commit hash if already fixed; otherwise write 'notyet' or 'wontfix')"
+    , "--"
+    , "-- Include links to GitHub issues if any are created."
+    , "module Regression." ++ show slug ++ "Spec where"
     , ""
     , "import Data.Map (fromList)"
     , "import SSM.Core.Syntax"
@@ -98,38 +130,69 @@ reportProgramOnFail slug program = do
     , "import qualified Test.Hspec as H"
     , "import qualified Test.Hspec.QuickCheck as H"
     , ""
-    , "p :: Program"
-    , "p = " ++ show program
-    , ""
     , "spec :: H.Spec"
-    , "spec = T.correctSpec \"" ++ slugStr slug ++ "\" p"
+    , "spec = T.correctSpec \"" ++ show slug ++ "\" p"
+    , ""
+    , "p :: Program"
+    , "p = " ++ show (toProgram program)
     ]
+
+  saveSpecScript = unlines
+    [ "#!/usr/bin/env bash"
+    , "GITROOT=\"$(git rev-parse --show-toplevel)\""
+    , ""
+    , "echo cp \"$GITROOT/" ++ src ++ "\" \"$GITROOT/" ++ dst ++ "\""
+    , "cp \"$GITROOT/" ++ src ++ "\" \"$GITROOT/" ++ dst ++ "\""
+    , ""
+    , "echo \"# Copied Spec file into the regression test suite.\""
+    ]
+   where
+    src  = reportDir slug </> spec
+    dst  = lowRegressionSuiteDir </> spec
+    spec = show slug ++ "Spec.hs"
 
 -- | Report a Unix error in a Quickcheck Property monad transformer.
 reportUnixError
   :: Monad m => Slug -> [String] -> (Int, String, String) -> QC.PropertyM m ()
 reportUnixError slug cmd (c, out, err) = do
-  reportOnFail slug "unix.err" msg
-  QC.monitor $ QC.counterexample msg
+  reportOnFail slug filename $ msg trunc
+  QC.monitor $ QC.counterexample $ msg notrunc
  where
-  msg =
-    "Command: "
-      ++ unwords (map quote cmd)
-      ++ "\n\n"
-      ++ "Error code: "
-      ++ show c
-      ++ "\n\n"
-      ++ "stdout:\n\n"
-      ++ trunc "" reportLimit out
-      ++ "\n----\n"
-      ++ "stderr:\n\n"
-      ++ trunc "" reportLimit err
-      ++ "\n----\n"
-  quote s = if ' ' `elem` s then ['\''] ++ s ++ ['\''] else s
+  filename = if null cmd then "unix.err" else head cmd
+  msg t = unlines
+    [ "Command: "
+    , unwords (map quoteCmd cmd)
+    , ""
+    , "Error code: "
+    , show c
+    , ""
+    , "stdout:"
+    , ""
+    , t "" reportLimit out
+    , "----"
+    , "stderr:"
+    , ""
+    , t "" reportLimit err
+    , "----"
+    ]
+
+  -- | Wrap command in quotation marks if there is a space in it.
+  quoteCmd :: String -> String
+  quoteCmd s = if ' ' `elem` s then ['\''] ++ s ++ ['\''] else s
+
+  -- | Character limit for truncation.
+  reportLimit :: Int
+  reportLimit = 120 * 200
+
+  -- | Truncate a string so as to not clutter the console.
+  trunc :: String -> Int -> String -> String
   trunc acc _ []       = reverse acc
   trunc acc 0 (x : _ ) = reverse ("..." ++ x : acc)
   trunc acc n (x : xs) = trunc (x : acc) (n - 1) xs
 
+  -- | Don't truncate; do nothing.
+  notrunc :: String -> Int -> String -> String
+  notrunc _ _ s = s
 
 -- | Cheap shorthand to concat a directory to a path with '/'.
 --
