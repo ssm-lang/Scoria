@@ -33,7 +33,8 @@ import           Test.SSM.Trace                 ( doCompareTraces
 
 -- | List of act and event queue sizes to test.
 queueSizes :: [(Int, Int)]
-queueSizes = [(32, 32), (256, 256), (2048, 2048)]
+--queueSizes = [(32, 32), (256, 256), (2048, 2048)]
+queueSizes = [(2048, 2048)]
 
 -- | Tests that generated SSM programs compile successfully.
 propCompiles :: SSMProgram p => TestName -> p -> QC.Property

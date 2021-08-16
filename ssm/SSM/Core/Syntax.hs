@@ -295,11 +295,10 @@ data Stm
 
     {- | @After d r v@ - After @d@ units of time the reference @r@ should get the new
     value @v@. -}
-    | After SSMTime Reference SSMExp
---    | Wait [Reference]  -- ^ Wait for any of the references to be written to
-    | Sensitize Reference
-    | Desensitize Reference
-    | Yield
+    | After SSMExp Reference SSMExp
+    | Sensitize Reference    -- ^ Sensitize the current process on this reference
+    | Desensitize Reference  -- ^ Desensitize the current process on this reference
+    | Yield                  -- ^ Yield control
     {-| Fork procedures. The procedures are now identified by their name, and the fork
     site contains only that name and the arguments to apply the function to. -}
     | Fork [(Ident, [Either SSMExp Reference])]

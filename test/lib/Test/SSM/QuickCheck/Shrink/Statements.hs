@@ -1,10 +1,11 @@
 module Test.SSM.QuickCheck.Shrink.Statements
-    ( statements ) where
+  ( statements
+  ) where
 
-import SSM.Core.Syntax
-import SSM.Util.HughesList hiding ( (++) )
+import           SSM.Core.Syntax
+import           SSM.Util.HughesList     hiding ( (++) )
 
-import Test.SSM.QuickCheck.Util
+import           Test.SSM.QuickCheck.Util
 
 statements :: Program -> [Program]
 statements = transformProcedures shrinkAllStmtsProcedure
@@ -13,13 +14,15 @@ statements = transformProcedures shrinkAllStmtsProcedure
 -- statements.
 shrinkAllStmtsProcedure :: Procedure -> [Procedure]
 shrinkAllStmtsProcedure p =
-  [ p { body = body' } | body' <- distributeMutate (body p) shrinkStmts ]
+  [ p { body = (removeLonelyYield body') }
+  | body' <- distributeMutate (body p) shrinkStmts
+  ]
 
 -- | Replace any of the below statements with a skip instruction
 shrinkStmts :: Stm -> [Stm]
 shrinkStmts stm = case stm of
-  SetRef _ _     -> [Skip]
+--  SetRef _ _     -> [Skip]
   SetLocal _ _ _ -> [Skip]
-  After _ _ _    -> [Skip]
+  After    _ _ _ -> [Skip]
   Fork _         -> [Skip]
   _              -> []

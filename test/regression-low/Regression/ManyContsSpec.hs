@@ -33,9 +33,9 @@ p = Program
             (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
             (Dynamic (Ident "Ref2" Nothing, Ref TUInt64))
             (Lit TUInt64 (LUInt64 2))
-          , Sensitize (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+          , Sensitize (Dynamic (Ident "Ref2" Nothing, Ref TUInt64))
           , Yield
-          , Desensitize (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
+          , Desensitize (Dynamic (Ident "Ref2" Nothing, Ref TUInt64))
           , Fork
             [ ( Ident "fun1" Nothing
               , [ Right $ Dynamic (Ident "Ref2" Nothing, Ref TUInt64)

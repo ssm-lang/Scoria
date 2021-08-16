@@ -7,6 +7,7 @@ module SSM.Interpret.Interpreter
 
 import           SSM.Core.Syntax
 import           SSM.Interpret.Internal
+import SSM.Interpret.Types
 import qualified SSM.Interpret.Trace           as T
 import           SSM.Util.Default               ( Default(def) )
 import           SSM.Util.HughesList     hiding ( (++) )
@@ -19,7 +20,7 @@ import           Control.Monad
 import           Control.Monad.ST.Lazy
 import           Control.Monad.State.Lazy
 import           Control.Monad.Writer.Lazy
-
+import Debug.Trace
 -- | Interpret an SSM program with the default configuration.
 interpret_ :: SSMProgram p => p -> T.Trace
 interpret_ = interpret def
@@ -43,11 +44,9 @@ interpret config program = runST $ do
     Nothing ->
       error $ "Interpreter error: cannot find entry point: " ++ identName (entry p)
   globs       <- globals p
+  initprocess <- mkProc config p fun
   -- Run the interpret action and produce it's output
-  (_, events) <- runWriterT $ runStateT run $ initState config p 0 globs $ mkProc
-    config
-    p
-    fun
+  (_, events) <- runWriterT $ runStateT run $ initState config p 0 globs initprocess
   return $ fromHughes events
 
 -- | Run the interpreter, serving the role of the @main@ function.
@@ -95,7 +94,6 @@ Yields control when the process terminates (no more instructions) or suspends
 step :: Interp s ()
 step = do
   i <- nextInstruction
-  p <- currentProcess
   case i of
     Nothing  -> leave
 
@@ -142,11 +140,6 @@ step = do
         desensitize ref
         continue
 
---      Wait refs -> do
---        forM_ refs $ \r -> tellEvent $ T.ActSensitize $ refName r
---        wait refs
---        yield
-
       Fork procs -> do
         setRunningChildren (length procs)
         parent <- addressToSelf
@@ -157,6 +150,8 @@ step = do
 
  where
   -- | Convenience names for local control flow.
-  continue, yield :: Interp s ()
+  continue :: Interp s ()
   continue = step
-  yield    = return ()
+
+  yield :: Interp s ()
+  yield = return ()

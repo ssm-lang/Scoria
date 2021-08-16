@@ -22,8 +22,8 @@ shrinkForksProcedure p =
 {- | Shrink fork statements by replacing the list of forked processes with all
 sublists of length @length procs - 1@. -}
 shrinkForkStm :: Stm -> [Stm]
-shrinkForkStm stm = case stm of
-  Fork procs -> let sublists         = map (\f -> delete f procs) procs
-                    nonemptysublists = filter (not . null) sublists
-                in map Fork nonemptysublists
-  _ -> []
+shrinkForkStm stm = [] --case stm of
+--  Fork procs -> let sublists         = map (\f -> delete f procs) procs
+--                    nonemptysublists = filter (not . null) sublists
+--                in map Fork nonemptysublists
+--  _ -> []

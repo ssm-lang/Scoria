@@ -133,15 +133,23 @@ genGlobals globals = globalvars
 genInitProgram :: Program -> [C.Definition]
 genInitProgram p = [cunit|
   void $id:initialize_program(void) {
-    $items:(map initGlobal $ globalReferences p)
+    $items:(concat $ map initGlobal $ globalReferences p)
     $id:fork($id:(enter_ $ identName $ entry p)
         (&ssm_top_parent, SSM_ROOT_PRIORITY, SSM_ROOT_DEPTH));
   }
   |]
  where
   -- | Initialize global reference
-  initGlobal :: (Ident, Type) -> C.BlockItem
-  initGlobal (n, t) = [citem| $id:(initialize_ t)(&$id:(identName n));|]
+  initGlobal :: (Ident, Type) -> [C.BlockItem]
+  initGlobal (n, Ref TEvent) =
+    [ [citem| $id:(initialize_ TEvent)(&$id:(identName n));|]
+    , [citem| $id:(assign_ TEvent)(&$id:(identName n), 0);|]
+    ]
+  initGlobal (n, Ref t) =
+    [ [citem| $id:(initialize_ t)(&$id:(identName n));|]
+    , [citem| $id:(assign_ t)(&$id:(identName n), 0, 0);|]
+    ]
+  initGlobal (_, t) = error $ "error initializing global variable of type " ++ show t
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]

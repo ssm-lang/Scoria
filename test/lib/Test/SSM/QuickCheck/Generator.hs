@@ -128,7 +128,7 @@ arbProc funs vars refs c n = frequency $
                forks       <- mapM (applyFork vars refs) tofork
                let stm      = Fork forks
                (rest,c') <- arbProc funs vars refs c (n-1)
-               return (stm:rest, c')
+               return (stm:Yield:rest, c')
         )
       ] ++
 
@@ -142,14 +142,20 @@ arbProc funs vars refs c n = frequency $
 
       (if null refs then [] else
       [ (1, do r       <- elements refs
-               e       <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
+               esize   <- choose (0,3)               
+               e       <- if esize == 0
+                 then arbExp (dereference $ refType r) vars (delete r refs) esize
+                 else arbExp (dereference $ refType r) vars refs esize
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm = SetRef r e
                return (stm:rest, c')
         )
       
-      , (1, do r        <- elements refs
-               v        <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
+      , (1, do r         <- elements refs
+               vsize     <- choose (0,3)
+               v         <- if vsize == 0
+                 then arbExp (dereference $ refType r) vars (delete r refs) vsize
+                 else arbExp (dereference $ refType r) vars refs vsize
                (rest,c') <- arbProc funs vars refs c (n-1)
                delay     <- choose (0, 3) >>= genDelay
                let stm   = After delay r v
@@ -230,6 +236,10 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
       TUInt64 -> return . Lit TUInt64 . LUInt64 =<< choose (0, 65500)
       TBool  -> return  . Lit TBool   . LBool   =<< arbitrary
       TEvent -> return $ Lit TEvent LEvent
+      _       -> error $ concat [ "generator error - tried to generate "
+                                , "expression literal of type ", show t
+                                , ", while expressions can only be generated"
+                                , " of one of the base types"]
 
     -- | Generator that returns a randomly selected variable from the set of variables.
     varGen :: [Gen SSMExp]
