@@ -82,9 +82,9 @@ We can `wait` for _any_ reference in a list of references to receive a write. Th
 ```Haskell
 wait       :: [Ref a] -> SSM ()
 ```
-You can schedule a future write to a variable with `after`.
+You can schedule a future write to a variable with `after`. You must supply units of time to the duration by using time constructor helpers (e.g. `nsecs 15`, `secs 45`).
 ```Haskell
-after      :: Exp Word64 -> Ref a -> Exp a -> SSM ()
+after      :: SSMTime -> Ref a -> Exp a -> SSM ()
 ```
 You can fork processes with `fork`. A very nice thing here is that the things we fork are just applied functions! No need to use some fancy machinery, just normal Haskell function application.
 ```Haskell
@@ -118,7 +118,7 @@ module Fib where
 import SSM
 ```
 
-In Stephens paper there is a very interesting version of computing fibonacci numbers. First we need to create the `mywait` function that takes a single reference and waits for it.
+In Stephen's paper there is a very interesting version of computing fibonacci numbers. First we need to create the `mywait` function that takes a single reference and waits for it.
 ```Haskell
 mywait :: Ref Int -> SSM ()
 mywait = box "mywait" ["r"] $ \r -> do
@@ -130,14 +130,14 @@ mywait r = wait [r]
 ```
 all the information is essentially already there to transform it to the version that uses `box`. It should definitely be possible to write a simple compiler plugin that does this. We'll see what we do! For now we need to write it ourselves :)
 
-Then we need to add the `mysum` procedure, which takes three references. It will wait for the first two references to be written to and then write their sum to the third reference. We use our `waitAll` combinator to wait for all the references.
+Then we need to add the `mysum` procedure, which takes three references. It will wait for the first two references to be written to and then write their sum to the third reference after 1 second. We use our `waitAll` combinator to wait for all the references.
 ```Haskell
 mysum :: Ref Int -> Ref Int -> Ref Int -> SSM ()
 mysum = box "mysum" ["r1", "r2", "r"] $ \r1 r2 r -> do
     waitAll [r1,r2]
     v1 <- deref r1
     v2 <- deref r2
-    after 1 r (v1 + v2)
+    after (secs 1) r (v1 + v2)
 ```
 Lastly we have the `myfib` procedure itself. We use `var` to create two local references which we can then share with forked processes. Some nice things is that we can use ordinary integer literals and have them automatically be promoted to the proper `Exp a` variant. Forking processes is simply normal Haskell function application, so there's no need to use some special operator to apply arguments to procedures.
 ```Haskell
@@ -146,7 +146,7 @@ myfib = box "myfib" ["n", "r"] $ \n r -> do
     r1 <- var 0 
     r2 <- var 0
     if' (n <. 2)
-            (after 1 r 1)
+            (after (secs 1) r 1)
             (Just (fork [ myfib (n - 1) r1
                         , myfib (n - 2) r2
                         , mysum r1 r2 r
@@ -165,7 +165,7 @@ myfib(int n, *int r) {
   int v0 = var 0
   int v1 = var 0
   if((n < 2)) {
-    after 1 then r = 1
+    after 1 SSMSecond then r = 1
   } else {
     fork [myfib((n - 1), v0), myfib((n - 2), v1), mysum(v0, v1, r)]
   }
@@ -175,7 +175,7 @@ mysum(*int r1, *int r2, *int r) {
   fork [waitSingle(r1), waitSingle(r2)]
   int v0 = *r1
   int v1 = *r2
-  after 1 then r = (v0 + v1)
+  after 1 SSMSecond then r = (v0 + v1)
 }
 
 waitSingle(*int r) {
@@ -214,7 +214,7 @@ myfib(int n, *int r) {
   int r1 = var 0
   int r2 = var 0
   if((n < 2)) {
-    after 1 then r = 1
+    after 1 SSMSecond then r = 1
   } else {
     fork [myfib((n - 1), r1), myfib((n - 2), r2), mysum(r1, r2, r)]
   }
@@ -224,7 +224,7 @@ mysum(*int r1, *int r2, *int r) {
   fork [waitSingle(r1), waitSingle(r2)]
   int v1 = *r1
   int v2 = *r2
-  after 1 then r = (v1 + v2)
+  after 1 SSMSecond then r = (v1 + v2)
 }
 
 waitSingle(*int r) {
@@ -360,7 +360,7 @@ void step_myfib(act_t* gen_act) {
             initialize_int(&act->r2);
             assign_int(&act->r2, act->priority, 0);
             if (!((act->n.value < 2))) goto L0;
-            later_int(act->r, now + 1UL, 1);
+            later_int(act->r, now + 1 * SSM_SECOND, 1);
             goto L1;
             
             L0:
@@ -411,7 +411,7 @@ void step_mysum(act_t* gen_act) {
         case 1:
             assign_int(&act->v1, act->priority, act->r1->value);
             assign_int(&act->v2, act->priority, act->r2->value);
-            later_int(act->r, now + 1UL, (act->v1.value + act->v2.value));
+            later_int(act->r, now + 1 * SSM_SECOND, (act->v1.value + act->v2.value));
         case 2:
         leave((act_t *) act, sizeof(act_mysum_t));
     }

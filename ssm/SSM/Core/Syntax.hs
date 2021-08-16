@@ -53,6 +53,11 @@ module SSM.Core.Syntax
     , BinOp(..)
     , expType
 
+      -- ** Time
+      {- Exposes units of time to wrap Word64 expressions. -}
+    , SSMTimeUnit(..)
+    , SSMTime(..)
+
       -- ** Statements
       {- | Statements that make up an SSM program take any of these forms. A program
       is made up of a list of these statements.-}
@@ -246,6 +251,23 @@ expType (UOpE t _ _)  = t
 expType (UOpR t _ _)  = t
 expType (BOp t _ _ _) = t
 
+-- Time
+
+-- | Units of time supported by SSM.
+data SSMTimeUnit
+    = SSMNanosecond
+    | SSMMicrosecond
+    | SSMMillisecond
+    | SSMSecond
+    | SSMMinute
+    | SSMHour
+    deriving (Eq, Show, Read)
+
+-- | Time values with units to be resolved by CodeGen. Used in `after` stmts.
+data SSMTime = SSMTime SSMExp SSMTimeUnit
+             | SSMTimeAdd SSMTime SSMTime
+             | SSMTimeSub SSMTime SSMTime
+    deriving (Eq, Show, Read)
 
 -- Programs
 
@@ -266,7 +288,7 @@ data Stm
 
     {- | @After d r v@ - After @d@ units of time the reference @r@ should get the new
     value @v@. -}
-    | After SSMExp Reference SSMExp
+    | After SSMTime Reference SSMExp
     | Wait [Reference]  -- ^ Wait for any of the references to be written to
     {-| Fork procedures. The procedures are now identified by their name, and the fork
     site contains only that name and the arguments to apply the function to. -}

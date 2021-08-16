@@ -403,7 +403,7 @@ genCase (After d r v) = do
   locs <- gets locals
   let lvar = refIdent r
       t    = refType r
-      del  = genExp locs d
+      del  = genTimeDelay locs d
       lhs  = refPtr r locs
       rhs  = genExp locs v
   -- Note that the semantics of 'After' and 'later_' differ---the former

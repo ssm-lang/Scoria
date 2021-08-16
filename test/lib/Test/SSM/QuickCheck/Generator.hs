@@ -33,6 +33,15 @@ basetypes = [TUInt8, TUInt64, TInt32, TInt64, TBool, TEvent]
 instance Arbitrary Type where
   arbitrary = elements $ basetypes ++ map Ref basetypes
 
+instance Arbitrary SSMTimeUnit where
+  arbitrary = elements [ SSMNanosecond
+                       , SSMMicrosecond
+                       , SSMMillisecond
+                       , SSMSecond
+                       , SSMMinute
+                       , SSMHour
+                       ]
+
 type Procedures = [(Ident, [(Ident, Type)], [Stm])]
 type Variable   = (Ident, Type)
 
@@ -140,8 +149,8 @@ arbProc funs vars refs c n = frequency $
       
       , (1, do r        <- elements refs
                v        <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
-               delay    <- Lit TUInt64 . LUInt64 <$> choose (1, 5000)
                (rest,c') <- arbProc funs vars refs c (n-1)
+               delay     <- choose (0, 3) >>= genDelay
                let stm   = After delay r v
                return (stm:rest, c')
         )
@@ -169,6 +178,27 @@ arbProc funs vars refs c n = frequency $
                       Right <$> elements okrefs
               else Left <$> (choose (0,3) >>= arbExp t vars refs)
           return (n, args)
+
+      -- | Generate a delay.
+      genDelay :: Int -> Gen SSMTime
+      genDelay 0 = do
+          unit' <- arbitrary
+          delay <- Lit TUInt64 . LUInt64 <$> arbDelay unit'
+          return $ SSMTime delay unit'
+            where
+              arbDelay :: SSMTimeUnit -> Gen Word64
+              arbDelay SSMHour        = choose (1, 3)
+              arbDelay SSMMinute      = choose (1, 180)
+              arbDelay SSMSecond      = choose (1, 10800)
+              arbDelay SSMMillisecond = choose (1, 10800000)
+              arbDelay SSMMicrosecond = choose (1, 10800000000)
+              arbDelay SSMNanosecond  = choose (1, 10800000000000)
+      genDelay n = do
+          t1 <- genDelay $ n `div` 2
+          t2 <- genDelay $ n `div` 2
+          oneof $ [ return $ SSMTimeAdd t1 t2
+                  , return $ SSMTimeSub t1 t2
+                  ]
 
       -- | Predicate that returns True if the given procedure can be forked.
       -- What determines this is what references we have in scope. If the procedure
