@@ -295,7 +295,7 @@ data Stm
 
     {- | @After d r v@ - After @d@ units of time the reference @r@ should get the new
     value @v@. -}
-    | After SSMExp Reference SSMExp
+    | After SSMTime Reference SSMExp
     | Sensitize Reference    -- ^ Sensitize the current process on this reference
     | Desensitize Reference  -- ^ Desensitize the current process on this reference
     | Yield                  -- ^ Yield control

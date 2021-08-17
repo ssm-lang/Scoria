@@ -22,7 +22,7 @@ p = Program
         , body      =
           [ CreateRef (Ident "v0" Nothing) (Ref TBool)
           , SetRef (Dynamic (Ident "v0" Nothing, Ref TBool)) (Lit TBool (LBool False))
-          , After (SSMTime (Lit TUInt64 (LUInt64 1)) (SSMNanosecond)
+          , After (SSMTime (Lit TUInt64 (LUInt64 1)) SSMNanosecond)
                   (Dynamic (Ident "v0" Nothing, Ref TBool))
                   (Lit TBool (LBool True))
           , CreateRef (Ident "v1" Nothing) (Ref TBool)
