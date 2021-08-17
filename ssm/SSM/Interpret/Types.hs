@@ -97,8 +97,6 @@ data Proc s = Proc
     put them in a separate map so that we can quickly deschedule any outstanding events
     on them when a process is terminating. -}
   , localrefs       :: Map.Map Ident (Var s)
-    -- | Variables this process is waiting for, if any
---  , toSensitizeOn   :: [Reference]
     -- | The work left to do for this process
   , continuation    :: STRef s [Stm]
   }

@@ -33,8 +33,9 @@ intFmt = fmt . baseType
   fmt TUInt8  = "%u"
 
 varFmt :: (Ident, Type) -> T.VarVal
-varFmt (n, t) | baseType t == TEvent = T.VarVal (identName n) (baseType t) T.UnitType
-              | otherwise = T.VarVal (identName n) (baseType t) $ T.IntegralFmt $ intFmt t
+varFmt (n, t)
+  | baseType t == TEvent = T.VarVal (identName n) (baseType t) T.UnitType
+  | otherwise = T.VarVal (identName n) (baseType t) $ T.IntegralFmt $ intFmt t
 
 {- | Data type that annotates a procedures body with unique line-numbers. Used to be able
 to refer to individual statements in auxiliary data objects. -}

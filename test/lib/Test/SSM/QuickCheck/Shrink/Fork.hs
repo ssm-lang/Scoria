@@ -1,12 +1,13 @@
 module Test.SSM.QuickCheck.Shrink.Fork
-    ( forks ) where
+  ( forks
+  ) where
 
-import SSM.Core.Syntax
-import SSM.Util.HughesList hiding ( (++) )
+import           SSM.Core.Syntax
+import           SSM.Util.HughesList     hiding ( (++) )
 
-import Test.SSM.QuickCheck.Util
+import           Test.SSM.QuickCheck.Util
 
-import Data.List
+import           Data.List
 
 {- | Shrink fork statements in a program. Each resulting program contains only one
 mutation. -}
@@ -22,8 +23,9 @@ shrinkForksProcedure p =
 {- | Shrink fork statements by replacing the list of forked processes with all
 sublists of length @length procs - 1@. -}
 shrinkForkStm :: Stm -> [Stm]
-shrinkForkStm stm = [] --case stm of
---  Fork procs -> let sublists         = map (\f -> delete f procs) procs
---                    nonemptysublists = filter (not . null) sublists
---                in map Fork nonemptysublists
---  _ -> []
+shrinkForkStm stm = case stm of
+  Fork procs ->
+    let sublists         = map (\f -> delete f procs) procs
+        nonemptysublists = filter (not . null) sublists
+    in  map Fork nonemptysublists
+  _ -> []

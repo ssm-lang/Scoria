@@ -20,7 +20,7 @@ import           Control.Monad
 import           Control.Monad.ST.Lazy
 import           Control.Monad.State.Lazy
 import           Control.Monad.Writer.Lazy
-import Debug.Trace
+
 -- | Interpret an SSM program with the default configuration.
 interpret_ :: SSMProgram p => p -> T.Trace
 interpret_ = interpret def

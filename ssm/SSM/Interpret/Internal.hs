@@ -45,7 +45,6 @@ module SSM.Interpret.Internal
   , readRef
 
   -- * Wait, fork, and leave + helpers
---  , wait
   , fork
   , sensitize
   , desensitize
@@ -102,7 +101,7 @@ import           SSM.Util.Operators             ( (<#>) )
 import           SSM.Core.Syntax
 import qualified SSM.Interpret.Trace           as T
 import           SSM.Interpret.Types
-import Debug.Trace
+
 {-********** Main interpret function helpers **********-}
 
 -- | Create initial global variable storage
@@ -331,8 +330,7 @@ pushInstructions stmts = do
 createVar :: SSMExp -> Interp s (Var s)
 createVar e = do
   v <- eval e
-  --n <- getNow
-  lift' $ newVar' v maxBound--n
+  lift' $ newVar' v maxBound
 
 {- | Create a new reference. The initial value of this reference tries to mirror a
 zero-initialized value as much as possible, but don't try on this.
@@ -458,7 +456,6 @@ writeVar_ ref e prio = do
   let (keep, towake) = Map.split prio waits
 
   -- wake up and desensitize the processes
---  mapM_ desensitize towake
   mapM_ enqueue towake
 
   -- update the variable to be written to in this instant and give it knowledge
