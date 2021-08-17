@@ -101,14 +101,15 @@ arbProc :: Procedures     -- ^ All procedures in the program
         -> Gen ([Stm], Int)
 arbProc _ _ _ c 0          = return ([], c)
 arbProc funs vars refs c n = frequency $
-      [ (1, do t         <- elements basetypes
-               e         <- choose (0,3) >>= arbExp t vars refs
-               (name,c1) <- fresh c
-               let rt     = mkReference t
-               let stm    = NewRef name t e
-               let ref    = makeDynamicRef name rt
+      [ (1, do t          <- elements basetypes
+               (name,c1)  <- fresh c
+               e          <- choose (0,3) >>= arbExp t vars refs
+               let rt      = mkReference t
+                   stm1    = CreateRef name rt
+                   ref     = makeDynamicRef name rt
+                   stm2    = SetRef ref e
                (rest, c2) <- arbProc funs vars (ref:refs) c1 (n-1)
-               return (stm:rest, c2)
+               return (stm1:stm2:rest, c2)
         )
       
       , (1, do cond      <- choose (0,3) >>= arbExp TBool vars refs
@@ -127,7 +128,7 @@ arbProc funs vars refs c n = frequency $
                forks       <- mapM (applyFork vars refs) tofork
                let stm      = Fork forks
                (rest,c') <- arbProc funs vars refs c (n-1)
-               return (stm:rest, c')
+               return (stm:Yield:rest, c')
         )
       ] ++
 
@@ -141,14 +142,20 @@ arbProc funs vars refs c n = frequency $
 
       (if null refs then [] else
       [ (1, do r       <- elements refs
-               e       <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
+               esize   <- choose (0,3)               
+               e       <- if esize == 0
+                 then arbExp (dereference $ refType r) vars (delete r refs) esize
+                 else arbExp (dereference $ refType r) vars refs esize
                (rest,c') <- arbProc funs vars refs c (n-1)
                let stm = SetRef r e
                return (stm:rest, c')
         )
       
-      , (1, do r        <- elements refs
-               v        <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
+      , (1, do r         <- elements refs
+               vsize     <- choose (0,3)
+               v         <- if vsize == 0
+                 then arbExp (dereference $ refType r) vars (delete r refs) vsize
+                 else arbExp (dereference $ refType r) vars refs vsize
                (rest,c') <- arbProc funs vars refs c (n-1)
                delay     <- choose (0, 3) >>= genDelay
                let stm   = After delay r v
@@ -156,8 +163,8 @@ arbProc funs vars refs c n = frequency $
         )
       , (1, do refs'  <- sublistOf refs `suchThat` (not . null)
                (rest,c') <- arbProc funs vars refs c (n-1)
-               let stm = Wait refs'
-               return (stm:rest, c')
+               let stms = map Sensitize refs' ++ [Yield] ++ map Desensitize refs'
+               return (stms ++ rest, c')
         )
       ])
   where
@@ -229,6 +236,10 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
       TUInt64 -> return . Lit TUInt64 . LUInt64 =<< choose (0, 65500)
       TBool  -> return  . Lit TBool   . LBool   =<< arbitrary
       TEvent -> return $ Lit TEvent LEvent
+      _       -> error $ concat [ "generator error - tried to generate "
+                                , "expression literal of type ", show t
+                                , ", while expressions can only be generated"
+                                , " of one of the base types"]
 
     -- | Generator that returns a randomly selected variable from the set of variables.
     varGen :: [Gen SSMExp]

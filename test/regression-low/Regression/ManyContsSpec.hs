@@ -16,10 +16,10 @@ p = Program
       , Procedure
         { name      = Ident "fun0" Nothing
         , arguments = []
-        , body      = [ NewRef (Ident "ref2" Nothing)
-                                TUInt64
-                                (Lit TUInt64 (LUInt64 0))
+        , body      = [ CreateRef (Ident "ref2" Nothing) (Ref TUInt64)
+                      , SetRef (Dynamic (Ident "ref2" Nothing, Ref TUInt64)) (Lit TUInt64 (LUInt64 0))
                       , Fork [(Ident "fun1" Nothing, [Right $ Dynamic (Ident "ref2" Nothing, Ref TUInt64)])]
+                      , Yield
                       ]
         }
       )
@@ -33,7 +33,9 @@ p = Program
             (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
             (Dynamic (Ident "Ref2" Nothing, Ref TUInt64))
             (Lit TUInt64 (LUInt64 2))
-          , Wait [Dynamic (Ident "Ref2" Nothing, Ref TUInt64)]
+          , Sensitize (Dynamic (Ident "Ref2" Nothing, Ref TUInt64))
+          , Yield
+          , Desensitize (Dynamic (Ident "Ref2" Nothing, Ref TUInt64))
           , Fork
             [ ( Ident "fun1" Nothing
               , [ Right $ Dynamic (Ident "Ref2" Nothing, Ref TUInt64)
@@ -48,6 +50,7 @@ p = Program
                 ]
               )
             ]
+          , Yield
           ]
         }
       )

@@ -29,7 +29,6 @@ shrinkExpInProcedure p =
 distributeMutate along with the body of a procedure. -}
 shrinkExpInStatement :: (SSMExp -> [SSMExp]) -> Stm -> [Stm]
 shrinkExpInStatement shrinkexp stm = case stm of
-    NewRef n t e   -> [ NewRef n t e'   | e' <- shrinkexp e ]
     SetRef r e     -> [ SetRef r e'     | e' <- shrinkexp e ]
     SetLocal n t e -> [ SetLocal n t e' | e' <- shrinkexp e ]
     -- don't shrink the delay for fear of producing an illegal delay (< now)

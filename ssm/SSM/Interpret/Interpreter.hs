@@ -7,6 +7,7 @@ module SSM.Interpret.Interpreter
 
 import           SSM.Core.Syntax
 import           SSM.Interpret.Internal
+import SSM.Interpret.Types
 import qualified SSM.Interpret.Trace           as T
 import           SSM.Util.Default               ( Default(def) )
 import           SSM.Util.HughesList     hiding ( (++) )
@@ -43,11 +44,9 @@ interpret config program = runST $ do
     Nothing ->
       error $ "Interpreter error: cannot find entry point: " ++ identName (entry p)
   globs       <- globals p
+  initprocess <- mkProc config p fun
   -- Run the interpret action and produce it's output
-  (_, events) <- runWriterT $ runStateT run $ initState config p 0 globs $ mkProc
-    config
-    p
-    fun
+  (_, events) <- runWriterT $ runStateT run $ initState config p 0 globs initprocess
   return $ fromHughes events
 
 -- | Run the interpreter, serving the role of the @main@ function.
@@ -95,13 +94,12 @@ Yields control when the process terminates (no more instructions) or suspends
 step :: Interp s ()
 step = do
   i <- nextInstruction
-  p <- currentProcess
   case i of
     Nothing  -> leave
 
     Just stm -> case stm of
-      NewRef n _ e -> do
-        newRef n e
+      CreateRef n t -> do
+        createRef n t
         continue
 
       SetRef r e -> do
@@ -132,10 +130,15 @@ step = do
         scheduleEvent r (n' + d') v'
         continue
 
-      Wait refs -> do
-        forM_ refs $ \r -> tellEvent $ T.ActSensitize $ refName r
-        wait refs
-        yield
+      Yield -> yield
+
+      Sensitize ref -> do
+        tellEvent $ T.ActSensitize $ refName ref
+        sensitize ref
+        continue
+      Desensitize ref -> do
+        desensitize ref
+        continue
 
       Fork procs -> do
         setRunningChildren (length procs)
@@ -143,10 +146,12 @@ step = do
         pdeps  <- pds (length procs)
         forM_ procs $ \(f, _) -> tellEvent $ T.ActActivate $ identName f
         forM_ (zip procs pdeps) $ \(f, (prio, dep)) -> fork f prio dep parent
-        yield
+        continue
 
  where
   -- | Convenience names for local control flow.
-  continue, yield :: Interp s ()
+  continue :: Interp s ()
   continue = step
-  yield    = return ()
+
+  yield :: Interp s ()
+  yield = return ()

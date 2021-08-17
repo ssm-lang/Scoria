@@ -19,9 +19,8 @@ p = Program
                   { name      = Ident "fun1" Nothing
                   , arguments = []
                   , body      =
-                    [ NewRef ((Ident "v0" Nothing))
-                             TInt32
-                             (Lit TInt32 (LInt32 999999))
+                    [ CreateRef (Ident "v0" Nothing) (Ref TInt32)
+                    , SetRef (Dynamic (Ident "v0" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 999999))
                     , If
                       (BOp
                         TBool
@@ -34,8 +33,11 @@ p = Program
                               (Lit TInt32 (LInt32 0))
                       ]
                       []
-                    , NewRef (Ident "v3" Nothing) TInt32 (Lit TInt32 (LInt32 0))
-                    , Wait [Dynamic (Ident "v3" Nothing, Ref TInt32)]
+                    , CreateRef (Ident "v3" Nothing) (Ref TInt32)
+                    , SetRef (Dynamic (Ident "v3" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 0))
+                    , Sensitize (Dynamic (Ident "v3" Nothing, Ref TInt32))
+                    , Yield
+                    , Desensitize (Dynamic (Ident "v3" Nothing, Ref TInt32))
                     ]
                   }
                 )

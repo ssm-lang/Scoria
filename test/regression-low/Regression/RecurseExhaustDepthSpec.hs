@@ -14,7 +14,7 @@ p = Program
               [ ( Ident "fun0" Nothing
                 , Procedure { name      = Ident "fun0" Nothing
                             , arguments = []
-                            , body      = [Fork [(Ident "fun0" Nothing, []), (Ident "fun1" Nothing, [])]]
+                            , body      = [Fork [(Ident "fun0" Nothing, []), (Ident "fun1" Nothing, [])], Yield]
                             }
                 )
               , (Ident "fun1" Nothing, Procedure { name = Ident "fun1" Nothing, arguments = [], body = [] })

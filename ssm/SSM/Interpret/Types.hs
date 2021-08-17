@@ -93,14 +93,12 @@ data Proc s = Proc
     a parent. -}
   , variables       :: Map.Map Ident (Var s)
     {- | Variables found in this map are those that are local to this process, aka
-    those that are created by the `SSM.Core.Syntax.NewRef` constructor. We need to
+    those that are created by the `SSM.Core.Syntax.CreateRef` constructor. We need to
     put them in a separate map so that we can quickly deschedule any outstanding events
     on them when a process is terminating. -}
   , localrefs       :: Map.Map Ident (Var s)
-    -- | Variables this process is waiting for, if any
-  , waitingOn       :: Maybe [Var s]
     -- | The work left to do for this process
-  , continuation    :: [Stm]
+  , continuation    :: STRef s [Stm]
   }
   deriving Eq
 
@@ -109,17 +107,18 @@ mkProc
   :: InterpretConfig          -- ^ Configuration
   -> Program                  -- ^ Program
   -> Procedure                -- ^ Entry point
-  -> Proc s
-mkProc conf p fun = Proc { procName        = identName $ entry p
-                         , priority        = rootPriority conf
-                         , depth           = rootDepth conf
-                         , runningChildren = 0
-                         , parent          = Nothing
-                         , variables       = Map.empty
-                         , localrefs       = Map.empty
-                         , waitingOn       = Nothing
-                         , continuation    = body fun
-                         }
+  -> ST s (Proc s)
+mkProc conf p fun = do
+  bdy <- newSTRef (body fun)
+  return $ Proc { procName        = identName $ entry p
+                , priority        = rootPriority conf
+                , depth           = rootDepth conf
+                , runningChildren = 0
+                , parent          = Nothing
+                , variables       = Map.empty
+                , localrefs       = Map.empty
+                , continuation    = bdy
+                }
 
 
 {- | The show instance will only render the priority (this was initially

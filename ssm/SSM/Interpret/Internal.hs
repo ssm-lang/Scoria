@@ -39,14 +39,15 @@ module SSM.Interpret.Internal
   , pushInstructions
 
   -- * Reference helpers
-  , newRef
+  , createRef
   , writeRef
   , writeLocal
   , readRef
 
   -- * Wait, fork, and leave + helpers
-  , wait
   , fork
+  , sensitize
+  , desensitize
   , setRunningChildren
   , addressToSelf
   , pds
@@ -108,7 +109,7 @@ globals :: Program -> ST s (Map.Map Ident (Var s))
 globals p = do
   vars <- forM (globalReferences p) $ \(id,t) -> do
     let initval = defaultValue (dereference t)
-    v <- newVar' initval maxBound
+    v <- newVar' initval 0
     return (id, v)
   return $ Map.fromList vars
 
@@ -125,13 +126,24 @@ defaultValue (Ref _) = error "default value of reference not allowed"
 -- | Log the state of all variables in the current process to the event trace.
 traceVars :: Interp s ()
 traceVars = do
-  mapM_ varEvent . sortOn fst . Map.toList . variables =<< currentProcess
-  mapM_ varEvent . sortOn fst . Map.toList . localrefs =<< currentProcess
+  mapM_ traceNonLocal . sortOn fst . Map.toList . variables =<< currentProcess
+  mapM_ traceLocal    . sortOn fst . Map.toList . localrefs =<< currentProcess
  where
-  varEvent (n, v) = do
+  -- | For non-local variables, we always wish to announce their value on entry
+  traceNonLocal :: (Ident, Var s) -> Interp s ()
+  traceNonLocal (n, v) = do
     (e, _, _, _, _) <- lift' $ readSTRef v
     (t, v)          <- getTypeConcreteVal <$> lift' (readSTRef e)
     tellEvent $ T.ActVar $ T.VarVal (identName n) t v
+  {- | For local variables we only wish to know of their value if they have ever been
+  given any. -}
+  traceLocal :: (Ident, Var s) -> Interp s ()
+  traceLocal (n, v) = do
+    (e, _, lastwrite, _, _) <- lift' $ readSTRef v
+    (t, v)                  <- getTypeConcreteVal <$> lift' (readSTRef e)
+    if lastwrite /= maxBound
+      then tellEvent $ T.ActVar $ T.VarVal (identName n) t v
+      else return ()
 
 {-********** Time management **********-}
 
@@ -253,10 +265,17 @@ enqueue p = do
   mcqs <- gets maxActQueueSize
   if nc >= mcqs
     then terminate T.ExhaustedActQueue
-    else modify $ \st -> st
-      { readyQueue = IntMap.insert (priority p) p (readyQueue st)
-      , numacts    = numacts st + 1
-      }
+    else do
+      actQueue <- gets readyQueue
+      {- log (n,W) complexity, where n is the number of elements in the map,
+            and W is the number of bits (32 or 64) of an Int -}
+      if IntMap.member (priority p) actQueue
+        then return ()
+        else modify $ \st -> st
+          { readyQueue = IntMap.insert (priority p) p (readyQueue st)
+          , numacts    = numacts st + 1
+          }
+
 
 -- | Fetch the process with the lowest priority from the ready queue.
 dequeue :: Interp s (Proc s)
@@ -266,6 +285,7 @@ dequeue = do
   when (IntMap.null acts)
     $ crash "Interpreter error: dequeue called on empty readyqueue"
   put $ st { readyQueue = IntMap.deleteMin acts, numacts = numacts st - 1 }
+  --traceM $ show $ continuation $ snd $ (IntMap.findMin acts)
   return $ snd $ IntMap.findMin acts
 
 -- | Size of the ready queue.
@@ -289,10 +309,11 @@ Nothing will be returned if the process has no more work to do.
 nextInstruction :: Interp s (Maybe Stm)
 nextInstruction = do
   p <- gets process
-  case continuation p of
+  cont <- lift' $ readSTRef (continuation p)
+  case cont of
     []       -> return Nothing
     (x : xs) -> do
-      modify $ \st -> st { process = p { continuation = xs } }
+      lift' $ writeSTRef (continuation p) xs
       return $ Just x
 
 -- | Push additional instructions onto a process. Used e.g when evaluating
@@ -300,7 +321,8 @@ nextInstruction = do
 pushInstructions :: [Stm] -> Interp s ()
 pushInstructions stmts = do
   p <- gets process
-  modify $ \st -> st { process = p { continuation = stmts ++ continuation p } }
+  cont <- lift' $ readSTRef (continuation p)
+  lift' $ writeSTRef (continuation p) $ stmts ++ cont
 
 {-********** Variable management **********-}
 
@@ -308,28 +330,23 @@ pushInstructions stmts = do
 createVar :: SSMExp -> Interp s (Var s)
 createVar e = do
   v <- eval e
-  n <- getNow
-  lift' $ newVar' v n
+  lift' $ newVar' v maxBound
 
-{- | Create a new reference with an initial value.
+{- | Create a new reference. The initial value of this reference tries to mirror a
+zero-initialized value as much as possible, but don't try on this.
 
-Note: it is added to the map containing the local variables. -}
-newRef :: Ident -> SSMExp -> Interp s ()
-newRef n e = do
-    ref <- createVar e
-    p <- gets process
-    modify $ \st -> st { process = p { localrefs = Map.insert n ref (localrefs p) } }
+Note: it is added to the map containing local variables. -}
+createRef :: Ident -> Type -> Interp s ()
+createRef n t = newRef n $ defaultValue (dereference t)
+  where
+    {- | Create a new reference with an initial value.
 
-{- | Create a new variable with an initial value, and adds it to the current process's
-variable storage. When a variable is created it is considered written to.
-
-Note: This does the same thing as `NewRef`, but it adds the reference to the map
-containing expression variables & references supplied by a caller. -}
-newVar :: Ident -> SSMExp -> Interp s ()
-newVar n e = do
-    ref <- createVar e
-    p <- gets process
-    modify $ \st -> st { process = p { variables = Map.insert n ref (variables p) } }
+    Note: it is added to the map containing the local variables. -}
+    newRef :: Ident -> SSMExp -> Interp s ()
+    newRef n e = do
+        ref <- createVar e
+        p <- gets process
+        modify $ \st -> st { process = p { localrefs = Map.insert n ref (localrefs p) } }
 
 -- | Write a value to a variable.
 writeRef :: Reference -> SSMExp -> Interp s ()
@@ -435,24 +452,16 @@ writeVar_ ref e prio = do
   (variable, waits, _, me, mv) <- lift' $ readSTRef ref
   lift' $ writeSTRef variable e -- actually update the variable value
 
+  -- keep = processes to not wake up, towake = processes that should be woken up
   let (keep, towake) = Map.split prio waits
 
   -- wake up and desensitize the processes
-  mapM_ desensitize towake
+  mapM_ enqueue towake
 
   -- update the variable to be written to in this instant and give it knowledge
   -- of which processes are still waiting on it
   n <- getNow
   lift' $ writeSTRef ref (variable, keep, n, me, mv)
- where
-  -- | Wake up a process, remove it from all trigger lists, and enqueueing it.
-  desensitize :: Proc s -> Interp s ()
-  desensitize p = do
-    let variables = fromJust $ waitingOn p
-    forM_ variables $ \r -> do
-      (ref, procs, b, me, mv) <- lift' $ readSTRef r
-      lift' $ writeSTRef r (ref, Map.delete (priority p) procs, b, me, mv)
-    enqueue $ p { waitingOn = Nothing }
 
 -- | Look up a variable associated with a reference
 lookupRef :: Reference -> Interp s (Var s)
@@ -475,7 +484,6 @@ lookupRef ref =
           Nothing ->
             error $ "interpreter error - can not find global variable " ++ refName ref
 
--- | Make a procedure wait for writes to the variable identified by the name @v@.
 sensitize :: Reference -> Interp s ()
 sensitize ref = do
     p <- gets process
@@ -485,6 +493,13 @@ sensitize ref = do
     if Map.member (priority p) procs
         then return ()
         else lift' $ writeSTRef r (ref, Map.insert (priority p) p procs,b,me,mv)
+
+desensitize :: Reference -> Interp s ()
+desensitize ref = do
+  p <- gets process
+  r <- lookupRef ref
+  (ref,procs,b,me,mv) <- lift' $ readSTRef r
+  lift' $ writeSTRef r (ref, Map.delete (priority p) procs, b, me, mv)
 
 -- | This function will, if told how many new processes are being forked, compute
 -- new priorities and depths for them.
@@ -497,25 +512,6 @@ pds k = do
   when (d' < 0) $ terminate T.ExhaustedPriority
   let prios = [ prio + i * (2 ^ d') | i <- [0 .. k - 1] ]        -- new prios
   return $ zip prios (repeat d')
-
-{-********** Sensitizing a process **********-}
-
-{- | This function will make sure that the current process will block until any
-of the references in the list @refs@ have been written to.
--}
-wait :: [Reference] -> Interp s ()
-wait refs = do
-  refs' <- mapM lookupRef refs
-  modify $ \st -> st { process = (process st) { waitingOn = Just refs' } }
-  mapM_ sensitize refs
-
-
-
-
-
-
-
-
 
 {-********** Forking processes **********-}
 
@@ -539,7 +535,8 @@ fork :: (Ident, [Either SSMExp Reference])   -- ^ Procedure to fork (name and ar
 fork (n,args) prio dep par = do
     p <- lookupProcedure n
     variables <- params $ (map fst . arguments) p
-    enqueue $ Proc (identName n) prio dep 0 (Just par) variables Map.empty Nothing (body p)
+    bdy <- lift' $ newSTRef (body p)
+    enqueue $ Proc (identName n) prio dep 0 (Just par) variables Map.empty bdy
   where
       -- | Return an initial variable storage for the new process. Expression arguments are turned into
       -- new STRefs while reference arguments are passed from the calling processes variable storage.

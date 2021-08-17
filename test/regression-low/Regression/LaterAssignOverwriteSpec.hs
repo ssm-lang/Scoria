@@ -24,10 +24,13 @@ p = Program
                   { name      = Ident "fun0" Nothing
                   , arguments = []
                   , body      =
-                    [ NewRef (Ident "ref1" Nothing) TBool  (Lit TBool (LBool True))
-                    , NewRef (Ident "ref3" Nothing) TInt32 (Lit TInt32 (LInt32 0))
+                    [ CreateRef (Ident "ref1" Nothing) (Ref TBool)
+                    , SetRef (Dynamic (Ident "ref1" Nothing, Ref TBool)) (Lit TBool (LBool True))
+                    , CreateRef (Ident "ref3" Nothing) (Ref TInt32)
+                    , SetRef (Dynamic (Ident "ref3" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 0))
                     , Fork
                       [(Ident "fun1" Nothing, [Right (Dynamic (Ident "ref1" Nothing, Ref TBool)), Right (Dynamic (Ident "ref3" Nothing, Ref TInt32))])]
+                    , Yield
                     ]
                   }
                 )
@@ -44,8 +47,12 @@ p = Program
                                    (Dynamic (Ident "ref3" Nothing, Ref TInt32))
                                    (Lit TInt32 (LInt32 3))
                            , SetRef (Dynamic (Ident "ref3" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 4))
-                           , Wait [Dynamic (Ident "ref1" Nothing, Ref TBool)]
-                           , Wait [Dynamic (Ident "ref3" Nothing, Ref TInt32)]
+                           , Sensitize (Dynamic (Ident "ref1" Nothing, Ref TBool))
+                           , Yield
+                           , Desensitize (Dynamic (Ident "ref1" Nothing, Ref TBool))
+                           , Sensitize (Dynamic (Ident "ref3" Nothing, Ref TInt32))
+                           , Yield
+                           , Desensitize (Dynamic (Ident "ref3" Nothing, Ref TInt32))
                            ]
                   }
                 )
