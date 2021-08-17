@@ -1,26 +1,113 @@
-module SSM.Backend.C.Analysis.WaitAnalysis where
+{- | This module implements an analysis pass that annotates the body of a procedure with
+information about which triggers to sensitize on.
 
-import           SSM.Backend.C.Types
-import           SSM.Core.Syntax
+Earlier in the project, there was a single statement @Wait :: [Reference] -> Stm@ and
+no @Yield :: Stm@ statement. When generating code for @Wait@ you immediately knew how
+many references you needed to sensitize (since you had them all in that list) and you
+could record that you are now sensitizing @n@ references, to know how many unique
+triggers you're going to need.
 
-import           Control.Monad.State
+When the syntax was split up into the more fine-grained statements
+`Sensitize`, `Desensitize` and
+`Yield` in favour of @Wait@, this information become lost. When
+generating code for a single `Sensitize` statement, it is not clear
+how many references you are waiting on in total, or which of them in the sequence this
+is. This makes it hard to know which trigger ID to sensitize on.
+
+What this module does is that it implement an analysis pass that infers the now lost
+information from the sequence of statements that make up a procedure body. It will
+return the same procedure body as before, but where each statement has been given a
+unique @Int@ ID. Alongside these new statements two maps are produced. They associate
+a statement ID with a trigger ID. So if you generate code for @Numbered n (Sensitize r)@,
+you will look up which ID @r@ should be @Sensitized@ on by checking which trigger ID @n@
+is associated with in the sensitize map. Lastly, the size of the widest wait is inferred
+from the procedure body and returned.
+
+@
+> analyseWait [ CreateRef r1 (Ref TInt)
+              , SetRef r1 5
+              , CreateRef r2 (Ref TBool)
+              , SetRef r2 False
+              , Sensitize r1
+              , Sensitize r2
+              , Yield
+              , Desensitize r1
+              , Desensitize r2
+              , SetRef r2 True]
+( [ Numbered 1 $ CreateRef r1 $ Ref TInt
+  , Numbered 2 $ SetRef r2 5)
+  , Numbered 3 $ CreateRef r2 $ Ref TBool
+  , Numbered 4 $ SetRef r2 False
+  , Numbered 5 $ Sensitize r1
+  , Numbered 6 $ Sensitize r2
+  , Numbered 7 $ Yield
+  , Numbered 8 4 Desensitize r1
+  , Numbered 9 $ Desensitize r2
+  , Numbered 10 $ SetRef r2 True]
+, [ (5, 1), (6, 2)]
+, [ (8, 1), (9, 2)]
+, 2
+)
+@
+
+It's a bit crude, and should probably be made better later on when we wish to perform
+different analysis passes. In particular, I am not too fond of the makeshift datatype
+I implemented to number the statements.
+-}
+module SSM.Backend.C.Analysis.WaitAnalysis
+    ( analyseWait
+    ) where
+
+import           SSM.Backend.C.Types            ( CStm(..) )
+import           SSM.Core.Syntax                ( Procedure(body)
+                                                , Reference
+                                                , Stm
+                                                    ( Desensitize
+                                                    , If
+                                                    , Sensitize
+                                                    , While
+                                                    )
+                                                )
+
+import           Control.Monad.State            ( State
+                                                , gets
+                                                , modify
+                                                , runState
+                                                )
 
 import qualified Data.Map                      as Map
 
+-- | Analysis state
 data St = St
-    { nextLineNumber   :: Int
+    { -- | ID of next statement
+      nextLineNumber   :: Int
+      -- | Size of the widest wait statement
     , widestwait       :: Int
+      -- | Map associating sensitize statement IDs with trigger IDs
     , sensitizemap     :: Map.Map Int Int
+      -- | Map associating desensitize statement IDs with trigger IDs
     , desensitizemap   :: Map.Map Int Int
+      {- | Since references need to desensitize on the same reference they sensitized on,
+      we must remember which triggers references were sensitized on. -}
     , currentSensitize :: Map.Map Reference Int
     }
 
+{- | Analyse the body of a procedure and return a tuple with
+
+1. The same procedure body, but with the statements given unique IDs  
+2. Map associating sensitize statement IDs with trigger IDs to sensitize on  
+3. Map associating desensitize statement IDs with trigger IDs to sensitize on  
+4. The size of the widest wait statement, which is used to determine how many unique  
+   triggers needs to be generated.
+-}
 analyseWait :: Procedure -> ([CStm], Map.Map Int Int, Map.Map Int Int, Int)
 analyseWait p =
     let (body', st) = runState (numberStmts (body p))
             $ St 1 0 Map.empty Map.empty Map.empty
     in  (body', sensitizemap st, desensitizemap st, widestwait st)
   where
+    {- | Assign unique numbers to statements and possible record trigger usage
+    information. -}
     numberStmts :: [Stm] -> State St [CStm]
     numberStmts []             = return []
     numberStmts stmts@(x : xs) = case x of
