@@ -105,6 +105,11 @@ oneShot =
 binaryOneShot :: Exp Word64 -> Ref () -> Ref Bool -> SSM ()
 binaryOneShot duration i o = oneShot i o duration true' false'
 
+testOneShot :: SSM ()
+testOneShot = boxNullary "testOneShot" $ do
+    e <- var event'
+    b <- var true'
+    fork [ binaryOneShot 50 e b ]
 
 {- Example 5 -}
 
@@ -135,15 +140,16 @@ testprogram3 = boxNullary "testprogram3" $ do
 
 
 alternate :: Ref a -> Exp a -> Exp a -> Exp Word64 -> SSM ()
-alternate r e1 e2 d = fork [ alternateProcess r e1 e2 d ]
+alternate r e1 e2 d = fork [alternateProcess r e1 e2 d]
   where
-      alternateProcess :: Ref a -> Exp a -> Exp a -> Exp Word64 -> SSM ()
-      alternateProcess = box "alternateProcess" ["r","e1","e2","d"] $ \r e1 e2 d -> do
-          while' true' $ do
-              r <~ e1
-              delay d
-              r <~ e2
-              delay d
+    alternateProcess :: Ref a -> Exp a -> Exp a -> Exp Word64 -> SSM ()
+    alternateProcess =
+        box "alternateProcess" ["r", "e1", "e2", "d"] $ \r e1 e2 d -> do
+            while' true' $ do
+                r <~ e1
+                delay d
+                r <~ e2
+                delay d
 
 delay :: Exp Word64 -> SSM ()
 delay t = fork [delayProcedure t]
@@ -158,7 +164,7 @@ testprogram4 :: SSM ()
 testprogram4 = boxNullary "testprogram4" $ do
     r <- var (1 :: Exp Int32)
     x <- var true'
-    alternate r 2 3 50
+    alternate r 2      3     50
     alternate x false' true' 50
 
 

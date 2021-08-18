@@ -347,7 +347,7 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
           createNewProcedure :: Transpile S.Ident
           createNewProcedure = do
             -- generate new name
-            n' <- S.appendIdent n <$> S.makeIdent <$> fresh
+            n' <- S.appendIdent n <$> S.makeIdent <$> (++) "v" <$> show <$> fresh
             -- bundle everything up as a procedure
             let procedure = S.Procedure n' arginfo stmts
             modify $ \st ->
