@@ -36,6 +36,10 @@ module SSM.Frontend.Syntax
     , S.BinOp(..)
     , S.expType
 
+      -- * Time
+    , S.SSMTimeUnit(..)
+    , S.SSMTime(..)
+
       -- * Identifiers
     , S.Ident(..)
 
@@ -85,7 +89,7 @@ data SSMStm
     | While S.SSMExp (SSM ())                -- ^ Loop construct
             
     -- | SSM specific operations
-    | After S.SSMExp S.Reference S.SSMExp  -- ^ Scheduled assignment
+    | After S.SSMTime S.Reference S.SSMExp  -- ^ Scheduled assignment
     | Wait [S.Reference]                   -- ^ Wait for any of the references to be written to
     | Fork [SSM ()]                        -- ^ Fork a list of procedures
 
