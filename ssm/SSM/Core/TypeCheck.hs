@@ -48,7 +48,7 @@ unwrapExpRes (Right ty) = ty
 -- | Checks whether two types are the same
 sameTy :: Type -> Type -> Either TypeError ()
 sameTy t1 t2 | t1 == t2 = Right ()
-             | otherwise = Left TypeError {expected=t1, actual=t2, msg="The literal's type doesn't match the claimed type"}
+             | otherwise = Left TypeError {expected=t1, actual=t2, msg="Type mismatch. Expected: " ++ show t1 ++ " Actual: " ++ show t2}
 
 -- | Helper function to check whether the expression type matches 
 -- the reference type
