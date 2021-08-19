@@ -1,5 +1,6 @@
 module SSM.Core.TypeCheck where
 
+{- 
 import SSM.Core.Syntax
     ( Program(..),
       Procedure(..),
@@ -230,3 +231,4 @@ typeCheckLit (LInt32 _) = TInt32
 typeCheckLit (LInt64 _) = TInt64
 typeCheckLit (LUInt64 _) = TUInt64
 typeCheckLit (LBool _) = TBool
+-}
