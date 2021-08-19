@@ -147,7 +147,7 @@ typeCheckExp (Var ty ident) env =
                                    Left TypeError {expected=ty, actual=TUInt8, msg="The specified name is not for a variable"}
 typeCheckExp (Lit ty lit) env =
     if actualTy == ty then Right ty
-    else Left TypeError {expected=ty, actual=actualTy, msg="The literal's type doesn't match the claimed type"}
+    else Left TypeError {expected=ty, actual=actualTy, msg="The literal's type doesn't match the claimed type, expected: " ++ show ty ++ " actual: " ++ show actualTy}
     where
         actualTy = typeCheckLit lit
 typeCheckExp (UOpE ty expr op) env =
