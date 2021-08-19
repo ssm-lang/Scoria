@@ -260,7 +260,7 @@ p = Program
         { name      = Ident "fun0" Nothing
         , arguments = []
         , body      =
-          [ NewRef (Ident "ref1" Nothing) TInt32 (Lit TInt32 (LInt32 0))
+          [ NewRef (Ident "ref12" Nothing) TInt32 (Lit TInt32 (LInt32 0))
           , NewRef (Ident "ref2" Nothing) TUInt64 (Lit TUInt64 (LUInt64 0))
           , NewRef (Ident "ref4" Nothing) TUInt64 (Lit TUInt64 (LUInt64 0))
           , Fork
