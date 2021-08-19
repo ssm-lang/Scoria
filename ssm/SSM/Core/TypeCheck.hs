@@ -1,4 +1,4 @@
--- module SSM.Core.TypeCheck where
+module SSM.Core.TypeCheck where
 
 import SSM.Core.Syntax
     ( Program(..),
