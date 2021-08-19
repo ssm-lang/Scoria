@@ -157,7 +157,21 @@ typeCheckExp (UOpR ty ref op) env = do
     actualTy <- typeCheckRef env ref
     if actualTy == ty then Right ty
     else Left TypeError {expected=ty, actual=actualTy, msg="The expression's type doesn't match the claimed type"}
-typeCheckExp (BOp ty e1 e2 op) env
+typeCheckExp (BOp ty e1 e2 OEQ) env 
+  | actualTy1 == actualTy2 = Right ty
+  | otherwise =
+    Left TypeError {expected=ty, actual=actualTy1, msg="Cannot compare defferent types"}
+  where
+      actualTy1 = unwrapExpRes (typeCheckExp e1 env)
+      actualTy2 = unwrapExpRes (typeCheckExp e1 env)
+typeCheckExp (BOp ty e1 e2 OLT) env 
+  | actualTy1 == actualTy2 = Right ty
+  | otherwise =
+    Left TypeError {expected=ty, actual=actualTy1, msg="Cannot compare defferent types"}
+  where
+      actualTy1 = unwrapExpRes (typeCheckExp e1 env)
+      actualTy2 = unwrapExpRes (typeCheckExp e1 env)
+typeCheckExp (BOp ty e1 e2 op) env 
   | actualTy1 == ty && actualTy2 == ty = Right ty
   | actualTy1 /= ty && actualTy2 == ty =
     Left TypeError {expected=ty, actual=actualTy1, msg="The left expressions's type doesn't match the claimed type"}
