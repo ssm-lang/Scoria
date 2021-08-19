@@ -164,7 +164,7 @@ typeCheckExp (BOp ty e1 e2 op) env
   | actualTy1 == ty && actualTy2 /= ty =
     Left TypeError {expected=ty, actual=actualTy1, msg="The right expression's type doesn't match the claimed type"}
   | otherwise =
-    Left TypeError {expected=ty, actual=actualTy1, msg="Both of the expressions' type doesn't match the claimed type"}
+    Left TypeError {expected=ty, actual=actualTy1, msg="Both of the expressions' type doesn't match the claimed type, expected: " ++ show ty ++ " actual: " ++ show actualTy1}
   where
       actualTy1 = unwrapExpRes (typeCheckExp e1 env)
       actualTy2 = unwrapExpRes (typeCheckExp e1 env)
