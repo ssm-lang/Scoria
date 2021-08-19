@@ -78,7 +78,7 @@ varMatchEnv ty name env =
 typeCheckRef :: Map.Map Ident Entry -> Reference -> Either TypeError Type
 typeCheckRef env (Dynamic (ident, ty)) = 
     case Map.lookup ident env of 
-        Nothing -> Left TypeError {expected=ty, actual=TUInt8, msg="The reference is undefined"}
+        Nothing -> Left TypeError {expected=ty, actual=TUInt8, msg="The reference " ++ show ident ++ " is undefined"}
         Just RefEntry {ty=t} ->
             if Ref t == ty then Right ty else
                 Left TypeError {expected=t, actual=ty, msg="The stored reference doesn't match its claimed type"}
