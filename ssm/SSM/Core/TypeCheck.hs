@@ -1,4 +1,4 @@
-module SSM.Core.TypeCheck where
+-- module SSM.Core.TypeCheck where
 
 import SSM.Core.Syntax
     ( Program(..),
@@ -183,15 +183,12 @@ typeCheckForkProcs procs env =
 -- with the definitions in the statement
 typeCheckStm :: Stm -> Map.Map Ident Entry -> Either TypeError (Map.Map Ident Entry)
 typeCheckStm Skip env = Right env
-typeCheckStm (After exp1 ref exp2) env
-    | isInt (unwrapExpRes (typeCheckExp exp1 env)) = do
+typeCheckStm (After time ref exp2) env = do
         expMatchRef ref exp2 env
         return env
-    | otherwise =
-        Left TypeError {expected=TInt32, actual=unwrapExpRes (typeCheckExp exp1 env), msg="The time parameter is not an int"}
 typeCheckStm (Wait refs) env = do
-    ty <- mapM_ (typeCheckRef env) refs
-    return env
+        ty <- mapM_ (typeCheckRef env) refs
+        return env
 typeCheckStm (While expr stms) env
     | unwrapExpRes (typeCheckExp expr env) == TBool = do
         typeCheckStmLst stms env
