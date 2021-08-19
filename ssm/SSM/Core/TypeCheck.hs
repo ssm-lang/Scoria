@@ -50,13 +50,18 @@ sameTy :: Type -> Type -> Either TypeError ()
 sameTy t1 t2 | t1 == t2 = Right ()
              | otherwise = Left TypeError {expected=t1, actual=t2, msg="Type mismatch. Expected: " ++ show t1 ++ " Actual: " ++ show t2}
 
+-- | Takes out the type inside the reference
+unwrapRef :: Type -> Type
+unwrapRef (Ref t) = t
+unwrapRef t = t
+
 -- | Helper function to check whether the expression type matches 
 -- the reference type
 expMatchRef :: Reference -> SSMExp -> Map.Map Ident Entry -> Either TypeError ()
 expMatchRef ref expr env = do
     ty <- typeCheckRef env ref
     expTy <- typeCheckExp expr env
-    sameTy ty expTy
+    sameTy (unwrapRef ty) expTy
 
 -- | Checks whether the claimed type of the variable matches how it is stored in 
 -- the environment
