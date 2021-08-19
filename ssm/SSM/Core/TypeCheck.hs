@@ -77,7 +77,8 @@ typeCheckRef env (Dynamic (ident, ty)) =
         Just RefEntry {ty=t} ->
             if t == ty then Right (Ref ty) else
                 Left TypeError {expected=t, actual=ty, msg="The stored reference doesn't match its claimed type"}
-        Just _ -> Left TypeError {expected=ty, actual=TUInt8, msg="The name " ++ show ident ++ " is for a function or variable, not reference"}
+        Just ProcEntry {params=_} -> Left TypeError {expected=ty, actual=TUInt8, msg="The name " ++ show ident ++ " is for a function, not reference"}
+        Just VarEntry {ty=_} -> Left TypeError {expected=ty, actual=TUInt8, msg="The name " ++ show ident ++ " is for a variable, not reference"}
 typeCheckRef env (Static (ident, ty)) = 
     case Map.lookup ident env of 
         Nothing -> Left TypeError {expected=ty, actual=TUInt8, msg="The reference is undefined"}
