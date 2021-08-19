@@ -15,6 +15,9 @@ import System.IO ()
 -- | Type to record and report the type error
 data TypeError = TypeError {expected::Type, actual::Type, msg::String}
 
+instance Show TypeError where
+  show TypeError {expected=_, actual=_, msg=_msg} = _msg
+
 -- | data type for the entries in our environment
 data Entry = VarEntry {ty::Type}
            | ProcEntry {params::[(Ident, Type)]}
@@ -227,3 +230,6 @@ typeCheckLit (LInt32 _) = TInt32
 typeCheckLit (LInt64 _) = TInt64
 typeCheckLit (LUInt64 _) = TUInt64
 typeCheckLit (LBool _) = TBool
+
+p :: Program
+p = Program {entry = Ident "fun1" Nothing, funs = Map.fromList [(Ident "fun1" Nothing,Procedure {name = Ident "fun1" Nothing, arguments = [], body = []})], globalReferences = []}
