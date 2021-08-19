@@ -121,11 +121,16 @@ enterVar env (name, ty) = Map.insert name VarEntry{ty=ty} env
 enterRef :: Map.Map Ident Entry -> (Ident, Type) -> Map.Map Ident Entry
 enterRef env (name, ty) = Map.insert name RefEntry{ty=ty} env
 
+-- | enter an argument and its type into our environment
+enterArg :: Map.Map Ident Entry -> (Ident, Type) -> Map.Map Ident Entry
+enterArg env (name, Ref ty) = Map.insert name RefEntry{ty=Ref ty} env
+enterArg env (name, ty) = enterVar env (name, ty)
+
 -- | Typechecks a procedure
 typeCheckProcedure ::Map.Map Ident Entry -> Procedure -> Either TypeError ()
 typeCheckProcedure env Procedure {name=n, arguments=args, body=b} =
     typeCheckStmLst b newEnv
-    where newEnv = foldl enterVar env args
+    where newEnv = foldl enterArg env args
 
 -- | Checks the functions in a String-Procedure map all have the corret type
 typeCheckProcs :: Map.Map Ident Procedure -> Map.Map Ident Entry -> Either TypeError ()
@@ -268,24 +273,24 @@ p = Program
                     [ NewRef (Ident "ref1" Nothing) TBool  (Lit TBool (LBool True))
                     , NewRef (Ident "ref3" Nothing) TInt32 (Lit TInt32 (LInt32 0))
                     , Fork
-                      [(Ident "fun1" Nothing, [Right (Dynamic (Ident "ref1" (Just ("1", 0, 0)), Ref TBool)), Right (Dynamic (Ident "ref3" Nothing, Ref TInt32))])]
+                      [(Ident "fun1" Nothing, [Right (Dynamic (Ident "ref1" Nothing, Ref TBool)), Right (Dynamic (Ident "ref3" Nothing, Ref TInt32))])]
                     ]
                   }
                 )
               , ( Ident "fun1" Nothing
                 , Procedure
                   { name = Ident "fun1" Nothing
-                  , arguments = [(Ident "ref1" (Just ("2", 0, 0)), Ref TBool), (Ident "ref3" Nothing, Ref TInt32)]
+                  , arguments = [(Ident "ref1" Nothing, Ref TBool), (Ident "ref3" Nothing, Ref TInt32)]
                   , body = [ After (SSMTime (Lit TUInt64 (LUInt64 2))
                                             SSMNanosecond)
-                                   (Dynamic (Ident "ref1" (Just ("3", 0, 0)), Ref TBool))
+                                   (Dynamic (Ident "ref1" Nothing, Ref TBool))
                                    (Lit TBool (LBool True))
                            , After (SSMTime (Lit TUInt64 (LUInt64 1))
                                             SSMNanosecond)
                                    (Dynamic (Ident "ref3" Nothing, Ref TInt32))
                                    (Lit TInt32 (LInt32 3))
                            , SetRef (Dynamic (Ident "ref3" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 4))
-                           , Wait [Dynamic (Ident "ref1" (Just ("4", 0, 0)), Ref TBool)]
+                           , Wait [Dynamic (Ident "ref1" Nothing, Ref TBool)]
                            , Wait [Dynamic (Ident "ref3" Nothing, Ref TInt32)]
                            ]
                   }
