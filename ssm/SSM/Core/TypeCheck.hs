@@ -308,7 +308,7 @@ p = Program
             (Var TBool (Ident "var6" Nothing))
             [ Fork
               [ ( Ident "fun5" Nothing
-                , [ Right (Dynamic (Ident "ref1" Nothing, Ref TInt32))
+                , [ Right (Dynamic (Ident "ref12" Nothing, Ref TInt32))
                   , Right (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   , Right (Dynamic (Ident "ref4" Nothing, Ref TUInt64))
                   , Left
