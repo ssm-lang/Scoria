@@ -266,15 +266,43 @@ p = Program
   , funs  = Map.fromList
     [ ( Ident "fun0" Nothing
       , Procedure
-        { name = Ident "fun0" Nothing
+        { name      = Ident "fun0" Nothing
         , arguments = []
-        , body = [ NewRef (Ident "v0" Nothing) TInt32 (Lit TInt32 (LInt32 0))
-                 , After (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
-                         (Dynamic (Ident "v0" Nothing, Ref TInt32))
-                         (Lit TInt32 (LInt32 1))
-                 , Wait [Dynamic (Ident "v0" Nothing, Ref TInt32)]
-                 ]
+        , body      = [ NewRef (Ident "ref2" Nothing)
+                                TUInt64
+                                (Lit TUInt64 (LUInt64 0))
+                      , Fork [(Ident "fun1" Nothing, [Right $ Dynamic (Ident "ref2" Nothing, Ref TUInt64)])]
+                      ]
+        }
+      )
+    , ( Ident "fun1" Nothing
+      , Procedure
+        { name      = Ident "fun1" Nothing
+        , arguments = [ (Ident "Ref2" Nothing, Ref TUInt64)
+                      ]
+        , body      =
+          [ After
+            (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
+            (Dynamic (Ident "Ref2" Nothing, Ref TUInt64))
+            (Lit TUInt64 (LUInt64 2))
+          , Wait [Dynamic (Ident "Ref2" Nothing, Ref TUInt64)]
+          , Fork
+            [ ( Ident "fun1" Nothing
+              , [ Right $ Dynamic (Ident "Ref2" Nothing, Ref TUInt64)
+                ]
+              )
+            , ( Ident "fun1" Nothing
+              , [ Right $ Dynamic (Ident "Ref2" Nothing, Ref TUInt64)
+                ]
+              )
+            , ( Ident "fun1" Nothing
+              , [ Right $ Dynamic (Ident "Ref2" Nothing, Ref TUInt64)
+                ]
+              )
+            ]
+          ]
         }
       )
     ]
-  , globalReferences = []}
+  , globalReferences = []
+  }
