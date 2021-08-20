@@ -166,7 +166,7 @@ typeCheckExp (UOpE ty expr op) env =
     where actualTy = unwrapExpRes (typeCheckExp expr env)
 typeCheckExp (UOpR ty ref op) env = do
     actualTy <- typeCheckRef env ref
-    if actualTy == ty then Right ty
+    if actualTy == unwrapRef ty then Right ty
     else Left TypeError {expected=ty, actual=actualTy, msg="The expression's type doesn't match the claimed type"}
 typeCheckExp (BOp ty e1 e2 OEQ) env 
   | actualTy1 == actualTy2 = Right ty
