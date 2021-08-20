@@ -225,7 +225,8 @@ data SSMLit
 
 -- | Expressions of unary operators on expressions
 data UnaryOpE
-    = Neg  -- ^ negation
+    = Neg  -- ^ Numerical negation
+    | Not  -- ^ Boolean negation
     deriving (Show, Eq, Read)
 
 -- | Expressions of unary operators on references
@@ -239,8 +240,12 @@ data BinOp
     = OPlus   -- ^ addition
     | OMinus  -- ^ subtraction
     | OTimes  -- ^ multiplication
+    | ODiv    -- ^ division
+    | OMod    -- ^ modulo
     | OLT     -- ^ less-than
     | OEQ     -- ^ eq
+    | OAnd    -- ^ boolean conjunction
+    | OOr     -- ^ boolean disjunction
     deriving (Eq, Show, Read)
 
 -- | Return the type of an expression

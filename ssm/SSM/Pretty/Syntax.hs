@@ -177,6 +177,7 @@ prettySSMExp e = case e of
 prettyUnaryOpE :: UnaryOpE -> SSMExp -> String
 prettyUnaryOpE op e = case op of
     Neg -> concat ["(-", prettySSMExp e, ")"] 
+    Not -> concat ["!", prettySSMExp e]
 
 prettyUnaryOpR :: UnaryOpR -> Reference -> String
 prettyUnaryOpR op r = case op of
@@ -188,8 +189,12 @@ prettyBinop op = case op of
     OPlus  -> "+"
     OMinus -> "-"
     OTimes -> "*"
+    ODiv   -> "/"
+    OMod   -> "%"
     OLT    -> "<"
     OEQ    -> "=="
+    OAnd   -> "&&"
+    OOr    -> "||"
 
 prettySSMTime :: SSMTime -> String
 prettySSMTime (SSMTime d u) = (prettySSMExp d) ++ show u

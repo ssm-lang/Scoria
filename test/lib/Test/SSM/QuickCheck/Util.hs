@@ -144,6 +144,7 @@ removeVars = go
           Lit t l        -> Lit t l
           UOpE t e op    -> case op of
               Neg -> UOpE t (rewriteExp e invalid validrefs) Neg
+              Not -> UOpE t (rewriteExp e invalid validrefs) Not
           UOpR t r op    -> case op of
               Changed -> if r `elem` validrefs
                   then UOpR t r Changed

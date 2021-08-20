@@ -625,15 +625,19 @@ eval e = do
     UOpR _ r op -> case op of
       Changed -> wasWritten r
       Deref   -> readRef r
-    UOpE _ e Neg -> do
+    UOpE _ e op -> do
       e' <- eval e
-      return $ neg e'
+      case op of
+        Neg -> return $ neg e'
+        Not -> return $ not' e'
     BOp TBool e1 e2 op -> do
       l1 <- eval e1
       l2 <- eval e2
       case op of
-        OLT -> return $ lessthan l1 l2
-        OEQ -> return $ equals l1 l2
+        OLT  -> return $ lessthan l1 l2
+        OEQ  -> return $ equals l1 l2
+        OAnd -> return $ conjunction l1 l2
+        OOr  -> return $ disjunction l1 l2
         _ ->
           crash
             $  "Type error: binary operator does not return TBool: "
@@ -645,6 +649,8 @@ eval e = do
         OPlus  -> return $ addition i1 i2
         OMinus -> return $ SSM.Interpret.Internal.subtract i1 i2
         OTimes -> return $ multiply i1 i2
+        ODiv   -> return $ divide i1 i2
+        OMod   -> return $ modulo i1 i2
         _ ->
           crash
             $  "Type error: binary operator does not return int type: "
@@ -669,6 +675,10 @@ neg (Lit _ (LInt32 i)) = Lit TInt32 $ LInt32 (-i)
 neg (Lit _ (LInt64 i)) = Lit TInt64 $ LInt64 (-i)
 neg _                  = error "can only negate signed integer types"
 
+not' :: SSMExp -> SSMExp
+not' (Lit TBool (LBool b)) = Lit TBool $ LBool $ not b
+not' _                     = error "can only negate boolean expressions"
+
 -- | Compute the ordering of an expression
 lessthan :: SSMExp -> SSMExp -> SSMExp
 lessthan (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) = Lit TBool $ LBool $ i1 < i2
@@ -688,6 +698,14 @@ equals (Lit _ (LBool   b1)) (Lit _ (LBool   b2)) = Lit TBool $ LBool $ b1 == b2
 -- FIXME: We haven't fully fleshed out equality semantics of TEvent yet.
 equals (Lit _ LEvent      ) (Lit _ LEvent      ) = Lit TBool $ LBool True
 equals le re = expOpTypeError "compare" le re
+
+conjunction :: SSMExp -> SSMExp -> SSMExp
+conjunction (Lit TBool (LBool b1)) (Lit TBool (LBool b2)) = Lit TBool $ LBool $ b1 && b2
+conjunction le re = expOpTypeError "conjunction" le re
+
+disjunction :: SSMExp -> SSMExp -> SSMExp
+disjunction (Lit TBool (LBool b1)) (Lit TBool (LBool b2)) = Lit TBool $ LBool $ b1 || b2
+disjunction le re = expOpTypeError "disjunction"  le re
 
 -- | Add two expressions
 addition :: SSMExp -> SSMExp -> SSMExp
@@ -724,6 +742,28 @@ multiply (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
 multiply (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
   Lit TUInt8 $ LUInt8 $ i1 * i2
 multiply le re = expOpTypeError "multiply" le re
+
+divide :: SSMExp -> SSMExp -> SSMExp
+divide (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
+  Lit TInt32 $ LInt32 $ i1 `div` i2
+divide (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
+  Lit TInt64 $ LInt64 $ i1 `div` i2
+divide (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
+  Lit TUInt8 $ LUInt8 $ i1 `div` i2
+divide (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TUInt64 $ LUInt64 $ i1 `div` i2
+divide le re = expOpTypeError "divide" le re
+
+modulo :: SSMExp -> SSMExp -> SSMExp
+modulo (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
+  Lit TInt32 $ LInt32 $ i1 `mod` i2
+modulo (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
+  Lit TInt64 $ LInt64 $ i1 `mod` i2
+modulo (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
+  Lit TUInt8 $ LUInt8 $ i1 `mod` i2
+modulo (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TUInt64 $ LUInt64 $ i1 `mod` i2
+modulo le re = expOpTypeError "modulo" le re
 
 {- | Retrieve a Haskell @Int32@ from an expression. Will crash if the expression
 is not an @Int32@. -}

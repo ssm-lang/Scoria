@@ -463,40 +463,49 @@ refPtr r@(Static _) _ = [cexp|&$id:(refName r)|]
 
 -- | Generate C expression from 'SSMExp' and a list of local variables.
 genExp :: [Reference] -> SSMExp -> C.Exp
-genExp _    (Var TEvent n              ) = [cexp|0|]
-genExp _    (Var _      n              ) = [cexp|$id:acts->$id:(identName n)|]
-genExp _    (Lit _      (LInt32  i    )) = [cexp|$int:i|]
-genExp _    (Lit _      (LUInt8  i    )) = [cexp|$int:i|]
-genExp _    (Lit _      (LInt64  i    )) = [cexp|$lint:i|]
-genExp _    (Lit _      (LUInt64 i    )) = [cexp|$ulint:i|]
-genExp _    (Lit _      (LBool   True )) = [cexp|true|]
-genExp _    (Lit _      (LBool   False)) = [cexp|false|]
-genExp _    (Lit _      LEvent         ) = [cexp|0|]
-genExp locs (UOpE _ e Neg              ) = [cexp|- $exp:(genExp locs e)|]
-genExp locs (UOpR t r op               ) = case op of
-  Changed -> [cexp|$id:event_on(&$exp:(refPtr r locs)->sv)|]
+genExp _  (Var TEvent _         ) = [cexp|0|]
+genExp _  (Var t n              ) = [cexp|acts->$id:(identName n)|]
+genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename i64) $int:i|]
+genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename u64) $int:i|]
+genExp _  (Lit _ (LBool   True )) = [cexp|true|]
+genExp _  (Lit _ (LBool   False)) = [cexp|false|]
+genExp _  (Lit _ (LEvent       )) = [cexp|0|]
+genExp ls (UOpE _ e op)           = case op of
+  Neg -> [cexp|- $exp:(genExp ls e)|]
+  Not -> [cexp|! $exp:(genExp ls e)|]
+genExp ls (UOpR t r op) = case op of
+  Changed -> [cexp|$id:event_on($exp:(refPtr r ls)->sv)|]
   Deref   -> case t of
     TEvent -> [cexp|0|]
-    _      -> [cexp|$exp:(refPtr r locs)->value|]
-genExp ls (BOp ty e1 e2 op) = gen op
+    _      -> [cexp|$exp:(refPtr r ls)->value|]
+-- | Circumvent optimizations that take advantage of C's undefined signed
+-- integer wraparound behavior. FIXME: remove this hack, which is probably not
+-- robust anyway if C is aggressive about inlining.
+genExp ls (BOp ty e1 e2 op)
+  | ty == TInt32 && op == OPlus = [cexp|_add($exp:c1, $exp:c2)|]
+  | otherwise                   = gen op
  where
   (c1, c2) = (genExp ls e1, genExp ls e2)
   gen OPlus  = [cexp|$exp:c1 + $exp:c2|]
   gen OMinus = [cexp|$exp:c1 - $exp:c2|]
   gen OTimes = [cexp|$exp:c1 * $exp:c2|]
+  gen ODiv   = [cexp|$exp:c1 / $exp:c2|]
+  gen OMod   = [cexp|$exp:c1 % $exp:c2|]
+  gen OLT    = [cexp|$exp:c1 < $exp:c2|]
   gen OEQ    = [cexp|$exp:c1 == $exp:c2|]
-  gen OLT =
-    [cexp|$exp:(signed_ (expType e1) c1) < $exp:(signed_ (expType e2) c2)|]
+  gen OAnd   = [cexp|$exp:c1 && $exp:c2|]
+  gen OOr    = [cexp|$exp:c1 || $exp:c2|]
 
--- | Generate C expression which computes an SSM time value.
 genTimeDelay :: [Reference] -> SSMTime -> C.Exp
 genTimeDelay ls (SSMTime d u) = [cexp|$exp:(genExp ls d) * $id:(units_ u)|]
-genTimeDelay ls (SSMTimeAdd t1 t2) = [cexp|($exp:t1') + ($exp:t2')|]
-  where t1' = genTimeDelay ls t1
-        t2' = genTimeDelay ls t2
-genTimeDelay ls (SSMTimeSub t1 t2) = [cexp|($exp:t1') - ($exp:t2')|]
-  where t1' = genTimeDelay ls t1
-        t2' = genTimeDelay ls t2
+genTimeDelay ls (SSMTimeAdd t1 t2) = let t1' = genTimeDelay ls t1
+                                         t2' = genTimeDelay ls t2
+                                     in [cexp|($exp:t1') + ($exp:t2')|]
+genTimeDelay ls (SSMTimeSub t1 t2) = let t1' = genTimeDelay ls t1
+                                         t2' = genTimeDelay ls t2
+                                     in [cexp|($exp:t1') - ($exp:t2')|]
 
 -- | Promote a C expression to a C statement.
 expToStm :: C.Exp -> C.Stm

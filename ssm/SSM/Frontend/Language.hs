@@ -23,7 +23,6 @@ module SSM.Frontend.Language
       Ref
     , inputref
     , var
-    , deref
 
       -- ** Expressions
       {- | Expressions are parameterised over the type they have.
@@ -34,7 +33,13 @@ module SSM.Frontend.Language
     , Exp
     , (<.)
     , (==.)
+    , (&&.)
+    , (||.)
+    , not'
+    , (/.)
+    , (%.)
     , neg
+    , deref
 
       -- *** Literals
       {- | The `Num` instance will in many cases figure out what type your literal should
@@ -49,6 +54,7 @@ module SSM.Frontend.Language
     , event'
 
     --- *** Time wrappers
+    , SSMTime
     , nsecs
     , usecs
     , msecs
@@ -67,7 +73,8 @@ module SSM.Frontend.Language
     , changed
     , ifThen
     , ifThenElse
-    , while'
+    , while
+    , doWhile
 
       -- ** Derived statements
       -- | These are statements that are derived from the language primitives.
@@ -202,10 +209,37 @@ Exp e1 <. Exp e2  = Exp $ BOp TBool e1 e2 OLT
 (==.) :: SSMType a => Exp a -> Exp a -> Exp Bool
 Exp e1 ==. Exp e2 = Exp $ BOp TBool e1 e2 OEQ
 
+-- | Boolean conjunction
+(&&.) :: Exp Bool -> Exp Bool -> Exp Bool
+e@(Exp e1) &&. Exp e2 = Exp $ BOp (typeOf e) e1 e2 OAnd
+
+-- | Boolean disjunction
+(||.) :: Exp Bool -> Exp Bool -> Exp Bool
+e@(Exp e1) ||. Exp e2 = Exp $ BOp (typeOf e) e1 e2 OOr
+
+-- | Class of types that can be divided
+class Divisible a where
+instance Divisible Int32
+instance Divisible Int64
+instance Divisible Word8
+instance Divisible Word64
+
+-- | Division of expressions
+(/.) :: forall a . (SSMType a, Divisible a) => Exp a -> Exp a -> Exp a
+Exp e1 /. Exp e2 = Exp $ BOp (typeOf (Proxy @a)) e1 e2 ODiv
+
+-- | Modulus
+(%.) :: (SSMType a, Divisible a) => Exp a -> Exp a -> Exp a
+e@(Exp e1) %. Exp e2 = Exp $ BOp (typeOf e) e1 e2 OMod
+
 {- | Negation of numerical expressions (works for unsigned ones right now,
 but this should be remedied down the road) -}
 neg :: (Num a, SSMType a) => Exp a -> Exp a
 neg e@(Exp e') = Exp $ UOpE (typeOf e) e' Neg
+
+-- | Boolean negation
+not' :: Exp Bool -> Exp Bool
+not' e@(Exp e') = Exp $ UOpE (typeOf e) e' Not
 
 -- | Explicity create an @Exp Int32@
 int32 :: Int32 -> Exp Int32
@@ -314,8 +348,11 @@ ifThenElse :: Exp Bool -> SSM () -> SSM () -> SSM ()
 ifThenElse c thn els = if' c thn (Just els)
 
 -- | While the condition is @true'@, execute the code in the second argument.
-while' :: Exp Bool -> SSM () -> SSM ()
-while' (Exp c) bdy = emit $ While c bdy
+while :: Exp Bool -> SSM () -> SSM ()
+while (Exp c) bdy = emit $ While c bdy
+
+doWhile :: SSM () -> Exp Bool -> SSM ()
+doWhile bdy c = bdy >> while c bdy
 
 waitSingle :: Ref a -> SSM ()
 waitSingle = box "waitSingle" ["r"] $ \r -> wait [r]

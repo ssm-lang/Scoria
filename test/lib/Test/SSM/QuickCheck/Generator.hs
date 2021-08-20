@@ -197,7 +197,7 @@ arbProc funs vars refs c n = frequency $
           t1 <- genDelay $ n `div` 2
           t2 <- genDelay $ n `div` 2
           oneof $ [ return $ SSMTimeAdd t1 t2
-                  , return $ SSMTimeSub t1 t2
+                  , return $ SSMTimeAdd (SSMTimeSub t1 t2) (SSMTime (Lit TUInt64 (LUInt64 1)) SSMNanosecond)
                   ]
 
       -- | Predicate that returns True if the given procedure can be forked.
@@ -229,6 +229,7 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
       TUInt64 -> return . Lit TUInt64 . LUInt64 =<< choose (0, 65500)
       TBool  -> return  . Lit TBool   . LBool   =<< arbitrary
       TEvent -> return $ Lit TEvent LEvent
+      _ -> error "not a base type"
 
     -- | Generator that returns a randomly selected variable from the set of variables.
     varGen :: [Gen SSMExp]
@@ -256,6 +257,14 @@ arbExp t vars refs n = case t of
                         e1 <- arbExp typ vars refs (n `div` 2)
                         e2 <- arbExp typ vars refs (n `div` 2)
                         return $ BOp TBool e1 e2 OEQ
+                   , do e1 <- arbExp TBool vars refs (n `div` 2)
+                        e2 <- arbExp TBool vars refs (n `div` 2)
+                        return $ BOp TBool e1 e2 OAnd
+                   , do e1 <- arbExp TBool vars refs (n `div` 2)
+                        e2 <- arbExp TBool vars refs (n `div` 2)
+                        return $ BOp TBool e1 e2 OOr
+                   , do e <- arbExp TBool vars refs (n `div` 2)
+                        return $ UOpE TBool e Not
                    ]
   TEvent -> return $ Lit TEvent LEvent
   t | t `elem` [TUInt8, TUInt64] -> do
@@ -264,6 +273,9 @@ arbExp t vars refs n = case t of
       elements [ BOp t e1 e2 OPlus
                , BOp t e1 e2 OMinus
                , BOp t e1 e2 OTimes
+               {- Since division by zero can not be tolerated, we force the denominator
+               to be positive by simply adding a one to the generated number. -}
+--               , BOp t e1 (BOp t (e2) (one t) OPlus) ODiv
                ]
   _ ->    frequency [ (1, do e <- arbExp t vars refs (n-1)
                              return $ UOpE t e Neg
@@ -275,4 +287,25 @@ arbExp t vars refs n = case t of
                                       , BOp t e1 e2 OTimes
                                       ]
                       )
+                    , (1, do e1 <- arbExp t vars refs (n `div` 2)
+                             e2 <- nonNegativeLitGen t
+                             elements [ BOp t e1 e2 ODiv
+                                      , BOp t e1 e2 OMod
+                                      ]
+                    )
                     ]
+  where
+    {- | We can not perform a computation that is modulo zero, so we use this function
+    to generate the second operand of modulo. We make sure that we only generate values
+    that are non zero. -}
+    nonNegativeLitGen :: Type -> Gen SSMExp
+    nonNegativeLitGen t = case t of
+      TUInt8  -> (Lit TUInt8 . LUInt8) <$> choose (1,255)
+      TUInt64 -> (Lit TUInt64 . LUInt8) <$> choose (1, maxBound)
+      TInt32  -> oneof [ (Lit TInt32 . LInt32) <$> choose (minBound, -1)
+                       , (Lit TInt32 . LInt32) <$> choose (1, maxBound)
+                       ]
+      TInt64  -> oneof [ (Lit TInt64 . LInt64) <$> choose (minBound, -1)
+                       , (Lit TInt64 . LInt64) <$> choose (1, maxBound)
+                       ]
+      _ -> error "nonNegativeLitGen: generator error - not a numerical type"
