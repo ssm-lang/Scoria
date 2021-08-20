@@ -263,24 +263,20 @@ typeCheckLit (LBool _) = TBool
 p :: Program
 p = Program
   { entry = Ident "fun0" Nothing
-  , funs  = Map.fromList
-    [ ( Ident "fun0" Nothing
-      , Procedure
-        { name      = Ident "fun0" Nothing
-        , arguments = []
-        , body      =
-          [ NewRef (Ident "v0" Nothing) TBool (Lit TBool (LBool False))
-          , After (SSMTime (Lit TUInt64 (LUInt64 1)) SSMNanosecond)
-                  (Dynamic (Ident "v0" Nothing, Ref TBool))
-                  (Lit TBool (LBool True))
-          , NewRef (Ident "v1" Nothing)
-                   TBool
-                   (UOpR TBool (Dynamic (Ident "v0" Nothing, Ref TBool)) Changed)
-          , After (SSMTime (Lit TUInt64 (LUInt64 3872)) SSMNanosecond)
-                  (Dynamic (Ident "v1" Nothing, Ref TBool))
-                  (Lit TBool (LBool False))
-          ]
-        }
-      )
-    ]
+  , funs  = fromList
+              [ ( Ident "fun0" Nothing
+                , Procedure
+                  { name = Ident "fun0" Nothing
+                  , arguments = []
+                  , body = [ NewRef (Ident "v0" Nothing)
+                                    TInt32
+                                    (Lit TInt32 (LInt32 0))
+                           , After (SSMTime (Lit TUInt64 (LUInt64 2))
+                                            SSMNanosecond)
+                                   (Dynamic (Ident "v0" Nothing, Ref TInt32))
+                                   (Lit TInt32 (LInt32 1))
+                           ]
+                  }
+                )
+              ]
   , globalReferences = []}
