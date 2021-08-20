@@ -263,7 +263,7 @@ typeCheckLit (LBool _) = TBool
 p :: Program
 p = Program
   { entry = Ident "fun0" Nothing
-  , funs  = fromList
+  , funs  = Map.fromList
               [ ( Ident "fun0" Nothing
                 , Procedure
                   { name = Ident "fun0" Nothing
