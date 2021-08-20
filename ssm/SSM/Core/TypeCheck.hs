@@ -249,7 +249,7 @@ typeCheckStm (SetRef ref expr) env = do
 typeCheckStm (NewRef name ty expr) env
     | actualTy == ty = Right (Map.insert name RefEntry {ty=Ref ty} env)
     | otherwise =
-        Left TypeError {expected=ty, actual=actualTy, msg="Expression type doesn't match the reference. Expression: " ++ show actualTy ++ " Reference: " ++ show ty}
+        Left TypeError {expected=ty, actual=actualTy, msg="Expression type doesn't match the reference. Expression: " ++ show expr ++ " Reference: " ++ show ty}
     where
         actualTy = unwrapExpRes (typeCheckExp expr env)
 
