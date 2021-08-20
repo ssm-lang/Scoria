@@ -264,35 +264,17 @@ p :: Program
 p = Program
   { entry = Ident "fun0" Nothing
   , funs  = Map.fromList
-              [ ( Ident "fun0" Nothing
-                , Procedure
-                  { name = Ident "fun0" Nothing
-                  , arguments = []
-                  , body = [ NewRef (Ident "ref2" Nothing) TBool (Lit TBool (LBool True))
-                           , Fork [(Ident "fun1" Nothing, [Right (Dynamic (Ident "ref2" Nothing, Ref TBool))])]
-                           ]
-                  }
-                )
-              , ( Ident "fun1" Nothing
-                , Procedure
-                  { name      = Ident "fun1" Nothing
-                  , arguments = [(Ident "ref2" Nothing, Ref TBool)]
-                  , body      = [ While
-                                    (Lit TBool (LBool True))
-                                    [ After (SSMTime (Lit TUInt64 (LUInt64 2))
-                                                     SSMNanosecond)
-                                            (Dynamic (Ident "ref2" Nothing, Ref TBool))
-                                            (Lit TBool (LBool False))
-                                    , Wait [Dynamic (Ident "ref2" Nothing, Ref TBool)]
-                                    , After (SSMTime (Lit TUInt64 (LUInt64 2))
-                                                     SSMNanosecond)
-                                            (Dynamic (Ident "ref2" Nothing, Ref TBool))
-                                            (Lit TBool (LBool True))
-                                    , Wait [Dynamic (Ident "ref2" Nothing, Ref TBool)]
-                                    ]
-                                ]
-                  }
-                )
-              ]
-  , globalReferences = []
-  }
+    [ ( Ident "fun0" Nothing
+      , Procedure
+        { name = Ident "fun0" Nothing
+        , arguments = []
+        , body = [ NewRef (Ident "v0" Nothing) TInt32 (Lit TInt32 (LInt32 0))
+                 , After (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
+                         (Dynamic (Ident "v0" Nothing, Ref TInt32))
+                         (Lit TInt32 (LInt32 1))
+                 , Wait [Dynamic (Ident "v0" Nothing, Ref TInt32)]
+                 ]
+        }
+      )
+    ]
+  , globalReferences = []}
