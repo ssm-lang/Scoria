@@ -262,31 +262,14 @@ typeCheckLit (LBool _) = TBool
 
 p :: Program
 p = Program
-  { entry = Ident "fun1" Nothing
+  { entry = Ident "fun0" Nothing
   , funs  = Map.fromList
-    [ ( Ident "fun1" Nothing
-      , Procedure
-        { name      = Ident "fun1" Nothing
-        , arguments = []
-        , body      =
-          [ NewRef ((Ident "v0" Nothing)) TInt32 (Lit TInt32 (LInt32 999999))
-          , If
-            (BOp TBool
-                 (Lit TInt32 (LInt32 0))
-                 (BOp TInt32 (UOpR TInt32 (Dynamic (Ident "v0" Nothing, Ref TInt32)) Deref) (UOpR TInt32 (Dynamic (Ident "v0" Nothing, Ref TInt32)) Deref) OTimes)
-                 OLT
-            )
-            [ After (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
-                    (Dynamic ((Ident "v0" Nothing), Ref TInt32))
-                    (Lit TInt32 (LInt32 0))
-            ]
-            [ After (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
-                    (Dynamic ((Ident "v0" Nothing), Ref TInt32))
-                    (Lit TInt32 (LInt32 1))
-            ]
-          , Wait [Dynamic ((Ident "v0" Nothing), Ref TInt32)]
-          ]
-        }
-      )
-    ]
+              [ ( Ident "fun0" Nothing
+                , Procedure { name      = Ident "fun0" Nothing
+                            , arguments = []
+                            , body      = [Fork [(Ident "fun0" Nothing, []), (Ident "fun1" Nothing, [])]]
+                            }
+                )
+              , (Ident "fun1" Nothing, Procedure { name = Ident "fun1" Nothing, arguments = [], body = [] })
+              ]
   , globalReferences = []}
