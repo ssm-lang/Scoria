@@ -265,11 +265,11 @@ p = Program
   { entry = Ident "fun0" Nothing
   , funs  = Map.fromList
               [ ( Ident "fun0" Nothing
-                , Procedure { name      = Ident "fun0" Nothing
-                            , arguments = []
-                            , body      = [Fork [(Ident "fun0" Nothing, []), (Ident "fun1" Nothing, [])]]
-                            }
+                , Procedure
+                  { name      = Ident "fun0" Nothing
+                  , arguments = []
+                  , body      = [ Fork [(Ident "fun0" Nothing, [])] ]
+                  }
                 )
-              , (Ident "fun1" Nothing, Procedure { name = Ident "fun1" Nothing, arguments = [], body = [] })
               ]
   , globalReferences = []}
