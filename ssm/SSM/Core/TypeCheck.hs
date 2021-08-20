@@ -237,21 +237,19 @@ typeCheckStm (If expr stms1 stms2) env
 typeCheckStm (Fork procs) env = do
     typeCheckForkProcs procs env
     return env
-typeCheckStm (SetLocal name ty expr) env
-    | actualTy == ty = Right (Map.insert name VarEntry {ty=ty} env)
-    | otherwise =
+typeCheckStm (SetLocal name ty expr) env = do
+    actualTy <- typeCheckExp expr env
+    if actualTy == ty then Right (Map.insert name VarEntry {ty=ty} env)
+    else
         Left TypeError {expected=ty, actual=actualTy, msg="Expression doesn't match the type of the local variable"}
-    where
-        actualTy = unwrapExpRes (typeCheckExp expr env)
 typeCheckStm (SetRef ref expr) env = do
     expMatchRef ref expr env
     return env
-typeCheckStm (NewRef name ty expr) env
-    | actualTy == ty = Right (Map.insert name RefEntry {ty=Ref ty} env)
-    | otherwise =
+typeCheckStm (NewRef name ty expr) env = do
+    actualTy <- typeCheckExp expr env
+    if actualTy == ty then Right (Map.insert name RefEntry {ty=Ref ty} env)
+    else
         Left TypeError {expected=ty, actual=actualTy, msg="Expression type doesn't match the reference. Expression: " ++ show actualTy ++ " Reference: " ++ show ty}
-    where
-        actualTy = unwrapExpRes (typeCheckExp expr env)
 
 -- | Typechecks a literal
 typeCheckLit :: SSMLit -> Type
