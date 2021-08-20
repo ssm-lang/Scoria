@@ -128,8 +128,9 @@ enterArg env (name, ty) = enterVar env (name, ty)
 
 -- | Typechecks a procedure
 typeCheckProcedure ::Map.Map Ident Entry -> Procedure -> Either TypeError ()
-typeCheckProcedure env Procedure {name=n, arguments=args, body=b} =
-    typeCheckStmLst b newEnv
+typeCheckProcedure env Procedure {name=n, arguments=args, body=b} = do
+    env <- typeCheckStmLst b newEnv
+    return ()
     where newEnv = foldl enterArg env args
 
 -- | Checks the functions in a String-Procedure map all have the corret type
@@ -195,8 +196,8 @@ typeCheckExp (BOp ty e1 e2 op) env
       actualTy2 = unwrapExpRes (typeCheckExp e1 env)
 
 -- | Typechecks a list of statements
-typeCheckStmLst :: [Stm] -> Map.Map Ident Entry -> Either TypeError ()
-typeCheckStmLst [] env = Right ()
+typeCheckStmLst :: [Stm] -> Map.Map Ident Entry -> Either TypeError (Map.Map Ident Entry)
+typeCheckStmLst [] env = Right env
 typeCheckStmLst (h:t) env = do
     newEnv <- typeCheckStm h env
     typeCheckStmLst t newEnv
@@ -222,17 +223,17 @@ typeCheckStm (After time ref exp2) env = do
 typeCheckStm (Wait refs) env = do
         ty <- mapM_ (typeCheckRef env) refs
         return env
-typeCheckStm (While expr stms) env
-    | unwrapExpRes (typeCheckExp expr env) == TBool = do
+typeCheckStm (While expr stms) env = do
+    exprTy <- typeCheckExp expr env
+    if exprTy == TBool then
         typeCheckStmLst stms env
-        return env
-    | otherwise =
+    else
         Left TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr env), msg="Condition variable is not a bool"}
-typeCheckStm (If expr stms1 stms2) env
-    | unwrapExpRes (typeCheckExp expr env) == TBool = do
+typeCheckStm (If expr stms1 stms2) env = do
+    exprTy <- typeCheckExp expr env
+    if exprTy == TBool then
         typeCheckStmLst (stms1 ++ stms2) env
-        return env
-    | otherwise =
+    else
         Left TypeError {expected=TBool, actual=unwrapExpRes (typeCheckExp expr env), msg="Condition variable is not a bool"}
 typeCheckStm (Fork procs) env = do
     typeCheckForkProcs procs env
