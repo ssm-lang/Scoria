@@ -1,3 +1,7 @@
+{- | The `Compile` monad is used to declare what information should be statically
+known in the program. This could be e.g the declaration of global references that
+should be visible in the entire program, or it could be IO peripherals.
+-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
 module SSM.Frontend.Compile where
@@ -10,8 +14,6 @@ import           SSM.Util.State
 
 import           Control.Monad.State
 
--- compile monad
-
 -- | State maintained by the `Compile` monad
 data CompileSt = CompileSt
     { compileCounter   :: Int              -- ^ Counter to generate fresh named
@@ -20,7 +22,7 @@ data CompileSt = CompileSt
     , ledperipherals   :: LEDPeripheral
     }
 
--- | Compile monad used to set up global variables before running a program
+-- | Compile monad
 newtype Compile a = Compile (State CompileSt a)
   deriving Functor                via State CompileSt
   deriving Applicative            via State CompileSt
