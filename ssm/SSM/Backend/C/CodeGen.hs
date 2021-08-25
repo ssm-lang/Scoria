@@ -129,19 +129,6 @@ genGlobals = map declGlobal . globalReferences
   declGlobal :: (Ident, Type) -> C.Definition
   declGlobal (n, t) = [cedecl|$ty:(svt_ $ stripRef t) $id:(identName n);|]
 
--- | Generate the declarations of global variables that represent GPIO variables
---genGPIOs :: Maybe GPIOPeripheral -> [C.Definition]
---genGPIOs Nothing = []
---genGPIOs (Just gp) = switches
---  where
-    -- | Generate the switch variable declarations
---    switches :: [C.Definition]
---    switches = map switch (Map.toList $ switchpins gp)
---      where
-        -- | Generate a single switch variable declaration
---        switch :: (Int, Ident) -> C.Definition
---        switch (i, id) = [cedecl| $ty:(svt_ TBool) $id:(identName id);|]
-
 -- | Generate the entry point of a program - the first thing to be ran.
 genInitProgram :: Program -> [C.Definition]
 genInitProgram p = [cunit|
@@ -157,15 +144,6 @@ genInitProgram p = [cunit|
   initGlobal :: (Ident, Type) -> C.BlockItem
   initGlobal (n, t) = [citem|$exp:init;|]
     where init = initialize_ (stripRef t) [cexp|&$id:(identName n)|]
-
---  initGPIO :: GPIOPeripheral -> [C.BlockItem]
---  initGPIO gp = map initSwitch $ Map.toList (switchpins gp)
-           -- ++ map initDAC
-           -- ++ map initADC
---    where
---      -- | Initialize GPIO peripherals
---      initSwitch :: (Int, Ident) -> C.BlockItem
---      initSwitch (i, id) = [citem| $id:initialize_static_input_switch(&$id:(identName id));|]
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]
@@ -369,7 +347,7 @@ genStep = do
 {- | Generate the list of statements from each 'Stm' in an SSM 'Procedure'.
 
 Note that this compilation scheme might not work if the language were to
-support return statements.fresh This could be fixed by generating a break, and
+support return statements. This could be fixed by generating a break, and
 moving the leave call to outside of the switch statement in 'genStep'.
 -}
 genCase :: Stm -> TR [C.Stm]
