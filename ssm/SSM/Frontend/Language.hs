@@ -45,10 +45,12 @@ module SSM.Frontend.Language
       {- | The `Num` instance will in many cases figure out what type your literal should
       have, but if that is not the case, these functions can be used to explicitly create
       a literal of a concrete type.-}
-    , int32
-    , int64
-    , uint8
-    , uint64
+    , i32
+    , i64
+    , u8
+    , u64
+    , min'
+    , max'
     , true'
     , false'
     , event'
@@ -61,6 +63,7 @@ module SSM.Frontend.Language
     , secs
     , mins
     , hrs
+    , (//)
 
       -- ** Primitive statements
       {- | These are the primitive statements of the SSM language. Your procedure
@@ -95,91 +98,9 @@ import BinderAnn.Monadic
 
 import SSM.Frontend.Syntax
 import SSM.Frontend.Box
-
--- Binderann name capturing
-
-instance AnnotatedM SSM (Exp a) where
-    annotateM ma info = do
-        v       <- ma
-        stmts   <- gets statements
-        let stmt = last stmts
-        let stmt' = renameStmt stmt info
-        modify $ \st -> st { statements = init stmts ++ [stmt']}
-        return $ renameExp v info
-
-instance AnnotatedM SSM (Ref a) where
-    annotateM ma info = do
-        v <- ma
-        stmts <- gets statements
-        let stmt = last stmts
-        let stmt' = renameStmt stmt info
-        modify $ \st -> st { statements = init stmts ++ [stmt']}
-        return $ SSM.Frontend.Language.renameRef v info
-
-renameStmt :: SSMStm -> SrcInfo -> SSMStm
-renameStmt s (Info Nothing _)               = s
-renameStmt s (Info _ Nothing)               = s
-renameStmt s (Info (Just n) info) =
-    let srcinfo = Ident n info
-    in case s of
-        NewRef n e  -> NewRef srcinfo e
-        _           -> s
-
-renameExp :: Exp a -> SrcInfo -> Exp a
-renameExp e (Info Nothing _) = e
-renameExp e (Info _ Nothing) = e
-renameExp e (Info (Just n) info) = case e of
-    Exp (Var t _) -> Exp $ Var t (Ident n info)
-    _             -> e
-
-renameRef :: Ref a -> SrcInfo -> Ref a
-renameRef e (Info Nothing _) = e
-renameRef e (Info _ Nothing) = e
-renameRef (Ptr r) (Info (Just n) l) = Ptr $ SSM.Frontend.Syntax.renameRef r (Ident n l)
-
-newtype Ref a = Ptr Reference
-  deriving Show
-newtype Exp a = Exp SSMExp
-  deriving Show
-newtype Lit a = FLit SSMLit    -- ^ literals
-  deriving Show
-
-class FromLiteral a where
-    fromLit :: a -> Lit a
-
-instance FromLiteral Int32 where
-    fromLit i = FLit $ LInt32 (fromIntegral i)
-
-instance FromLiteral Int64 where
-    fromLit i = FLit $ LInt64 (fromIntegral i)
-
-instance FromLiteral Word64 where
-    fromLit i = FLit $ LUInt64 (fromIntegral i)
-
-instance FromLiteral Word8 where
-    fromLit i = FLit $ LUInt8 (fromIntegral i)
-
-instance (Num a, FromLiteral a, SSMType a) => Num (Exp a) where
-    (Exp e1) + (Exp e2) = Exp $ BOp (typeOf (Proxy @a)) e1 e2 OPlus
-    (Exp e1) - (Exp e2) = Exp $ BOp (typeOf (Proxy @a)) e1 e2 OMinus
-    (Exp e1) * (Exp e2) = Exp $ BOp (typeOf (Proxy @a)) e1 e2 OTimes
-    fromInteger i = let FLit l = fromLit (fromInteger @a i)
-                    in Exp $ Lit (typeOf (Proxy @a)) l
-    abs _    = undefined
-    signum _ = undefined
-
--- | Arguments we can apply SSM procedures to
-instance Arg (Exp a) where
-    arg _ [] _              = error "No more parameter names"
-    arg name (x:xs) (Exp b) = do
-        emit $ Argument (Ident name Nothing) (Ident x Nothing) (Left b)
-        return $ (Exp (Var (expType b) (Ident x Nothing)), xs)
-
-instance Arg (Ref a) where
-    arg _ [] _              = error "No more parameter names"
-    arg name (x:xs) (Ptr r) = do
-        emit $ Argument (Ident name Nothing) (Ident x Nothing) $ Right r
-        return (Ptr $ SSM.Frontend.Syntax.renameRef r (Ident x Nothing), xs)
+import SSM.Frontend.Ref
+import SSM.Frontend.Exp
+import SSM.Frontend.Compile
 
 -- | When interpreting or compiling a SSM program that requires input references,
 -- supply this value instead.
@@ -217,20 +138,13 @@ e@(Exp e1) &&. Exp e2 = Exp $ BOp (typeOf e) e1 e2 OAnd
 (||.) :: Exp Bool -> Exp Bool -> Exp Bool
 e@(Exp e1) ||. Exp e2 = Exp $ BOp (typeOf e) e1 e2 OOr
 
--- | Class of types that can be divided
-class Divisible a where
-instance Divisible Int32
-instance Divisible Int64
-instance Divisible Word8
-instance Divisible Word64
-
 -- | Division of expressions
-(/.) :: forall a . (SSMType a, Divisible a) => Exp a -> Exp a -> Exp a
+(/.) :: forall a . (SSMType a, Integral a) => Exp a -> Exp a -> Exp a
 Exp e1 /. Exp e2 = Exp $ BOp (typeOf (Proxy @a)) e1 e2 ODiv
 
 -- | Modulus
-(%.) :: (SSMType a, Divisible a) => Exp a -> Exp a -> Exp a
-e@(Exp e1) %. Exp e2 = Exp $ BOp (typeOf e) e1 e2 OMod
+(%.) :: (SSMType a, Integral a) => Exp a -> Exp a -> Exp a
+e@(Exp e1) %. Exp e2 = Exp $ BOp (typeOf e) e1 e2 ORem
 
 {- | Negation of numerical expressions (works for unsigned ones right now,
 but this should be remedied down the road) -}
@@ -242,20 +156,26 @@ not' :: Exp Bool -> Exp Bool
 not' e@(Exp e') = Exp $ UOpE (typeOf e) e' Not
 
 -- | Explicity create an @Exp Int32@
-int32 :: Int32 -> Exp Int32
-int32 i = Exp $ Lit TInt32 $ LInt32 i
+i32 :: Int32 -> Exp Int32
+i32 i = Exp $ Lit TInt32 $ LInt32 i
 
 -- | Explicity create an @Exp Int64@
-int64 :: Int64 -> Exp Int64
-int64 i = Exp $ Lit TInt64 $ LInt64 i
+i64 :: Int64 -> Exp Int64
+i64 i = Exp $ Lit TInt64 $ LInt64 i
 
 -- | Explicity create an @Exp Word64@
-uint64 :: Word64 -> Exp Word64
-uint64 i = Exp $ Lit TUInt64 $ LUInt64 i
+u64 :: Word64 -> Exp Word64
+u64 i = Exp $ Lit TUInt64 $ LUInt64 i
 
 -- | Explicity create an @Exp Word8@
-uint8 :: Word8 -> Exp Word8
-uint8 i = Exp $ Lit TUInt8 $ LUInt8 i
+u8 :: Word8 -> Exp Word8
+u8 i = Exp $ Lit TUInt8 $ LUInt8 i
+
+min' :: forall a . SSMType a => Exp a -> Exp a -> Exp a
+min' (Exp e1) (Exp e2) = Exp $ BOp (typeOf (Proxy @a)) e1 e2 OMin
+
+max' :: forall a . SSMType a => Exp a -> Exp a -> Exp a
+max' (Exp e1) (Exp e2) = Exp $ BOp (typeOf (Proxy @a)) e1 e2 OMax
 
 -- | Boolean literal @True@
 true' :: Exp Bool
@@ -295,6 +215,11 @@ mins (Exp e) = SSMTime e SSMMinute
 hrs :: Exp Word64 -> SSMTime
 hrs (Exp e) = SSMTime e SSMHour
 
+{- | More direct division of time. E.g @t // 5@ divides a time into one fifth of the
+original time. This function can be convenient when you need to calculate delays etc. -}
+(//) :: SSMTime -> Exp Word64 -> SSMTime
+t // (Exp d) = SSMTimeDiv t d
+
 instance Num SSMTime where
     t1 + t2       = SSMTimeAdd t1 t2
     t1 - t2       = SSMTimeSub t1 t2
@@ -319,6 +244,10 @@ var (Exp e) = do
 -- | Block until any of the references in the input list are be written to.
 wait :: [Ref a] -> SSM ()
 wait r = emit $ Wait (map (\(Ptr r') -> r') r)
+
+waitFor :: SSMType a => Ref a -> Exp a -> SSM ()
+waitFor r e = do
+  doWhile (wait [r]) (deref r ==. e)
 
 {- | Scheduled assignment. @after d r v@ means that after @d@ units of time, the
 reference @r@ should receive the value @v@. -}
@@ -392,10 +321,10 @@ instance AnnotatedM Compile (Ref a) where
             then return ref
             -- Otherwise, rename if with the source information, if any exist
             else do SSM.Frontend.Language.renameNewestGlobal info
-                    return $ SSM.Frontend.Language.renameRef ref info
+                    return $ SSM.Frontend.Ref.renameRef ref info
 
 {- | Rename the newest global reference according to the source information found
 in the first argument. -}
 renameNewestGlobal :: SrcInfo -> Compile ()
-renameNewestGlobal (Info (Just n) l) = SSM.Frontend.Syntax.renameNewestGlobal (Ident n l)
+renameNewestGlobal (Info (Just n) l) = SSM.Frontend.Compile.renameNewestGlobal (Ident n l)
 renameNewestGlobal _                 = return ()

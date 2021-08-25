@@ -8,6 +8,8 @@ module SSM.Backend.C.Identifiers
 
       -- * Identifiers recognized by the C runtime system.
   , initialize_program
+  , initialize_static_input_device
+  , initialize_static_output_device
   , top_return
   , fork
   , act_enter
@@ -80,6 +82,13 @@ type CIdent = String
 -- | Name of top level program initialization function
 initialize_program :: CIdent
 initialize_program = "ssm_initialize_program"
+
+-- | Name of top level static input switch initialization function
+initialize_static_input_device :: CIdent
+initialize_static_input_device = "initialize_static_input_switch"
+
+initialize_static_output_device :: CIdent
+initialize_static_output_device = "initialize_static_output_device"
 
 -- | Name of top level return step-function
 top_return :: CIdent

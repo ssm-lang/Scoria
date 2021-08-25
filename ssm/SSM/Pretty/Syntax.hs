@@ -190,7 +190,9 @@ prettyBinop op = case op of
     OMinus -> "-"
     OTimes -> "*"
     ODiv   -> "/"
-    OMod   -> "%"
+    ORem   -> "%"
+    OMin   -> "`min`"
+    OMax   -> "`max`"
     OLT    -> "<"
     OEQ    -> "=="
     OAnd   -> "&&"
@@ -200,3 +202,4 @@ prettySSMTime :: SSMTime -> String
 prettySSMTime (SSMTime d u) = (prettySSMExp d) ++ show u
 prettySSMTime (SSMTimeAdd t1 t2) = (prettySSMTime t1) ++ "+" ++ (prettySSMTime t2)
 prettySSMTime (SSMTimeSub t1 t2) = (prettySSMTime t1) ++ "-" ++ (prettySSMTime t2)
+prettySSMTime (SSMTimeDiv t1 d)  = prettySSMTime t1 ++ "/" ++ prettySSMExp d

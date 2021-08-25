@@ -74,6 +74,7 @@ module SSM.Core.Syntax
       {- | A program consists of a map of names & procedures, the name of an entry point
       of a program and any arguments the entry point should be applied to. -}
     , Program(..)
+
     , SSMProgram(..)
     ) where
 
@@ -83,20 +84,9 @@ import qualified Data.Map as Map
 import Control.Monad.State.Lazy
     ( forM, modify, runState, MonadState(put, get), State )
 
--- Identifiers
-
--- | Data type of Identifiers
-data Ident = Ident { identName :: String, identSrcInfo :: Maybe SrcInformation}
-  deriving (Show, Read)
-
-instance Eq Ident where
-  Ident n _ == Ident m _ = n == m
-
-instance Ord Ident where
-  Ident n _ <= Ident m _ = n <= m
-
--- | Source information (File, Line, Column)
-type SrcInformation = (String, Int, Int)
+import SSM.Core.Ident
+import SSM.Core.Peripheral.GPIO
+import SSM.Core.Peripheral.LED
 
 -- Types
 
@@ -241,7 +231,9 @@ data BinOp
     | OMinus  -- ^ subtraction
     | OTimes  -- ^ multiplication
     | ODiv    -- ^ division
-    | OMod    -- ^ modulo
+    | ORem    -- ^ remainder
+    | OMin    -- ^ minimum of two numerical operands
+    | OMax    -- ^ maximum of two numerical operands
     | OLT     -- ^ less-than
     | OEQ     -- ^ eq
     | OAnd    -- ^ boolean conjunction
@@ -272,6 +264,7 @@ data SSMTimeUnit
 data SSMTime = SSMTime SSMExp SSMTimeUnit
              | SSMTimeAdd SSMTime SSMTime
              | SSMTimeSub SSMTime SSMTime
+             | SSMTimeDiv SSMTime SSMExp
     deriving (Eq, Show, Read)
 
 -- Programs
@@ -318,6 +311,13 @@ data Program = Program
     , funs :: Map.Map Ident Procedure
       -- | Name and type of references that exist in the global scope.
     , globalReferences :: [(Ident, Type)]
+      {- | If any GPIO peripherals are used in the program, @gpioperipherals@ specifies
+      which peripherals are used, and at which names. -}
+    , gpioperipherals :: Maybe GPIOPeripheral
+      {- | If any LED peripherals are used in the program, @ledperipherals@ specifies
+      which LED peripherals are used, how, and with which names they can be
+      referenced. -}
+    , ledperipherals :: Maybe LEDPeripheral
     }
     deriving (Show, Read, Eq)
 

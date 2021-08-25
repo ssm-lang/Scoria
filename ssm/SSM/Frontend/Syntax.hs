@@ -46,6 +46,7 @@ module SSM.Frontend.Syntax
       -- * Statements
     , SSMStm(..)
     , getProcedureName
+    , renameStmt
 
       -- * SSM Monad
     , SSM(..)
@@ -58,10 +59,6 @@ module SSM.Frontend.Syntax
       -- * Transpilation
     , transpile
 
-    , Compile
-    , addGlobal
-    , hasSameGlobalsAs
-    , renameNewestGlobal
 ) where
 
 import SSM.Util.State
@@ -98,6 +95,15 @@ data SSMStm
     {-| Records the name an argument has and what value the procedure was applied to -}
     | Argument S.Ident S.Ident (Either S.SSMExp S.Reference)
     | Result S.Ident  -- ^ Mark the end of a procedure
+
+renameStmt :: SSMStm -> (Maybe String, Maybe (String, Int, Int)) -> SSMStm
+renameStmt s (Nothing, _)               = s
+renameStmt s (_, Nothing)               = s
+renameStmt s (Just n, info) =
+    let srcinfo = S.Ident n info
+    in case s of
+        NewRef n e  -> NewRef srcinfo e
+        _           -> s
 
 {- | The state maintained by the SSM monad. A counter for generating fresh names and
 a list of statements that make up the program. -}
@@ -148,63 +154,7 @@ the frontend representation into something that it can generate code for. Just c
 a program does not introduce any global variables. -}
 instance S.SSMProgram (SSM ()) where
   toProgram p = let (n,f) = transpile p
-                in S.Program n f []
-
--- compile monad
-
--- | State maintained by the `Compile` monad
-data CompileSt = CompileSt
-    { compileCounter   :: Int                  -- ^ Counter to generate fresh named
-    , generatedGlobals :: [(S.Ident, S.Type)]  -- ^ Names and types of global references
-    }
-
--- | Compile monad used to set up global variables before running a program
-newtype Compile a = Compile (State CompileSt a)
-  deriving Functor                via State CompileSt
-  deriving Applicative            via State CompileSt
-  deriving Monad                  via State CompileSt
-  deriving (MonadState CompileSt) via State CompileSt
-
-{- | @IntState@ instance for `CompileSt` so that the `Compile` monad can generate
-fresh names with the generic `SSM.Util.State.fresh` function.. -}
-instance IntState CompileSt where
-  getInt = compileCounter
-  setInt i st = st { compileCounter = i }
-
--- | Add the name and type of a global variable to the Compile monad
-addGlobal :: S.Ident -> S.Type -> Compile ()
-addGlobal name t = do
-  s <- get
-  if name `elem` map fst (generatedGlobals s)
-    then error $
-      concat ["name ", S.identName name, " has already been declared as a global variable"]
-    else modify $ \st ->
-      st { generatedGlobals = generatedGlobals st ++ [(name, t)]}
-
-{- | Meant to be used in infix position, like @st1 `hasSameGlobalsAs` st2@. Returns
-@True@ if, as the name suggests, the two compile states has the same global references
-declared. -}
-hasSameGlobalsAs :: CompileSt -> CompileSt -> Bool
-hasSameGlobalsAs st1 st2 = generatedGlobals st1 == generatedGlobals st2
-
-{- | Rename the newst declared global reference by giving it the name that is supplied
-to this function.
-
-NOTE: This function is only meant to be called by the BinderAnn library. -}
-renameNewestGlobal :: S.Ident -> Compile ()
-renameNewestGlobal name = do
-  st <- get
-  let newest = last (generatedGlobals st)
-  modify $ \st ->
-    st { generatedGlobals = init (generatedGlobals st) ++ [(name, snd newest)] }
-
-{- | If you have a @Compile (SSM ())@ you have probably set up some global variables
-using the @Compile@ monad. This instance makes sure that you can compile and interpret
-something that is a program with such global variables. -}
-instance S.SSMProgram (Compile (SSM ())) where
-  toProgram (Compile p) = let (a,s) = runState p (CompileSt 0 [])
-                              (n,f) = transpile a
-                          in S.Program n f $ generatedGlobals s
+                in S.Program n f [] Nothing Nothing
 
 {-********** Transpiling to core syntax **********-}
 

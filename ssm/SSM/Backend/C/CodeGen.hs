@@ -29,7 +29,9 @@ import qualified Language.C.Syntax             as C
 import           Data.List                      ( sortOn )
 import           SSM.Backend.C.Identifiers
 import           SSM.Backend.C.Types
+import           SSM.Backend.C.Peripheral
 import           SSM.Core.Syntax
+import           SSM.Core.Peripheral.GPIO
 import qualified SSM.Interpret.Trace           as T
 
 -- | Given a 'Program', returns a tuple containing the compiled program and
@@ -39,7 +41,13 @@ compile_ program = (compUnit, includes)
  where
   -- | The file to generate, minus include statements
   compUnit :: [C.Definition]
-  compUnit = globals ++ preamble ++ decls ++ defns ++ initProg
+  compUnit = concat [ globals
+                    , declarePeripherals program
+                    , preamble
+                    , decls
+                    , defns
+                    , initProg
+                    ]
 
   -- | Global reference declarations
   globals :: [C.Definition]
@@ -121,11 +129,25 @@ genGlobals = map declGlobal . globalReferences
   declGlobal :: (Ident, Type) -> C.Definition
   declGlobal (n, t) = [cedecl|$ty:(svt_ $ stripRef t) $id:(identName n);|]
 
+-- | Generate the declarations of global variables that represent GPIO variables
+--genGPIOs :: Maybe GPIOPeripheral -> [C.Definition]
+--genGPIOs Nothing = []
+--genGPIOs (Just gp) = switches
+--  where
+    -- | Generate the switch variable declarations
+--    switches :: [C.Definition]
+--    switches = map switch (Map.toList $ switchpins gp)
+--      where
+        -- | Generate a single switch variable declaration
+--        switch :: (Int, Ident) -> C.Definition
+--        switch (i, id) = [cedecl| $ty:(svt_ TBool) $id:(identName id);|]
+
 -- | Generate the entry point of a program - the first thing to be ran.
 genInitProgram :: Program -> [C.Definition]
 genInitProgram p = [cunit|
   void $id:initialize_program(void) {
     $items:(map initGlobal $ globalReferences p)
+    $items:(initPeripherals p)
     $id:fork($id:(enter_ $ identName $ entry p)
         (&ssm_top_parent, SSM_ROOT_PRIORITY, SSM_ROOT_DEPTH));
   }
@@ -135,6 +157,15 @@ genInitProgram p = [cunit|
   initGlobal :: (Ident, Type) -> C.BlockItem
   initGlobal (n, t) = [citem|$exp:init;|]
     where init = initialize_ (stripRef t) [cexp|&$id:(identName n)|]
+
+--  initGPIO :: GPIOPeripheral -> [C.BlockItem]
+--  initGPIO gp = map initSwitch $ Map.toList (switchpins gp)
+           -- ++ map initDAC
+           -- ++ map initADC
+--    where
+--      -- | Initialize GPIO peripherals
+--      initSwitch :: (Int, Ident) -> C.BlockItem
+--      initSwitch (i, id) = [citem| $id:initialize_static_input_switch(&$id:(identName id));|]
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]
@@ -338,7 +369,7 @@ genStep = do
 {- | Generate the list of statements from each 'Stm' in an SSM 'Procedure'.
 
 Note that this compilation scheme might not work if the language were to
-support return statements. This could be fixed by generating a break, and
+support return statements.fresh This could be fixed by generating a break, and
 moving the leave call to outside of the switch statement in 'genStep'.
 -}
 genCase :: Stm -> TR [C.Stm]
@@ -492,7 +523,9 @@ genExp ls (BOp ty e1 e2 op)
   gen OMinus = [cexp|$exp:c1 - $exp:c2|]
   gen OTimes = [cexp|$exp:c1 * $exp:c2|]
   gen ODiv   = [cexp|$exp:c1 / $exp:c2|]
-  gen OMod   = [cexp|$exp:c1 % $exp:c2|]
+  gen ORem   = [cexp|$exp:c1 % $exp:c2|]
+  gen OMin   = [cexp|$exp:c1 < $exp:c2 ? $exp:c1 : $exp:c2|]
+  gen OMax   = [cexp|$exp:c1 < $exp:c2 ? $exp:c2 : $exp:c1|]
   gen OLT    = [cexp|$exp:c1 < $exp:c2|]
   gen OEQ    = [cexp|$exp:c1 == $exp:c2|]
   gen OAnd   = [cexp|$exp:c1 && $exp:c2|]
@@ -506,6 +539,8 @@ genTimeDelay ls (SSMTimeAdd t1 t2) = let t1' = genTimeDelay ls t1
 genTimeDelay ls (SSMTimeSub t1 t2) = let t1' = genTimeDelay ls t1
                                          t2' = genTimeDelay ls t2
                                      in [cexp|($exp:t1') - ($exp:t2')|]
+genTimeDelay ls (SSMTimeDiv t1 d)  = let t1' = genTimeDelay ls t1
+                                     in [cexp|$exp:t1' / (typename u64) $exp:(genExp ls d)|]
 
 -- | Promote a C expression to a C statement.
 expToStm :: C.Exp -> C.Stm

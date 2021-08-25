@@ -12,3 +12,4 @@ module SSM.Language
 import SSM.Frontend.Language
 import SSM.Frontend.Box
 import SSM.Frontend.Syntax
+import SSM.Frontend.Compile

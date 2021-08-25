@@ -650,7 +650,9 @@ eval e = do
         OMinus -> return $ SSM.Interpret.Internal.subtract i1 i2
         OTimes -> return $ multiply i1 i2
         ODiv   -> return $ divide i1 i2
-        OMod   -> return $ modulo i1 i2
+        ORem   -> return $ remainder i1 i2
+        OMin   -> return $ min' i1 i2
+        OMax   -> return $ max' i1 i2
         _ ->
           crash
             $  "Type error: binary operator does not return int type: "
@@ -745,25 +747,39 @@ multiply le re = expOpTypeError "multiply" le re
 
 divide :: SSMExp -> SSMExp -> SSMExp
 divide (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
-  Lit TInt32 $ LInt32 $ i1 `div` i2
+  Lit TInt32 $ LInt32 $ let x = i1 `div` i2 in if x < 0 then 0 else x
 divide (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
-  Lit TInt64 $ LInt64 $ i1 `div` i2
+  Lit TInt64 $ LInt64 $ let x = i1 `div` i2 in if x < 0 then 0 else x
 divide (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
   Lit TUInt8 $ LUInt8 $ i1 `div` i2
 divide (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
   Lit TUInt64 $ LUInt64 $ i1 `div` i2
 divide le re = expOpTypeError "divide" le re
 
-modulo :: SSMExp -> SSMExp -> SSMExp
-modulo (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
-  Lit TInt32 $ LInt32 $ i1 `mod` i2
-modulo (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
-  Lit TInt64 $ LInt64 $ i1 `mod` i2
-modulo (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
-  Lit TUInt8 $ LUInt8 $ i1 `mod` i2
-modulo (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
-  Lit TUInt64 $ LUInt64 $ i1 `mod` i2
-modulo le re = expOpTypeError "modulo" le re
+remainder :: SSMExp -> SSMExp -> SSMExp
+remainder (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
+  Lit TInt32 $ LInt32 $ i1 `rem` i2
+remainder (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
+  Lit TInt64 $ LInt64 $ i1 `rem` i2
+remainder (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
+  Lit TUInt8 $ LUInt8 $ i1 `rem` i2
+remainder (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TUInt64 $ LUInt64 $ i1 `rem` i2
+remainder le re = expOpTypeError "rem" le re
+
+min' :: SSMExp -> SSMExp -> SSMExp
+min' (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) = Lit TInt32 $ LInt32 $ min i1 i2
+min' (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ min i1 i2
+min' (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) = Lit TUInt8 $ LUInt8 $ min i1 i2
+min' (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ min i1 i2
+min' le re = expOpTypeError "min" le re
+
+max' :: SSMExp -> SSMExp -> SSMExp
+max' (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) = Lit TInt32 $ LInt32 $ max i1 i2
+max' (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ max i1 i2
+max' (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) = Lit TUInt8 $ LUInt8 $ max i1 i2
+max' (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ max i1 i2
+max' le re = expOpTypeError "max" le re
 
 {- | Retrieve a Haskell @Int32@ from an expression. Will crash if the expression
 is not an @Int32@. -}
@@ -810,6 +826,7 @@ genTimeDelay :: SSMTime -> Word64
 genTimeDelay (SSMTime d u)      = applyUnit (getUInt64 d) u
 genTimeDelay (SSMTimeAdd t1 t2) = (genTimeDelay t1) + (genTimeDelay t2)
 genTimeDelay (SSMTimeSub t1 t2) = (genTimeDelay t1) - (genTimeDelay t2)
+genTimeDelay (SSMTimeDiv t1 e)  = genTimeDelay t1 `div` undefined
 
 -- | Obtain type and concrete representation of an expression; only works for
 -- literals.

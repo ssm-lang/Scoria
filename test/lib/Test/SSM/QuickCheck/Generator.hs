@@ -90,7 +90,7 @@ instance Arbitrary Program where
     let procedures = Map.fromList
           [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
 
-    return $ Program entryPoint procedures globals
+    return $ Program entryPoint procedures globals Nothing
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program
@@ -285,12 +285,14 @@ arbExp t vars refs n = case t of
                              elements [ BOp t e1 e2 OPlus
                                       , BOp t e1 e2 OMinus
                                       , BOp t e1 e2 OTimes
+                                      , BOp t e1 e2 OMin
+                                      , BOp t e1 e2 OMax
                                       ]
                       )
                     , (1, do e1 <- arbExp t vars refs (n `div` 2)
                              e2 <- nonNegativeLitGen t
                              elements [ BOp t e1 e2 ODiv
-                                      , BOp t e1 e2 OMod
+                                      , BOp t e1 e2 ORem
                                       ]
                     )
                     ]
