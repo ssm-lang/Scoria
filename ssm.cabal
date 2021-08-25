@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b488ffac3a96f598e4958cadb9182c5f7d2ac8cb60b7d13508fb02e5a33c4daa
+-- hash: fbd640758a5fc4427504420514aea2fbac6d20fd4ab4f1d2e0ad6d2389064c7b
 
 name:           ssm
 version:        0.1.0.0
@@ -31,11 +31,21 @@ library
       SSM.Backend.C.Compile
       SSM.Backend.C.Exp
       SSM.Backend.C.Identifiers
+      SSM.Backend.C.Peripheral
       SSM.Backend.C.Types
       SSM.Compile
+      SSM.Core.Ident
+      SSM.Core.Peripheral.GPIO
+      SSM.Core.Peripheral.LED
       SSM.Core.Syntax
+      SSM.Freqmime
       SSM.Frontend.Box
+      SSM.Frontend.Compile
+      SSM.Frontend.Exp
       SSM.Frontend.Language
+      SSM.Frontend.Peripheral.GPIO
+      SSM.Frontend.Peripheral.LED
+      SSM.Frontend.Ref
       SSM.Frontend.Syntax
       SSM.Interpret
       SSM.Interpret.Internal
