@@ -78,6 +78,7 @@ instance CPeripheral GPIOPeripheral where
         initswitch (i, id)
             = [citem| $id:initialize_static_input_device(&$id:(identName id), $int:i); |]
 
+-- | Generate C code for LED peripherals. Only on-off LEDs supported right now
 instance CPeripheral LEDPeripheral where
     decls lp = onoffleds -- ++ dimmableleds
       where
@@ -97,4 +98,5 @@ instance CPeripheral LEDPeripheral where
                                                , SSM_ROOT_PRIORITY + (1 << SSM_ROOT_DEPTH)
                                                , SSM_ROOT_DEPTH - 1
                                                , &$id:(identName id)
+                                               , $int:i
                                                ); |]
