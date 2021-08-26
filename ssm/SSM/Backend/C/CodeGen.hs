@@ -27,7 +27,6 @@ import qualified Language.C.Syntax             as C
 
 -- import           Data.Bifunctor                 ( second )
 import           Data.List                      ( sortOn )
-import           GHC.Stack                      ( HasCallStack )
 import           SSM.Backend.C.Identifiers
 import           SSM.Backend.C.Types
 import           SSM.Core.Syntax

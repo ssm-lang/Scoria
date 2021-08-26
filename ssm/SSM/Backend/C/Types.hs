@@ -6,7 +6,6 @@ import           SSM.Core.Syntax                ( Ident(..)
                                                 , Type(..)
                                                 )
 
-import           GHC.Stack                      ( HasCallStack )
 import           Language.C.Quote.GCC           ( cexp
                                                 , cstm
                                                 , cty
@@ -19,14 +18,14 @@ t_ :: CIdent -> C.Type
 t_ t = [cty|typename $id:t|]
 
 -- | Helper function to "dereference" an SSM 'Type'.
-stripRef :: HasCallStack => Type -> Type
+stripRef :: Type -> Type
 stripRef (Ref t) = t
 stripRef t       = error $ "Not a reference: " ++ show t
 
 -- | Obtain typename for the C type we use to represent data of SSM 'Type'.
 --
 -- Only supports non-Ref types; use 'stripRef' to strip away 'Ref' when needed.
-base :: HasCallStack => Type -> CIdent
+base :: Type -> CIdent
 base TInt32  = u32
 base TInt64  = u64
 base TUInt64 = u64
@@ -40,15 +39,15 @@ base_ :: Type -> C.Type
 base_ = t_ . base
 
 -- | Obtain scheduled variable type used to represent data of SSM 'Type'.
-svt_ :: HasCallStack => Type -> C.Type
+svt_ :: Type -> C.Type
 svt_ = t_ . svt . base
 
 -- | Synthesize call to initialize method of an SV.
-initialize_ :: HasCallStack => Type -> C.Exp -> C.Exp
+initialize_ :: Type -> C.Exp -> C.Exp
 initialize_ t e = [cexp|$id:(initialize $ base t)($exp:e)|]
 
 -- | Synthesize call to type-specific assign method of an SV.
-assign_ :: HasCallStack => Type -> C.Exp -> C.Exp -> C.Exp -> C.Exp
+assign_ :: Type -> C.Exp -> C.Exp -> C.Exp -> C.Exp
 assign_ (Ref t) _ _ _ =
   error $  "assign_ expects non-reference type, instead got: " ++ show t
 assign_ TEvent lhs prio _ =
@@ -57,7 +56,7 @@ assign_ ty lhs prio rhs =
   [cexp|$id:(assign $ base ty)($exp:lhs, $exp:prio, $exp:rhs)|]
 
 -- | Synthesize call to type-specific later method of an SV.
-later_ :: HasCallStack => Type -> C.Exp -> C.Exp -> C.Exp -> C.Exp
+later_ :: Type -> C.Exp -> C.Exp -> C.Exp -> C.Exp
 later_ (Ref t) _ _ _ =
   error $  "later_ expects non-reference type, instead got: " ++ show t
 later_ TEvent lhs time _ =
@@ -66,7 +65,7 @@ later_ ty lhs time rhs =
   [cexp|$id:(later $ base ty)($exp:lhs, $exp:time, $exp:rhs)|]
 
 -- | Synthesize trace statement for an SV.
-trace_ :: HasCallStack => Type -> Ident -> C.Exp -> C.Exp
+trace_ :: Type -> Ident -> C.Exp -> C.Exp
 trace_ (Ref t) n _ =
   error $ "Cannot trace variable " ++ show n ++ " of reference type: " ++ show t
 trace_ TEvent n v = [cexp|$id:debug_trace($string:fmt)|]
