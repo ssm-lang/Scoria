@@ -26,7 +26,7 @@ freq_count =
         count <- var $ u64 0 -- 32
         while true' $ do
             -- wait for gate to begin counting
-            wait [gate]
+            wait gate
 
             -- reset counter
             ifThenElse (changed signal) (count <~ u64 1) (count <~ u64 0)
@@ -35,9 +35,7 @@ freq_count =
 
             -- until the wake up is signalled, count every time there's a signal
             while (not' $ changed wake) $ do
-                wait [signal
-                     --, wake
-                            ]
+                wait (signal, wake)
                 -- if the signal signalled, increment the count
                 ifThen (not' (changed wake)) $ do
                     count <~ ((deref count) + 1)
@@ -55,8 +53,7 @@ freq_mime = box "freq_mime" ["freq", "led_ctl"] $ \freq led_ctl -> do
             led_ctl <~ true'
             after (secs 1 // deref freq) wake event'
 
-        wait [wake{-, freq -}
-                  ]
+        wait (wake, freq)
 
 one_shot
     :: Ref Frequency
@@ -65,7 +62,7 @@ one_shot
 one_shot = box "one_shot" ["freq", "led_ctl"] $ \freq led_ctl -> do
     while true' $ do
         -- wait for led to toggle
-        wait [led_ctl]
+        wait led_ctl
 
         -- try to calculate delay for when it should turn off
         delay <- var $ u64 0
@@ -109,4 +106,4 @@ testprogram = do
   where
     testmain :: (?sw0::Ref SW, ?sw1::Ref SW) => SSM ()
     testmain = boxNullary "testmain" $ do
-        wait [?sw0, ?sw1]
+        wait (?sw0, ?sw1)

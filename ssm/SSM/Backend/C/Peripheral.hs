@@ -94,9 +94,10 @@ instance CPeripheral LEDPeripheral where
         initonoffleds = map initonoffled $ onoffLEDs lp
 
         initonoffled :: (Int, Ident) -> C.BlockItem
-        initonoffled (i, id) = [citem| $id:fork( $id:top_return
+        initonoffled (i, id) = [citem| $id:fork( $id:initialize_static_output_device
+                                               ($id:top_return
                                                , SSM_ROOT_PRIORITY + (1 << SSM_ROOT_DEPTH)
                                                , SSM_ROOT_DEPTH - 1
                                                , &$id:(identName id)
                                                , $int:i
-                                               ); |]
+                                               )); |]

@@ -9,6 +9,8 @@ issue on GitHub where we are discussing monomorphisation strategies.
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE FlexibleInstances #-}
 module SSM.Frontend.Language
     ( -- * The SSM Embedded language
 
@@ -101,6 +103,7 @@ import SSM.Frontend.Box
 import SSM.Frontend.Ref
 import SSM.Frontend.Exp
 import SSM.Frontend.Compile
+import SSM.Frontend.Waitable
 
 -- | When interpreting or compiling a SSM program that requires input references,
 -- supply this value instead.
@@ -241,13 +244,13 @@ var (Exp e) = do
     emit $ NewRef id e
     return $ Ptr $ makeDynamicRef id (mkReference $ expType e)
 
--- | Block until any of the references in the input list are be written to.
-wait :: [Ref a] -> SSM ()
-wait r = emit $ Wait (map (\(Ptr r') -> r') r)
+-- | Generate waitable instances for different sized tuples
+$(return $ map makeWaitableInstance [1..62])
+
 
 waitFor :: SSMType a => Ref a -> Exp a -> SSM ()
 waitFor r e = do
-  doWhile (wait [r]) (deref r ==. e)
+  doWhile (wait r) (deref r ==. e)
 
 {- | Scheduled assignment. @after d r v@ means that after @d@ units of time, the
 reference @r@ should receive the value @v@. -}
@@ -284,7 +287,7 @@ doWhile :: SSM () -> Exp Bool -> SSM ()
 doWhile bdy c = bdy >> while c bdy
 
 waitSingle :: Ref a -> SSM ()
-waitSingle = box "waitSingle" ["r"] $ \r -> wait [r]
+waitSingle = box "waitSingle" ["r"] $ \r -> wait r
 
 {- | Wait for _all_ of the references in the input list to be written to at least once
 each. -}
