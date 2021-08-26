@@ -15,6 +15,7 @@ import SSM.Core.Syntax
       refName,
       SSMExp(..),
       SSMLit(..),
+      SSMTime(..),
       Type(..),
       UnaryOpE(..),
       UnaryOpR(..),
@@ -105,13 +106,15 @@ prettyStm stm = case stm of
         indent $ mapM_ prettyStm bdy
         emit "}"
     Skip           -> return ()
+
     After d r v    -> emit $ concat [ "after "
-                                    , prettySSMExp d
+                                    , prettySSMTime d
                                     , " then "
                                     , refName r
                                     , " = "
                                     , prettySSMExp v
                                     ]
+
     Wait refs      -> emit $ concat [ "wait ["
                                     , intercalate ", " (map refName refs)
                                     , "]"
@@ -187,3 +190,8 @@ prettyBinop op = case op of
     OTimes -> "*"
     OLT    -> "<"
     OEQ    -> "=="
+
+prettySSMTime :: SSMTime -> String
+prettySSMTime (SSMTime d u) = (prettySSMExp d) ++ show u
+prettySSMTime (SSMTimeAdd t1 t2) = (prettySSMTime t1) ++ "+" ++ (prettySSMTime t2)
+prettySSMTime (SSMTimeSub t1 t2) = (prettySSMTime t1) ++ "-" ++ (prettySSMTime t2)

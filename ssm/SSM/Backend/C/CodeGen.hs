@@ -379,7 +379,7 @@ genCase (After d r v) = do
   locs <- gets locals
   let lvar = refIdent r
       t    = stripRef $ refType r
-      del  = genExp locs d
+      del  = genTimeDelay locs d
       lhs  = refPtr r locs
       -- Note that the semantics of 'After' and 'later_' differ---the former
       -- expects a relative time, whereas the latter takes an absolute time.
@@ -487,6 +487,16 @@ genExp ls (BOp ty e1 e2 op) = gen op
   gen OEQ    = [cexp|$exp:c1 == $exp:c2|]
   gen OLT =
     [cexp|$exp:(signed_ (expType e1) c1) < $exp:(signed_ (expType e2) c2)|]
+
+-- | Generate C expression which computes an SSM time value.
+genTimeDelay :: [Reference] -> SSMTime -> C.Exp
+genTimeDelay ls (SSMTime d u) = [cexp|$exp:(genExp ls d) * $id:(units_ u)|]
+genTimeDelay ls (SSMTimeAdd t1 t2) = [cexp|($exp:t1') + ($exp:t2')|]
+  where t1' = genTimeDelay ls t1
+        t2' = genTimeDelay ls t2
+genTimeDelay ls (SSMTimeSub t1 t2) = [cexp|($exp:t1') - ($exp:t2')|]
+  where t1' = genTimeDelay ls t1
+        t2' = genTimeDelay ls t2
 
 -- | Promote a C expression to a C statement.
 expToStm :: C.Exp -> C.Stm

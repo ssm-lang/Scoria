@@ -39,7 +39,7 @@ p = Program
                      )
                      OLT
                    )
-                   [ After (Lit TUInt64 (LUInt64 2))
+                   [ After (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
                            (Dynamic (Ident "v0" Nothing, Ref TInt32))
                            (Lit TInt32 (LInt32 0))
                    ]
