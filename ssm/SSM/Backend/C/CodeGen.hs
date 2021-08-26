@@ -197,8 +197,9 @@ genStruct = do
  where
   -- | Turn a @(Ident, Type)@ pair into a C function parameter
   param :: (Ident, Type) -> C.FieldGroup
-  param (n, Ref t) = [csdecl|$ty:(svt_ t) *$id:(identName n);|]
-  param (n, t    ) = [csdecl|$ty:(base_ t) $id:(identName n);|]
+  param (n, t)
+    | isReference t = [csdecl|$ty:(svt_ $ stripRef t) *$id:(identName n);|]
+    | otherwise     = [csdecl|$ty:(base_ t) $id:(identName n);|]
 
   {- | Return a scheduled variable field, of the same type and name as the
   argument reference. -}
@@ -251,8 +252,9 @@ genEnter = do
  where
   -- | TODO: This only works because we don't have nested Refs (yet)
   param :: (Ident, Type) -> C.Param
-  param (n, Ref t) = [cparam|$ty:(svt_ t) *$id:(identName n)|]
-  param (n, t    ) = [cparam|$ty:(base_ t) $id:(identName n)|]
+  param (n, t)
+    | isReference t = [cparam|$ty:(svt_ $ stripRef t) *$id:(identName n)|]
+    | otherwise     = [cparam|$ty:(base_ t) $id:(identName n)|]
 
   -- | initialize a parameter
   initParam :: (Ident, Type) -> [C.Stm]
@@ -260,10 +262,10 @@ genEnter = do
 
   -- | Initialize a local reference
   initLocal :: Reference -> [C.Stm]
-  initLocal ref = [[cstm| $exp:init;|]]
+  initLocal ref = [[cstm| $exp:(initialize_ t r);|]]
    where
-    init =
-      initialize_ (stripRef $ refType ref) [cexp|&$id:acts->$id:(refName ref)|]
+    t = stripRef $ refType ref
+    r = [cexp|&$id:acts->$id:(refName ref)|]
 
   -- | Initialize a trigger
   initTrig :: Int -> C.Stm
@@ -283,29 +285,31 @@ genStep = do
   cases <- concat <$> mapM genCase (body p)
   locs  <- gets locals
   final <- nextCase
-  let
-    actname       = identName $ name p
-    act           = [cty|typename $id:actt|]
-    actt          = act_ actname -- hack to use this typename as expr in macros
-    step          = step_ actname
+  let actname       = identName $ name p
+      act           = [cty|typename $id:actt|]
+      actt          = act_ actname -- hack to use this typename as expr in macros
+      step          = step_ actname
 
-    actStepBeginS = show $ T.ActStepBegin actname
+      actStepBeginS = show $ T.ActStepBegin actname
 
-    debugLocal :: Reference -> C.Stm
-    debugLocal r =
-      [cstm|if ($exp:last_updated != $id:never) $exp:(trace_ ty name val);|]
-     where
-      last_updated = [cexp|$id:acts->$id:(refName r).sv.last_updated|]
-      (ty, name)   = (stripRef $ refType r, refIdent r)
-      val          = [cexp|$id:acts->$id:(refName r).value|]
+      debugLocal :: Reference -> C.Stm
+      debugLocal r =
+        [cstm|if ($exp:last_updated != $id:never) $exp:(trace_ ty name val);|]
+       where
+        last_updated = [cexp|$id:acts->$id:(refName r).sv.last_updated|]
+        (ty, name)   = (stripRef $ refType r, refIdent r)
+        val          = [cexp|$id:acts->$id:(refName r).value|]
 
-    debugArg :: (Ident, Type) -> C.Exp
-    debugArg (n, Ref t) = trace_ t n [cexp|$id:acts->$id:(identName n)->value|]
-    debugArg (n, t    ) = trace_ t n [cexp|$id:acts->$id:(identName n)|]
+      debugArg :: (Ident, Type) -> C.Exp
+      debugArg (n, t)
+        | isReference t = trace_ (stripRef t)
+                                 n
+                                 [cexp|$id:acts->$id:(identName n)->value|]
+        | otherwise = trace_ t n [cexp|$id:acts->$id:(identName n)|]
 
-    -- | Dequeue any outstanding event on a reference
-    dequeue :: Reference -> C.Stm
-    dequeue r = [cstm|$id:unsched_event(&$id:acts->$id:(refName r).sv);|]
+      -- | Dequeue any outstanding event on a reference
+      dequeue :: Reference -> C.Stm
+      dequeue r = [cstm|$id:unsched_event(&$id:acts->$id:(refName r).sv);|]
 
   return
     ( [cedecl|void $id:step($ty:act_t *$id:actg);|]
@@ -453,22 +457,21 @@ genCase Skip = return []
 
 -- | Produce a C expression that gives a pointer to an SV 'Reference'.
 refPtr :: Reference -> [Reference] -> C.Exp
-refPtr r@(Dynamic _) locs
-  | r `elem` locs = [cexp|&$id:acts->$id:(refName r)|]
-  | otherwise = [cexp|$id:acts->$id:(refName r)|]
+refPtr r@(Dynamic _) locs | r `elem` locs = [cexp|&$id:acts->$id:(refName r)|]
+                          | otherwise     = [cexp|$id:acts->$id:(refName r)|]
 refPtr r@(Static _) _ = [cexp|&$id:(refName r)|]
 
 -- | Generate C expression from 'SSMExp' and a list of local variables.
 genExp :: [Reference] -> SSMExp -> C.Exp
-genExp _  (Var TEvent n              ) = [cexp|0|]
-genExp _  (Var _      n              ) = [cexp|$id:acts->$id:(identName n)|]
-genExp _  (Lit _      (LInt32  i    )) = [cexp|$int:i|]
-genExp _  (Lit _      (LUInt8  i    )) = [cexp|$int:i|]
-genExp _  (Lit _      (LInt64  i    )) = [cexp|$lint:i|]
-genExp _  (Lit _      (LUInt64 i    )) = [cexp|$ulint:i|]
-genExp _  (Lit _      (LBool   True )) = [cexp|true|]
-genExp _  (Lit _      (LBool   False)) = [cexp|false|]
-genExp _  (Lit _      LEvent         ) = [cexp|0|]
+genExp _    (Var TEvent n              ) = [cexp|0|]
+genExp _    (Var _      n              ) = [cexp|$id:acts->$id:(identName n)|]
+genExp _    (Lit _      (LInt32  i    )) = [cexp|$int:i|]
+genExp _    (Lit _      (LUInt8  i    )) = [cexp|$int:i|]
+genExp _    (Lit _      (LInt64  i    )) = [cexp|$lint:i|]
+genExp _    (Lit _      (LUInt64 i    )) = [cexp|$ulint:i|]
+genExp _    (Lit _      (LBool   True )) = [cexp|true|]
+genExp _    (Lit _      (LBool   False)) = [cexp|false|]
+genExp _    (Lit _      LEvent         ) = [cexp|0|]
 genExp locs (UOpE _ e Neg              ) = [cexp|- $exp:(genExp locs e)|]
 genExp locs (UOpR t r op               ) = case op of
   Changed -> [cexp|$id:event_on(&$exp:(refPtr r locs)->sv)|]
