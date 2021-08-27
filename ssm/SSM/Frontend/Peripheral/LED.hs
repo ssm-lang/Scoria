@@ -46,7 +46,9 @@ off = false'
 
 {- | Statically create and initialize a binary stated LED, identified by a single
 integer. The meaning of this integer is not well defined yet, and it is assumed that a
-meaning exists in the runtime. -}
+meaning exists in the runtime. This function also returns a handler that will actually
+perform the IO side-effects. This must be scheduled to run, or else it will not
+perform any side effects. -}
 onoffLED :: Word8 -> Compile (Ref LED, Handler)
 onoffLED i = do
     n <- fresh

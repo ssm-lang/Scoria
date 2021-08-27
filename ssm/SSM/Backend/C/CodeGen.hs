@@ -147,9 +147,11 @@ genInitProgram p = [cunit|
   initGlobal (n, t) = [citem|$exp:init;|]
     where init = initialize_ (stripRef t) [cexp|&$id:(identName n)|]
 
+  -- | Create statements for scheduling the initial ready-queue content
   initialForks :: [QueueContent] -> [C.BlockItem]
   initialForks ips = map (uncurry initialFork) $ zip (pdeps (length ips)) ips
     where
+      -- | Create the schedule statement for a single schedulable thing
       initialFork :: (C.Exp, C.Exp) -> QueueContent -> C.BlockItem
       initialFork (priority, depth) (SSMProcedure id args) =
         [citem| $id:fork($id:(enter_ (identName id))( &$id:top_parent
@@ -167,12 +169,15 @@ genInitProgram p = [cunit|
                                           )
                        );|]
 
+      -- | Take a handler and return a list of arguments to it
       argsOfHandler :: Handler -> [Either SSMExp Reference]
       argsOfHandler (StaticOutputHandler ref id) =
         [ Right ref
         , Left $ Lit TUInt8 $ LUInt8 id
         ]
 
+      {- | Create C expressions that represent the new priorities and depths of the
+      initially scheduled processes. -}
       pdeps :: Int -> [(C.Exp, C.Exp)]
       pdeps cs =
         let depthsub = ceiling $ logBase (2 :: Double) $ fromIntegral $ cs :: Int
@@ -182,6 +187,7 @@ genInitProgram p = [cunit|
            | i <- [1..cs]
            ]
 
+      -- | Compile the arguments of a procedure to `Exp`
       cargs :: Either SSMExp Reference -> C.Exp
       cargs (Left e)  = genExp [] e
       cargs (Right r) = refPtr r []

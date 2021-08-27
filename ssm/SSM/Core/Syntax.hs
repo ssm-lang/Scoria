@@ -307,13 +307,22 @@ data Procedure = Procedure
     , body       :: [Stm]
     } deriving (Eq, Show, Read)
 
-data QueueContent = SSMProcedure Ident [Either SSMExp Reference]
-                  | Handler Handler
+-- | A @QueueContent@ is something that can be scheduled when a program begins executing.
+data QueueContent
+    {- | SSM procedures can be scheduled initially. Right now it is assumed that only
+    one SSM procedure will ever be scheduled initiailly, and that it will have no
+    arguments. The constructor looks like this, however, in preparation for any future
+    changes we might want to make. I might remove this second argument... -}
+    = SSMProcedure Ident [Either SSMExp Reference]
+    | Handler Handler  -- ^ Handlers can be scheduled
   deriving (Show, Read, Eq)
 
-data Handler = StaticOutputHandler Reference Word8
+-- | Different variants of handlers that can be scheduled at the beginning of a program
+data Handler = StaticOutputHandler Reference Word8  -- ^ Static output handlers (LED? only?)
   deriving (Show, Read, Eq)
 
+{- | Get the identifier of the SSM procedure that is scheduled at the start of a SSM
+program -}
 getInitialProcedure :: Program -> Ident
 getInitialProcedure p = getInitialProcedure' $ initialQueueContent p
   where
@@ -328,9 +337,8 @@ getInitialProcedure p = getInitialProcedure' $ initialQueueContent p
 
 -- | Program definition
 data Program = Program
-    { -- | Name of the procedure that is the program entrypoint.
+    { -- | The things that should be scheduled when the program starts
       initialQueueContent :: [QueueContent]
---      entry :: Ident
       -- | Map that associates procedure names with their definitions.
     , funs :: Map.Map Ident Procedure
       -- | Name and type of references that exist in the global scope.

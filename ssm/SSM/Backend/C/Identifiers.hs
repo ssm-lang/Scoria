@@ -85,13 +85,15 @@ type CIdent = String
 initialize_program :: CIdent
 initialize_program = "ssm_initialize_program"
 
--- | Name of top level static input switch initialization function
+-- | Name of the top level static input switch initialization function
 initialize_static_input_device :: CIdent
 initialize_static_input_device = "initialize_static_input_switch"
 
+-- | Name of the top level static output initialization function
 initialize_static_output_device :: CIdent
 initialize_static_output_device = "initialize_static_output_device"
 
+-- | Take a handler and return a `CIdent` representing the corresponding 'enter' function
 resolveNameOfHandler :: Handler -> CIdent
 resolveNameOfHandler (StaticOutputHandler _ _) = initialize_static_output_device
 resolveNameOfHandler s                         = error $ concat
@@ -105,6 +107,7 @@ resolveNameOfHandler s                         = error $ concat
 top_return :: CIdent
 top_return = "top_return"
 
+-- | Name of top level parent activation record
 top_parent :: CIdent
 top_parent = "ssm_top_parent"
 
@@ -152,6 +155,7 @@ never = "SSM_NEVER"
 throw :: CIdent
 throw = "SSM_THROW"
 
+-- | Exhausted priority
 exhausted_priority :: C.Exp
 exhausted_priority = [cexp|SSM_EXHAUSTED_PRIORITY|]
 
@@ -214,6 +218,10 @@ i64 = "i64"
 
 u64 :: CIdent
 u64 = "u64"
+
+-- | Return the C variant of the base type of a SSM type
+basetype :: Type -> C.Type
+basetype t = [cty|typename $id:(baseTypeId t)|]
 
 u8 :: CIdent
 u8 = "u8"

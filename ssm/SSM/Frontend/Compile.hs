@@ -17,15 +17,14 @@ import           Data.Maybe
 
 -- | State maintained by the `Compile` monad
 data CompileSt = CompileSt
-    { compileCounter   :: Int              -- ^ Counter to generate fresh named
-
-    , initialQueueContent :: [QueueContent]
-    , entryPoint          :: Maybe (SSM ())
+    { compileCounter      :: Int              -- ^ Counter to generate fresh named
+    , initialQueueContent :: [QueueContent]  -- ^ Initial ready-queue content
+    , entryPoint          :: Maybe (SSM ())  -- ^ SSM program to run
 
     -- globals & peripherals
-    , generatedGlobals :: [(Ident, Type)]  -- ^ Names and types of global references
-    , gpioperipherals  :: GPIOPeripheral   -- ^ GPIO peripherals
-    , ledperipherals   :: LEDPeripheral
+    , generatedGlobals    :: [(Ident, Type)]  -- ^ Names and types of global references
+    , gpioperipherals     :: GPIOPeripheral   -- ^ GPIO peripherals
+    , ledperipherals      :: LEDPeripheral    -- ^ LED peripheral
     }
 
 -- | Compile monad
@@ -86,14 +85,18 @@ instance SSMProgram (Compile ()) where
                     (Just $ SSM.Frontend.Compile.gpioperipherals s)
                     (Just $ SSM.Frontend.Compile.ledperipherals s)
 
+-- | Class of types that can be scheduled for execution by the SSM RTS
 class Schedulable a where
+    -- | Schedule an @a@ for execution by the SSM runtime system
     schedule :: a -> Compile ()
 
+-- | Handlers can be scheduled for execution by the SSM RTS
 instance Schedulable Handler where
     schedule h@(StaticOutputHandler ref id) =
         modify $ \st ->
             st { initialQueueContent = Handler h : initialQueueContent st }
 
+-- | `SSM` programs can be scheduled for execution by the SSM RTS
 instance Schedulable (SSM ()) where
     schedule ssm =
         let id = getProcedureName $ runSSM ssm
