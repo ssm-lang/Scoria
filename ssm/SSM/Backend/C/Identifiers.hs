@@ -10,7 +10,9 @@ module SSM.Backend.C.Identifiers
   , initialize_program
   , initialize_static_input_device
   , initialize_static_output_device
+  , resolveNameOfHandler
   , top_return
+  , top_parent
   , fork
   , act_enter
   , act_leave
@@ -90,9 +92,21 @@ initialize_static_input_device = "initialize_static_input_switch"
 initialize_static_output_device :: CIdent
 initialize_static_output_device = "initialize_static_output_device"
 
+resolveNameOfHandler :: Handler -> CIdent
+resolveNameOfHandler (StaticOutputHandler _ _) = initialize_static_output_device
+resolveNameOfHandler s                         = error $ concat
+  [ "SSM.Backend.C.Identifiers error ---\n"
+  , "trying to resolve name of handler "
+  , show s
+  , " but it is not known how to resolve such a handler"
+  ]
+
 -- | Name of top level return step-function
 top_return :: CIdent
 top_return = "top_return"
+
+top_parent :: CIdent
+top_parent = "ssm_top_parent"
 
 -- | Name of top level return step-function
 entry_point :: CIdent

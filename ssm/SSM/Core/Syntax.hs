@@ -75,6 +75,10 @@ module SSM.Core.Syntax
       of a program and any arguments the entry point should be applied to. -}
     , Program(..)
 
+    , QueueContent(..)
+    , Handler(..)
+    , getInitialProcedure
+
     , SSMProgram(..)
     ) where
 
@@ -303,10 +307,30 @@ data Procedure = Procedure
     , body       :: [Stm]
     } deriving (Eq, Show, Read)
 
+data QueueContent = SSMProcedure Ident [Either SSMExp Reference]
+                  | Handler Handler
+  deriving (Show, Read, Eq)
+
+data Handler = StaticOutputHandler Reference Word8
+  deriving (Show, Read, Eq)
+
+getInitialProcedure :: Program -> Ident
+getInitialProcedure p = getInitialProcedure' $ initialQueueContent p
+  where
+    getInitialProcedure' :: [QueueContent] -> Ident
+    getInitialProcedure' [] = error $ concat
+      [ "SSM.Core.Syntax.getInitialProcedure error ---\n"
+      , "no initial SSM procedure set to be scheduled when "
+      , "running the program"
+      ]
+    getInitialProcedure' (SSMProcedure id _ : _ ) = id
+    getInitialProcedure' (_                 : xs) = getInitialProcedure' xs
+
 -- | Program definition
 data Program = Program
     { -- | Name of the procedure that is the program entrypoint.
-      entry :: Ident
+      initialQueueContent :: [QueueContent]
+--      entry :: Ident
       -- | Map that associates procedure names with their definitions.
     , funs :: Map.Map Ident Procedure
       -- | Name and type of references that exist in the global scope.

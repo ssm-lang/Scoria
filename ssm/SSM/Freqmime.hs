@@ -40,7 +40,7 @@ freq_count =
                 ifThen (not' (changed wake)) $ do
                     count <~ ((deref count) + 1)
 
-            freq <~ (undefined :: Exp Word64) -- frequency calculation
+            freq <~ (5 {-undefined-} :: Exp Word64) -- frequency calculation
 
 freq_mime
     :: Ref Frequency
@@ -67,13 +67,13 @@ one_shot = box "one_shot" ["freq", "led_ctl"] $ \freq led_ctl -> do
         -- try to calculate delay for when it should turn off
         delay <- var $ u64 0
         ifThenElse (not' $ deref freq ==. 0)
-                   (delay <~ (min' undefined undefined :: Exp Word64))
+                   (delay <~ (min' 5 10 {-undefined undefined-} :: Exp Word64))
                    --undefined -- delay <~ MIN(BLINK_TIME, SSM_SECOND / acts->freq->value / 2
                    (delay <~ u64 100)
 
         -- schedule the turning off of the led
         ifThen (deref led_ctl) $ do
-            after undefined led_ctl false'
+            after (msecs 5) {-undefined-} led_ctl false'
 
 mmain :: (?sw0::Ref SW, ?sw1::Ref SW, ?led_ctl::Ref Bool) => SSM ()
 mmain = boxNullary "mmain" $ do
@@ -84,26 +84,15 @@ mmain = boxNullary "mmain" $ do
         , one_shot freq ?led_ctl
         ]
 
-testcompile :: Compile (SSM ())
-testcompile = do
-    x <- switch 0
-    y <- switch 1
-    let ?sw0     = x
-        ?sw1     = y
-        ?led_ctl = undefined
-    return mmain
-
-
-testprogram :: Compile (SSM ())
+testprogram :: Compile ()
 testprogram = do
     x <- switch 0
     y <- switch 1
-    z <- onoffLED 0
+    (z, handler) <- onoffLED 0
+
     let ?sw0 = x
         ?sw1 = y
         ?led_ctl = z
-    return testmain
-  where
-    testmain :: (?sw0::Ref SW, ?sw1::Ref SW) => SSM ()
-    testmain = boxNullary "testmain" $ do
-        wait (?sw0, ?sw1)
+
+    schedule mmain
+    schedule handler

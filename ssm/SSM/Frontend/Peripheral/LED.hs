@@ -30,6 +30,7 @@ import           SSM.Frontend.Ref
 import           SSM.Util.State
 
 import           Control.Monad.State
+import           Data.Word
 
 {- | On-off LEDs can be either on or off, so their state is semantically equivalent to
 a boolean state. -}
@@ -46,9 +47,11 @@ off = false'
 {- | Statically create and initialize a binary stated LED, identified by a single
 integer. The meaning of this integer is not well defined yet, and it is assumed that a
 meaning exists in the runtime. -}
-onoffLED :: Int -> Compile (Ref LED)
+onoffLED :: Word8 -> Compile (Ref LED, Handler)
 onoffLED i = do
     n <- fresh
     let id = Ident n Nothing
     modify $ \st -> st { ledperipherals = addOnOffLED i id $ ledperipherals st }
-    return $ Ptr $ makeStaticRef id (Ref TBool)
+    let ref     = makeStaticRef id (Ref TBool)
+    let handler = StaticOutputHandler ref i
+    return $ (Ptr ref, handler)

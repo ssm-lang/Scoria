@@ -38,16 +38,17 @@ interpret :: SSMProgram p => InterpretConfig -> p -> T.Trace
 interpret config program = runST $ do
   let p = toProgram program
   -- Fetch procedure body
-  fun <- case Map.lookup (entry p) (funs p) of
+  fun <- case Map.lookup (getInitialProcedure p) (funs p) of
     Just p' -> return p'
     Nothing ->
-      error $ "Interpreter error: cannot find entry point: " ++ identName (entry p)
+      error $ "Interpreter error: cannot find entry point: " ++ identName
+        (getInitialProcedure p)
   globs       <- globals p
   -- Run the interpret action and produce it's output
-  (_, events) <- runWriterT $ runStateT run $ initState config p 0 globs $ mkProc
-    config
-    p
-    fun
+  (_, events) <-
+    runWriterT $ runStateT run $ initState config p 0 globs $ mkProc config
+                                                                     p
+                                                                     fun
   return $ fromHughes events
 
 -- | Run the interpreter, serving the role of the @main@ function.

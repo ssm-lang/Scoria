@@ -6,6 +6,7 @@ module SSM.Language
     , module SSM.Frontend.Box
     , SSM
     , Compile
+    , Schedulable(..)
 
     ) where
 

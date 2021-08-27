@@ -22,7 +22,9 @@ import SSM.Core.Syntax
       Procedure(body, name, arguments),
       Program(..),
       Stm(..),
-      Ident(..))
+      Ident(..),
+      QueueContent(..),
+      Handler(..))
 import SSM.Util.HughesList ( fromHughes, toHughes, Hughes )
 
 type PP a = ReaderT Int                    -- current level of indentation
@@ -55,14 +57,22 @@ prettyProgram ssm = let wr = runReaderT (prettyProgram' ssm) 0
 
 prettyProgram' :: Program -> PP ()
 prettyProgram' p = do
-    emit "entrypoint:"
-    indent $ emit $ prettyApp (entry p, [])
+    emit "initial ready-queue content:"
+    mapM_ (indent . emit . prettyQueueContent) (initialQueueContent p) 
     emit ""
     emit "global variables:"
     prettyGlobals (globalReferences p)
     emit ""
     intercalateM (emit "") $ map prettyProcedure (Map.elems (funs p))
     return ()
+
+prettyQueueContent :: QueueContent -> String
+prettyQueueContent (SSMProcedure id args) = prettyApp (id, args)
+prettyQueueContent (Handler h           ) = case h of
+    StaticOutputHandler ref id -> prettyApp
+        ( Ident "static_output_handler" Nothing
+        , [Right ref, Left $ Lit TUInt8 $ LUInt8 id]
+        )
 
 prettyGlobals :: [(Ident, Type)] -> PP ()
 prettyGlobals xs = flip mapM_ xs $ \(n,t) ->

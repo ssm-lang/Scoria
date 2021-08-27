@@ -129,14 +129,16 @@ genGlobals = map declGlobal . globalReferences
   declGlobal :: (Ident, Type) -> C.Definition
   declGlobal (n, t) = [cedecl|$ty:(svt_ $ stripRef t) $id:(identName n);|]
 
+--    $id:fork($id:(enter_ $ identName $ entry p)
+--        (&ssm_top_parent, SSM_ROOT_PRIORITY, SSM_ROOT_DEPTH));
+
 -- | Generate the entry point of a program - the first thing to be ran.
 genInitProgram :: Program -> [C.Definition]
 genInitProgram p = [cunit|
   void $id:initialize_program(void) {
     $items:(map initGlobal $ globalReferences p)
     $items:(initPeripherals p)
-    $id:fork($id:(enter_ $ identName $ entry p)
-        (&ssm_top_parent, SSM_ROOT_PRIORITY, SSM_ROOT_DEPTH));
+    $items:(initialForks $ initialQueueContent p)
   }
   |]
  where
@@ -144,6 +146,45 @@ genInitProgram p = [cunit|
   initGlobal :: (Ident, Type) -> C.BlockItem
   initGlobal (n, t) = [citem|$exp:init;|]
     where init = initialize_ (stripRef t) [cexp|&$id:(identName n)|]
+
+  initialForks :: [QueueContent] -> [C.BlockItem]
+  initialForks ips = map (uncurry initialFork) $ zip (pdeps (length ips)) ips
+    where
+      initialFork :: (C.Exp, C.Exp) -> QueueContent -> C.BlockItem
+      initialFork (priority, depth) (SSMProcedure id args) =
+        [citem| $id:fork($id:(enter_ (identName id))( &$id:top_parent
+                                                    , $exp:priority
+                                                    , $exp:depth
+                                                    , $args:(map cargs args)
+                                                    )
+                        ); |]
+      initialFork (priority, depth) (Handler h) =
+        [citem|$id:fork($id:(resolveNameOfHandler h)
+                                          ( &$id:top_parent
+                                          , $exp:priority
+                                          , $exp:depth
+                                          , $args:(map cargs $ argsOfHandler h)
+                                          )
+                       );|]
+
+      argsOfHandler :: Handler -> [Either SSMExp Reference]
+      argsOfHandler (StaticOutputHandler ref id) =
+        [ Right ref
+        , Left $ Lit TUInt8 $ LUInt8 id
+        ]
+
+      pdeps :: Int -> [(C.Exp, C.Exp)]
+      pdeps cs =
+        let depthsub = ceiling $ logBase (2 :: Double) $ fromIntegral $ cs :: Int
+        in [ let prio  = [cexp|PRIORITY_AT_ROOT + ($int:(i-1) * (1 << $exp:depth))|]
+                 depth = [cexp|DEPTH_AT_ROOT - $int:depthsub|]
+             in (prio, depth)
+           | i <- [1..cs]
+           ]
+
+      cargs :: Either SSMExp Reference -> C.Exp
+      cargs (Left e)  = genExp [] e
+      cargs (Right r) = refPtr r []
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]

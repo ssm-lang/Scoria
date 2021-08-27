@@ -110,7 +110,7 @@ mkProc
   -> Program                  -- ^ Program
   -> Procedure                -- ^ Entry point
   -> Proc s
-mkProc conf p fun = Proc { procName        = identName $ entry p
+mkProc conf p fun = Proc { procName        = identName $ getInitialProcedure p
                          , priority        = rootPriority conf
                          , depth           = rootDepth conf
                          , runningChildren = 0
@@ -201,7 +201,7 @@ initState conf p startTime glob entryPoint = St
 that appear as input parameters to the program.
 -}
 getReferences :: Program -> Map.Map Ident (Var s) -> [(Ident, Var s)]
-getReferences p m = case Map.lookup (entry p) (funs p) of
+getReferences p m = case Map.lookup (getInitialProcedure p) (funs p) of
   Just pr ->
     let refparams  = filter (isReference . snd) $ arguments pr
         paramnames = map fst refparams
