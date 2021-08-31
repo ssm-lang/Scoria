@@ -558,15 +558,7 @@ genExp ls (BOp ty e1 e2 op)
   gen OOr    = [cexp|$exp:c1 || $exp:c2|]
 
 genTimeDelay :: [Reference] -> SSMTime -> C.Exp
-genTimeDelay ls (SSMTime d {-u-}) = [cexp|$exp:(genExp ls d)|]
-genTimeDelay ls (SSMTimeAdd t1 t2) = let t1' = genTimeDelay ls t1
-                                         t2' = genTimeDelay ls t2
-                                     in [cexp|($exp:t1') + ($exp:t2')|]
-genTimeDelay ls (SSMTimeSub t1 t2) = let t1' = genTimeDelay ls t1
-                                         t2' = genTimeDelay ls t2
-                                     in [cexp|($exp:t1') - ($exp:t2')|]
-genTimeDelay ls (SSMTimeDiv t1 d)  = let t1' = genTimeDelay ls t1
-                                     in [cexp|$exp:t1' / (typename u64) $exp:(genExp ls d)|]
+genTimeDelay ls (SSMTime d) = [cexp|$exp:(genExp ls d)|]
 
 -- | Promote a C expression to a C statement.
 expToStm :: C.Exp -> C.Stm

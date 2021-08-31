@@ -259,21 +259,8 @@ expType (BOp t _ _ _) = t
 
 -- Time
 
--- | Units of time supported by SSM.
---data SSMTimeUnit
---    = SSMNanosecond
---    | SSMMicrosecond
---    | SSMMillisecond
---    | SSMSecond
---    | SSMMinute
---    | SSMHour
---    deriving (Eq, Show, Read)
-
 -- | Time values with units to be resolved by CodeGen. Used in `after` stmts.
-data SSMTime = SSMTime SSMExp  -- in nanoseconds  --SSMTimeUnit
-             | SSMTimeAdd SSMTime SSMTime
-             | SSMTimeSub SSMTime SSMTime
-             | SSMTimeDiv SSMTime SSMExp
+data SSMTime = SSMTime SSMExp  -- in nanoseconds
     deriving (Eq, Show, Read)
 
 -- Programs

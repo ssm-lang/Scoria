@@ -11,6 +11,7 @@ issue on GitHub where we are discussing monomorphisation strategies.
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 module SSM.Frontend.Language
     ( -- * The SSM Embedded language
 
@@ -119,7 +120,7 @@ inputref = Ptr $ makeDynamicRef (Ident "dummy" Nothing) (Ref (typeOf (Proxy @a))
 
 {- | Class of types @a@ and @b@ where we can perform an immediate assignment of an @b@
 to an @a@. -}
-class Assignable a b where
+class Assignable a b | a -> b where
     -- | Immediate assignment
     (<~) :: a -> b -> SSM ()
 
@@ -192,10 +193,12 @@ u32 i = Exp $ Lit TUInt32 $ LUInt32 i
 u8 :: Word8 -> Exp Word8
 u8 i = Exp $ Lit TUInt8 $ LUInt8 i
 
-min' :: forall a . SSMType a => Exp a -> Exp a -> Exp a
+-- | Minimum of two values
+min' :: forall a . (SSMType a, Num a) => Exp a -> Exp a -> Exp a
 min' (Exp e1) (Exp e2) = Exp $ BOp (typeOf (Proxy @a)) e1 e2 OMin
 
-max' :: forall a . SSMType a => Exp a -> Exp a -> Exp a
+-- | Maximum of two values
+max' :: forall a . (SSMType a, Num a) => Exp a -> Exp a -> Exp a
 max' (Exp e1) (Exp e2) = Exp $ BOp (typeOf (Proxy @a)) e1 e2 OMax
 
 -- | Boolean literal @True@
@@ -214,39 +217,39 @@ event' = Exp $ Lit TEvent LEvent
 
 -- | Specify @e@ has units of nanoseconds. 
 nsecs :: Exp Word64 -> SSMTime
-nsecs (Exp e) = SSMTime e --SSMNanosecond
+nsecs (Exp e) = SSMTime e
 
 -- | Specify @e@ has units of microseconds. 
 usecs :: Exp Word64 -> SSMTime
-usecs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes --SSMMicrosecond
+usecs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes
   where
     factor :: SSMExp
     factor = Lit TUInt64 $ LUInt64 1000
 
 -- | Specify @e@ has units of milliseconds. 
 msecs :: Exp Word64 -> SSMTime
-msecs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes -- SSMMillisecond
+msecs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes
   where
     factor :: SSMExp
     factor = Lit TUInt64 $ LUInt64 1000000
 
 -- | Specify @e@ has units of seconds. 
 secs :: Exp Word64 -> SSMTime
-secs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes -- SSMSecond
+secs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes
   where
     factor :: SSMExp
     factor = Lit TUInt64 $ LUInt64 1000000000
 
 -- | Specify @e@ has units of minutes. 
 mins :: Exp Word64 -> SSMTime
-mins (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes --SSMMinute
+mins (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes
   where
     factor :: SSMExp
     factor = Lit TUInt64 $ LUInt64 60000000000
 
 -- | Specify @e@ has units of hours.
 hrs :: Exp Word64 -> SSMTime
-hrs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes -- SSMHour
+hrs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes 
   where
     factor :: SSMExp
     factor = Lit TUInt64 $ LUInt64 3600000000000
@@ -254,28 +257,16 @@ hrs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes -- SSMHour
 {- | Turn a `SSMTime` into a `Exp Word64`, where the @Word64@ denotes the time in
 nanoseconds. -}
 time2ns :: SSMTime -> Exp Word64
-time2ns t = case t of
-  SSMTime e        -> Exp e
-  SSMTimeAdd t1 t2 ->
-    let Exp op1 = time2ns t1
-        Exp op2 = time2ns t2
-    in Exp $ BOp TUInt64 op1 op2 OPlus
-  SSMTimeSub t1 t2 ->
-    let Exp op1 = time2ns t1
-        Exp op2 = time2ns t2
-    in Exp $ BOp TUInt64 op1 op2 OMinus
-  SSMTimeDiv t denominator ->
-    let Exp numerator = time2ns t
-    in Exp $ BOp TUInt64 numerator denominator ODiv
+time2ns (SSMTime e) = Exp e
 
 {- | More direct division of time. E.g @t // 5@ divides a time into one fifth of the
 original time. This function can be convenient when you need to calculate delays etc. -}
 (//) :: SSMTime -> Exp Word64 -> SSMTime
-t // (Exp d) = SSMTimeDiv t d
+t // e = lift2T (/.) t (nsecs e)
 
 instance Num SSMTime where
-    t1 + t2       = lift2T (+) t1 t2 --SSMTimeAdd t1 t2
-    t1 - t2       = lift2T (-) t1 t2 --SSMTimeSub t1 t2
+    t1 + t2       = lift2T (+) t1 t2
+    t1 - t2       = lift2T (-) t1 t2
     t1 * t2       = undefined
     fromInteger _ = undefined
     abs _         = undefined
@@ -311,7 +302,7 @@ var (Exp e) = do
 -- | Generate waitable instances for different sized tuples
 $(return $ map makeWaitableInstance [1..62])
 
-
+-- | Wait for a reference to assume a specific value
 waitFor :: SSMType a => Ref a -> Exp a -> SSM ()
 waitFor r e = do
   doWhile (wait r) (deref r ==. e)
@@ -367,7 +358,7 @@ waitAll refs = fork $ map waitSingle refs
 
 
 
-
+-- this needs to go someplace else
 
 -- | Create a global reference
 global :: forall a . SSMType a => Compile (Ref a)

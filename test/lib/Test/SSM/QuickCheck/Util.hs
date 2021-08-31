@@ -162,16 +162,17 @@ removeVars = go
       rewriteDelay :: SSMTime -> [Ident] -> [Reference] -> SSMTime
       rewriteDelay d invalid validrefs = case d of
           SSMTime del {-units-} -> SSMTime (rewriteExp del invalid validrefs) --units
-          SSMTimeAdd t1 t2  -> SSMTimeAdd (rewriteDelay t1 invalid validrefs)
-                                          (rewriteDelay t2 invalid validrefs)
-          SSMTimeSub t1 t2  -> SSMTimeSub (rewriteDelay t1 invalid validrefs)
-                                          (rewriteDelay t2 invalid validrefs)
+--          SSMTimeAdd t1 t2  -> SSMTimeAdd (rewriteDelay t1 invalid validrefs)
+--                                          (rewriteDelay t2 invalid validrefs)
+--          SSMTimeSub t1 t2  -> SSMTimeSub (rewriteDelay t1 invalid validrefs)
+--                                          (rewriteDelay t2 invalid validrefs)
 
       -- | Default literal of expressions
       defaultExp :: Type -> SSMExp
       defaultExp TInt32  = Lit TInt32 (LInt32 1)
       defaultExp TInt64  = Lit TInt64 (LInt64 1)
       defaultExp TUInt8  = Lit TUInt8 (LUInt8 1)
+      defaultExp TUInt32 = Lit TUInt32 (LUInt32 1)
       defaultExp TUInt64 = Lit TUInt64 (LUInt64 1)
       defaultExp TBool   = Lit TBool (LBool True)
       defaultExp TEvent  = Lit TEvent LEvent

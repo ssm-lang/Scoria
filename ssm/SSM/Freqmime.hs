@@ -22,12 +22,12 @@ type Frequency = Word64
 freq_count :: Ref SW -> Ref SW -> Ref Frequency -> SSM ()
 freq_count = box "freq_count" ["gate", "signal", "freq"] $ \gate signal freq -> do
     wake <- var event'
-    count <- var $ u64 0
+    count <- var 0
     while true' $ do
         ifThen (unchanged gate) $ do
             wait gate
         
-        ifThenElse (changed signal) (count <~ u64 1) (count <~ u64 0)
+        ifThenElse (changed signal) (count <~ 1) (count <~ 0)
         after gate_period wake event'
 
         doWhile (do

@@ -150,7 +150,7 @@ arbProc funs vars refs c n = frequency $
       , (1, do r        <- elements refs
                v        <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
                (rest,c') <- arbProc funs vars refs c (n-1)
-               delay     <- choose (0, 3) >>= genDelay
+               delay     <- genDelay
                let stm   = After delay r v
                return (stm:rest, c')
         )
@@ -180,8 +180,8 @@ arbProc funs vars refs c n = frequency $
           return (n, args)
 
       -- | Generate a delay.
-      genDelay :: Int -> Gen SSMTime
-      genDelay 0 = do
+      genDelay :: Gen SSMTime
+      genDelay = do
 --          unit' <- arbitrary
           delay <- Lit TUInt64 . LUInt64 <$> choose (1,10000000000) --arbDelay unit'
           return $ SSMTime delay --unit'
@@ -193,12 +193,12 @@ arbProc funs vars refs c n = frequency $
 --              arbDelay SSMMillisecond = choose (1, 10800000)
 --              arbDelay SSMMicrosecond = choose (1, 10800000000)
 --              arbDelay SSMNanosecond  = choose (1, 10800000000000)
-      genDelay n = do
-          t1 <- genDelay $ n `div` 2
-          t2 <- genDelay $ n `div` 2
-          oneof $ [ return $ SSMTimeAdd t1 t2
-                  , return $ SSMTimeAdd (SSMTimeSub t1 t2) (SSMTime (Lit TUInt64 (LUInt64 1)) {-SSMNanosecond-})
-                  ]
+--      genDelay n = do
+--          t1 <- genDelay $ n `div` 2
+--          t2 <- genDelay $ n `div` 2
+--          oneof $ [ return $ SSMTimeAdd t1 t2
+--                  , return $ SSMTimeAdd (SSMTimeSub t1 t2) (SSMTime (Lit TUInt64 (LUInt64 1)) {-SSMNanosecond-})
+--                  ]
 
       -- | Predicate that returns True if the given procedure can be forked.
       -- What determines this is what references we have in scope. If the procedure

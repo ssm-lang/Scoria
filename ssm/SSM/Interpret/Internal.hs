@@ -826,22 +826,9 @@ getBool :: SSMExp -> Bool
 getBool (Lit _ (LBool b)) = b
 getBool e                 = expTypeError "Bool" e
 
-{- | Retrieve a Haskell @Word64@ from applying @SSMTimeUnit@s to a @Word64@.
-Note that SSM time is in nanoseconds. -}
---applyUnit :: Word64 -> SSMTimeUnit -> Word64
---applyUnit d SSMNanosecond  = d
---applyUnit d SSMMicrosecond = d * 1000
---applyUnit d SSMMillisecond = d * 1000000
---applyUnit d SSMSecond      = d * 1000000000
---applyUnit d SSMMinute      = d * 60000000000
---applyUnit d SSMHour        = d * 3600000000000
-
 -- | Recursively evaluate an @SSMTime@ value.
-genTimeDelay :: SSMTime -> Word64
-genTimeDelay (SSMTime d {-u-})      = {-applyUnit -}(getUInt64 d) -- u  -- FIXME this needs to be eval'd
-genTimeDelay (SSMTimeAdd t1 t2) = (genTimeDelay t1) + (genTimeDelay t2)
-genTimeDelay (SSMTimeSub t1 t2) = (genTimeDelay t1) - (genTimeDelay t2)
-genTimeDelay (SSMTimeDiv t1 e)  = genTimeDelay t1 `div` undefined
+genTimeDelay :: SSMTime -> Interp s Word64
+genTimeDelay (SSMTime d) = getUInt64 <$> eval d
 
 -- | Obtain type and concrete representation of an expression; only works for
 -- literals.
