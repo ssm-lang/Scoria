@@ -19,7 +19,12 @@ instance Arg (Ref a) where
     arg _    []       _       = error "No more parameter names"
     arg name (x : xs) (Ptr r) = do
         emit $ Argument (Ident name Nothing) (Ident x Nothing) $ Right r
-        return (Ptr $ SSM.Frontend.Syntax.renameRef r (Ident x Nothing), xs)
+
+        {- from this point and onwards, the reference exists in the context of a
+        procedure, so we need to convert it to a dynamic reference, regardless
+        of what it was before. -}
+        let newref = makeDynamicRef (Ident x Nothing) $ refType r
+        return (Ptr newref, xs)
 
 -- | We can capture names for `Reference`s
 instance AnnotatedM SSM (Ref a) where
