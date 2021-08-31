@@ -145,7 +145,7 @@ $(SSM_SRCS:%.hs=%.c): %.c: %.hs
 ##
 
 # These variables are used by runtime and platform Build.mk to orient themselves
-RUNTIMEDIR := $(SSMDIR)/runtime
+RUNTIMEDIR := $(SSMDIR)/lib/ssm
 PLATFORMDIR := $(SSMDIR)/platform/$(PLATFORM)
 
 include $(PLATFORMDIR)/Build.mk
