@@ -259,7 +259,7 @@ expType (BOp t _ _ _) = t
 -- Time
 
 -- | Time values with units to be resolved by CodeGen. Used in `after` stmts.
-data SSMTime = SSMTime SSMExp  -- in nanoseconds
+newtype SSMTime = SSMTime SSMExp  -- in nanoseconds
     deriving (Eq, Show, Read)
 
 -- Programs
