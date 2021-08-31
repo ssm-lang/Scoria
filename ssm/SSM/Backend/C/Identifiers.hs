@@ -244,15 +244,6 @@ initialize ty = "ssm_initialize_" ++ ty
 assign :: CIdent -> CIdent
 assign ty = "ssm_assign_" ++ ty
 
--- | Obtain the name of the unit macro for an `SSMTimeUnit`.
---units_ :: SSMTimeUnit -> CIdent
---units_ SSMNanosecond  = "SSM_NANOSECOND"
---units_ SSMMicrosecond = "SSM_MICROSECOND"
---units_ SSMMillisecond = "SSM_MILLISECOND"
---units_ SSMSecond      = "SSM_SECOND"
---units_ SSMMinute      = "SSM_MINUTE"
---units_ SSMHour        = "SSM_HOUR"
-
 -- | Obtain the name of the later method for an SSM `Type`.
 later :: CIdent -> CIdent
 later ty = "ssm_later_" ++ ty

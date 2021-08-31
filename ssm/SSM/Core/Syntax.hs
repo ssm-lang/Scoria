@@ -55,7 +55,6 @@ module SSM.Core.Syntax
 
       -- ** Time
       {- Exposes units of time to wrap Word64 expressions. -}
---    , SSMTimeUnit(..)
     , SSMTime(..)
 
       -- ** Statements
