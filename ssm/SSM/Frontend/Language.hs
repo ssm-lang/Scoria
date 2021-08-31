@@ -48,6 +48,14 @@ module SSM.Frontend.Language
     , false'
     , event'
 
+    --- *** Time wrappers
+    , nsecs
+    , usecs
+    , msecs
+    , secs
+    , mins
+    , hrs
+
       -- ** Primitive statements
       {- | These are the primitive statements of the SSM language. Your procedure
       body is constructed by using these functions. The language is sequential, so the
@@ -227,6 +235,40 @@ false' = Exp $ Lit TBool $ LBool False
 event' :: Exp ()
 event' = Exp $ Lit TEvent LEvent
 
+-- Time wrappers for use in stmts/expressions that expect time values.
+
+-- | Specify @e@ has units of nanoseconds. 
+nsecs :: Exp Word64 -> SSMTime
+nsecs (Exp e) = SSMTime e SSMNanosecond
+
+-- | Specify @e@ has units of microseconds. 
+usecs :: Exp Word64 -> SSMTime
+usecs (Exp e) = SSMTime e SSMMicrosecond
+
+-- | Specify @e@ has units of milliseconds. 
+msecs :: Exp Word64 -> SSMTime
+msecs (Exp e) = SSMTime e SSMMillisecond
+
+-- | Specify @e@ has units of seconds. 
+secs :: Exp Word64 -> SSMTime
+secs (Exp e) = SSMTime e SSMSecond
+
+-- | Specify @e@ has units of minutes. 
+mins :: Exp Word64 -> SSMTime
+mins (Exp e) = SSMTime e SSMMinute
+
+-- | Specify @e@ has units of hours.
+hrs :: Exp Word64 -> SSMTime
+hrs (Exp e) = SSMTime e SSMHour
+
+instance Num SSMTime where
+    t1 + t2       = SSMTimeAdd t1 t2
+    t1 - t2       = SSMTimeSub t1 t2
+    t1 * t2       = undefined
+    fromInteger _ = undefined
+    abs _         = undefined
+    signum _      = undefined
+
 -- | Dereference a reference and get an expression holding the result
 deref :: forall a . SSMType a => Ref a -> Exp a
 deref (Ptr r) = Exp $ UOpR (typeOf (Proxy @a)) r Deref
@@ -244,10 +286,10 @@ var (Exp e) = do
 wait :: [Ref a] -> SSM ()
 wait r = emit $ Wait (map (\(Ptr r') -> r') r)
 
-{- | Scheduled assignment. @after d r v@ means that after @a@ units of time, the
+{- | Scheduled assignment. @after d r v@ means that after @d@ units of time, the
 reference @r@ should receive the value @v@. -}
-after :: Exp Word64 -> Ref a -> Exp a -> SSM ()
-after (Exp e) (Ptr r) (Exp v) = emit $ After e r v
+after :: SSMTime -> Ref a -> Exp a -> SSM ()
+after d (Ptr r) (Exp v) = emit $ After d r v
 
 -- | Fork one or more procedures.
 fork :: [SSM ()] -> SSM ()

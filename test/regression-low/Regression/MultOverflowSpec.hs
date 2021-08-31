@@ -12,34 +12,49 @@ import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = Ident "fun1" Nothing
-  , funs  = fromList
+  { entry            = Ident "fun1" Nothing
+  , funs             = fromList
     [ ( Ident "fun1" Nothing
       , Procedure
         { name      = Ident "fun1" Nothing
         , arguments = []
-        , body      =
-          [ NewRef ((Ident "v0" Nothing)) TInt32 (Lit TInt32 (LInt32 999999))
-          , If
-            (BOp TBool
-                 (Lit TInt32 (LInt32 0))
-                 (BOp TInt32 (UOpR TInt32 (Dynamic (Ident "v0" Nothing, Ref TInt32)) Deref) (UOpR TInt32 (Dynamic (Ident "v0" Nothing, Ref TInt32)) Deref) OTimes)
-                 OLT
-            )
-            [ After (Lit TUInt64 (LUInt64 2))
-                    (Dynamic ((Ident "v0" Nothing), Ref TInt32))
-                    (Lit TInt32 (LInt32 0))
-            ]
-            [ After (Lit TUInt64 (LUInt64 2))
-                    (Dynamic ((Ident "v0" Nothing), Ref TInt32))
-                    (Lit TInt32 (LInt32 1))
-            ]
-          , Wait [Dynamic ((Ident "v0" Nothing), Ref TInt32)]
-          ]
+        , body      = [ NewRef (Ident "v0" Nothing)
+                               TInt32
+                               (Lit TInt32 (LInt32 999999))
+                      , If
+                        (BOp
+                          TBool
+                          (Lit TInt32 (LInt32 0))
+                          (BOp
+                            TInt32
+                            (UOpR TInt32
+                                  (Dynamic (Ident "v0" Nothing, Ref TInt32))
+                                  Deref
+                            )
+                            (UOpR TInt32
+                                  (Dynamic (Ident "v0" Nothing, Ref TInt32))
+                                  Deref
+                            )
+                            OTimes
+                          )
+                          OLT
+                        )
+
+                        [ After (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
+                                (Dynamic (Ident "v0" Nothing, Ref TInt32))
+                                (Lit TInt32 (LInt32 0))
+                        ]
+                        [ After (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
+                                (Dynamic (Ident "v0" Nothing, Ref TInt32))
+                                (Lit TInt32 (LInt32 1))
+                        ]
+                      , Wait [Dynamic (Ident "v0" Nothing, Ref TInt32)]
+                      ]
         }
       )
     ]
-  , globalReferences = []}
+  , globalReferences = []
+  }
 
 spec :: H.Spec
-spec = T.semanticIncorrectSpec "MultOverflow" p
+spec = T.correctSpec "MultOverflow" p

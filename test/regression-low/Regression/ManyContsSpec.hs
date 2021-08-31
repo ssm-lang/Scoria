@@ -30,7 +30,7 @@ p = Program
                       ]
         , body      =
           [ After
-            (Lit TUInt64 (LUInt64 2))
+            (SSMTime (Lit TUInt64 (LUInt64 2)) SSMNanosecond)
             (Dynamic (Ident "Ref2" Nothing, Ref TUInt64))
             (Lit TUInt64 (LUInt64 2))
           , Wait [Dynamic (Ident "Ref2" Nothing, Ref TUInt64)]

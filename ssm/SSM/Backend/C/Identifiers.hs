@@ -30,10 +30,14 @@ module SSM.Backend.C.Identifiers
   , stepf_t
   , act_t
   , sv_t
-      {- | These are (a subset of the) types that the runtime system includes and uses
-      internally. These are just the ones that the code generator needs to talk about. -}
-  , uint16_t
-  , bool_t
+
+  , i32
+  , u32
+  , i64
+  , u64
+  , u8
+  , event
+  , bool
 
       -- * Constructing Identifiers from strings
       -- | These functions create identifiers from some known [pre|suf]fix.
@@ -42,26 +46,21 @@ module SSM.Backend.C.Identifiers
   , enter_
   , trig_
 
+      -- * Constructing SSM time macros from SSMTimeUnit
+  , units_
+
       -- * Constructing Identifiers from types
       {- | Some identifiers need to be prefixed or suffixed with some type information,
       such as @later_int@, @later_bool@ etc. We create identifiers like these and others
       by using these functions. -}
-  , svt_
-  , initialize_
-  , assign_
-  , later_
-  , basetype
+  , svt
+  , initialize
+  , assign
+  , later
 
     -- * Debug-/trace-specific macros
   , debug_microtick
   , debug_trace
-
-    -- * Accessing references
-    {- | These functions help the code generator compile a reference into a
-    C-expression that references the same reference. -}
-  , refPtr
-  , refVal
-  , refSV
   ) where
 
 import           SSM.Core.Syntax
@@ -71,7 +70,6 @@ import           Language.C.Quote.GCC           ( cexp
                                                 , cty
                                                 )
 import qualified Language.C.Syntax             as C
-import           SSM.Backend.C.Types
 
 -- | Use snake_case for c literals
 {-# ANN module "HLint: ignore Use camelCase" #-}
@@ -154,14 +152,6 @@ trigger_t = [cty|struct ssm_trigger|]
 stepf_t :: C.Type
 stepf_t = [cty|typename ssm_stepf_t|]
 
--- | C type that represents 16 bit unsigned integers
-uint16_t :: C.Type
-uint16_t = [cty|typename uint16_t|]
-
--- | C type that represents booleans
-bool_t :: C.Type
-bool_t = [cty|typename bool|]
-
 {---- Activation record identifiers ----}
 
 -- | The type of the activation record base class.
@@ -190,56 +180,54 @@ trig_ i = "trig" ++ show i
 sv_t :: C.Type
 sv_t = [cty|struct sv|]
 
--- | Obtain the name of the scheduled variable type for an SSM `Type`.
-svt_ :: Type -> C.Type
-svt_ ty = [cty|typename $id:("ssm_" ++ baseTypeId ty ++ "_t")|]
+i32 :: CIdent
+i32 = "i32"
 
-basetype :: Type -> C.Type
-basetype t = [cty|typename $id:(baseTypeId t)|]
+u32 :: CIdent
+u32 = "u32"
 
--- | Obtain the name of the initialize method for an SSM `Type`.
-initialize_ :: Type -> CIdent
-initialize_ ty = "ssm_initialize_" ++ baseTypeId ty
+i64 :: CIdent
+i64 = "i64"
+
+u64 :: CIdent
+u64 = "u64"
+
+u8 :: CIdent
+u8 = "u8"
+
+event :: CIdent
+event = "event"
+
+bool :: CIdent
+bool = "bool"
+
+-- | Obtain the name of the scheduled variable type.
+svt :: CIdent -> CIdent
+svt ty = "ssm_" ++ ty ++ "_t"
+
+-- | Obtain the name of the initialize method.
+initialize :: CIdent -> CIdent
+initialize ty = "ssm_initialize_" ++ ty
 
 -- | Obtain the name of the assign method for an SSM `Type`.
-assign_ :: Type -> CIdent
-assign_ ty = "ssm_assign_" ++ baseTypeId ty
+assign :: CIdent -> CIdent
+assign ty = "ssm_assign_" ++ ty
+
+-- | Obtain the name of the unit macro for an `SSMTimeUnit`.
+units_ :: SSMTimeUnit -> CIdent
+units_ SSMNanosecond  = "SSM_NANOSECOND"
+units_ SSMMicrosecond = "SSM_MICROSECOND"
+units_ SSMMillisecond = "SSM_MILLISECOND"
+units_ SSMSecond      = "SSM_SECOND"
+units_ SSMMinute      = "SSM_MINUTE"
+units_ SSMHour        = "SSM_HOUR"
 
 -- | Obtain the name of the later method for an SSM `Type`.
-later_ :: Type -> CIdent
-later_ ty = "ssm_later_" ++ baseTypeId ty
+later :: CIdent -> CIdent
+later ty = "ssm_later_" ++ ty
 
 debug_microtick :: CIdent
 debug_microtick = "SSM_DEBUG_MICROTICK"
 
 debug_trace :: CIdent
 debug_trace = "SSM_DEBUG_TRACE"
-
-{- | Given a reference and a list of local references, this function will return
-a C expression that holds a pointer to the reference. -}
-refPtr :: Reference -> [Reference] -> C.Exp
-refPtr r@(Dynamic _) lrefs =
-  if r `elem` lrefs
-    then [cexp| &acts->$id:(refName r) |]
-    else [cexp| acts->$id:(refName r)  |]
--- Static references can be referenced without an activation record
-refPtr r@(Static _) _ = [cexp| &$id:(refName r) |]
-
-{- | Given a reference and a list of local references, this function will return a
-C expression that holds a pointer to the internal sv-component of the processes
-activation record. -}
-refSV :: Reference -> [Reference] -> C.Exp
-refSV r@(Dynamic _) lrefs =
-  if r `elem` lrefs
-    then [cexp| &acts->$id:(refName r).sv |]
-    else [cexp| &acts->$id:(refName r)->sv|]
-refSV r@(Static _) _ = [cexp| &$id:(refName r).sv|]
-
-{- | Given a Reference, this function will return a C expression that holds
-the value of that reference. -}
-refVal :: Reference -> [Reference] -> C.Exp
-refVal r@(Dynamic _) lrefs =
-  if r `elem` lrefs
-    then [cexp| acts->$id:(refName r).value|]
-    else [cexp| acts->$id:(refName r)->value|]
-refVal r@(Static _) _      = [cexp| $id:(refName r).value |]

@@ -114,10 +114,10 @@ removeVars = go
         After d r v    ->
             if not $ r `elem` validrefs
                 then Skip : go invalid validrefs xs
-                else After (rewriteExp d invalid validrefs)
+                else After (rewriteDelay d invalid validrefs)
                            r
                            (rewriteExp v invalid validrefs) :
-                     go invalid validrefs xs
+                        go invalid validrefs xs
 
         Wait refs      ->
             let refs' = filter (`elem` validrefs) refs
@@ -156,6 +156,15 @@ removeVars = go
                   (rewriteExp e1 invalid validrefs)
                   (rewriteExp e2 invalid validrefs)
                   op
+
+      -- | Rewrite an SSMTime expression
+      rewriteDelay :: SSMTime -> [Ident] -> [Reference] -> SSMTime
+      rewriteDelay d invalid validrefs = case d of
+          SSMTime del units -> SSMTime (rewriteExp del invalid validrefs) units
+          SSMTimeAdd t1 t2  -> SSMTimeAdd (rewriteDelay t1 invalid validrefs)
+                                          (rewriteDelay t2 invalid validrefs)
+          SSMTimeSub t1 t2  -> SSMTimeSub (rewriteDelay t1 invalid validrefs)
+                                          (rewriteDelay t2 invalid validrefs)
 
       -- | Default literal of expressions
       defaultExp :: Type -> SSMExp

@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a0f8bd48de2115636fda8c0f782dfcf3b71c53ec06ad80fd9bbef24a1a513322
+-- hash: b6b1d2295b3ba8b6c31ad298a0c9ba4fbf9ec6fe6349924d842fad5defd3cd84
 
 name:           ssm
 version:        0.1.0.0
@@ -29,9 +29,7 @@ library
   exposed-modules:
       SSM.Backend.C.CodeGen
       SSM.Backend.C.Compile
-      SSM.Backend.C.Exp
       SSM.Backend.C.Identifiers
-      SSM.Backend.C.MainLoop
       SSM.Backend.C.Types
       SSM.Compile
       SSM.Core.Syntax
@@ -47,7 +45,6 @@ library
       SSM.Language
       SSM.Pretty
       SSM.Pretty.Syntax
-      SSM.TestProgram
       SSM.Util.Default
       SSM.Util.HughesList
       SSM.Util.Operators
@@ -172,11 +169,14 @@ test-suite 2-regression-low
       Regression.EmptyFunSpec
       Regression.FiveForkerSpec
       Regression.FlipFlopLoopSpec
+      Regression.GlobalEventSpec
+      Regression.Int32ArithSpec
       Regression.LaterAssignOverwriteSpec
       Regression.LaterWaitSpec
       Regression.ManyContsSpec
       Regression.MultOverflowIndirectSpec
       Regression.MultOverflowSpec
+      Regression.NewEventSpec
       Regression.RecurseExhaustDepthSpec
       Regression.RecurseForeverSpec
       Paths_ssm
