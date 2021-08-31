@@ -55,7 +55,7 @@ module SSM.Core.Syntax
 
       -- ** Time
       {- Exposes units of time to wrap Word64 expressions. -}
-    , SSMTimeUnit(..)
+--    , SSMTimeUnit(..)
     , SSMTime(..)
 
       -- ** Statements
@@ -77,7 +77,7 @@ module SSM.Core.Syntax
 
     , QueueContent(..)
     , Handler(..)
-    , getInitialProcedure
+    , entry
 
     , SSMProgram(..)
     ) where
@@ -97,6 +97,7 @@ import SSM.Core.Peripheral.LED
 -- | Data types supported by the language
 data Type
     = TUInt8    -- ^ Unsigned 8-bit integer
+    | TUInt32   -- ^ Unsigned 32-bit integer
     | TUInt64   -- ^ Unsigned 64-bit integer
     | TInt32    -- ^ Signed 32-bit integer
     | TInt64    -- ^ Signed 64-bit integer
@@ -135,6 +136,9 @@ class SSMType a where
 
 instance SSMType Word8 where
   typeOf _ = TUInt8
+
+instance SSMType Word32 where
+  typeOf _ = TUInt32
 
 instance SSMType Word64 where
     typeOf _ = TUInt64
@@ -210,9 +214,10 @@ data SSMExp
 -- | Literals take any of these forms
 data SSMLit
     = LUInt8 Word8    -- ^ 8bit unsigned integers
+    | LUInt32 Word32  -- ^ 32bit unsigned integers
+    | LUInt64 Word64  -- ^ 64bit unsigned integer literals
     | LInt32 Int32    -- ^ Integer literals
     | LInt64 Int64    -- ^ 64bit integer literals
-    | LUInt64 Word64  -- ^ 64bit unsigned integer literals
     | LBool Bool      -- ^ Boolean literals
     | LEvent          -- ^ Event literal
     deriving (Eq, Show, Read)
@@ -255,17 +260,17 @@ expType (BOp t _ _ _) = t
 -- Time
 
 -- | Units of time supported by SSM.
-data SSMTimeUnit
-    = SSMNanosecond
-    | SSMMicrosecond
-    | SSMMillisecond
-    | SSMSecond
-    | SSMMinute
-    | SSMHour
-    deriving (Eq, Show, Read)
+--data SSMTimeUnit
+--    = SSMNanosecond
+--    | SSMMicrosecond
+--    | SSMMillisecond
+--    | SSMSecond
+--    | SSMMinute
+--    | SSMHour
+--    deriving (Eq, Show, Read)
 
 -- | Time values with units to be resolved by CodeGen. Used in `after` stmts.
-data SSMTime = SSMTime SSMExp SSMTimeUnit
+data SSMTime = SSMTime SSMExp  -- in nanoseconds  --SSMTimeUnit
              | SSMTimeAdd SSMTime SSMTime
              | SSMTimeSub SSMTime SSMTime
              | SSMTimeDiv SSMTime SSMExp
@@ -323,8 +328,8 @@ data Handler = StaticOutputHandler Reference Word8  -- ^ Static output handlers 
 
 {- | Get the identifier of the SSM procedure that is scheduled at the start of a SSM
 program -}
-getInitialProcedure :: Program -> Ident
-getInitialProcedure p = getInitialProcedure' $ initialQueueContent p
+entry :: Program -> Ident
+entry p = getInitialProcedure' $ initialQueueContent p
   where
     getInitialProcedure' :: [QueueContent] -> Ident
     getInitialProcedure' [] = error $ concat

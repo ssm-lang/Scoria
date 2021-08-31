@@ -37,7 +37,7 @@ module SSM.Frontend.Syntax
     , S.expType
 
       -- * Time
-    , S.SSMTimeUnit(..)
+--    , S.SSMTimeUnit(..)
     , S.SSMTime(..)
 
       -- * Identifiers

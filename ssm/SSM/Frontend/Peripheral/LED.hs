@@ -44,6 +44,12 @@ on = true'
 off :: Exp LED
 off = false'
 
+isON :: Ref LED -> Exp Bool
+isON = (==.) on . deref
+
+isOFF :: Ref LED -> Exp Bool
+isOFF = not' . isON
+
 {- | Statically create and initialize a binary stated LED, identified by a single
 integer. The meaning of this integer is not well defined yet, and it is assumed that a
 meaning exists in the runtime. This function also returns a handler that will actually

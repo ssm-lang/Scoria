@@ -65,6 +65,9 @@ instance FromLiteral Int64 where
 instance FromLiteral Word64 where
     fromLit i = FLit $ LUInt64 (fromIntegral i)
 
+instance FromLiteral Word32 where
+    fromLit i = FLit $ LUInt32 (fromIntegral i)
+
 instance FromLiteral Word8 where
     fromLit i = FLit $ LUInt8 (fromIntegral i)
 

@@ -51,7 +51,7 @@ module SSM.Backend.C.Identifiers
   , trig_
 
       -- * Constructing SSM time macros from SSMTimeUnit
-  , units_
+  --, units_
 
       -- * Constructing Identifiers from types
       {- | Some identifiers need to be prefixed or suffixed with some type information,
@@ -245,13 +245,13 @@ assign :: CIdent -> CIdent
 assign ty = "ssm_assign_" ++ ty
 
 -- | Obtain the name of the unit macro for an `SSMTimeUnit`.
-units_ :: SSMTimeUnit -> CIdent
-units_ SSMNanosecond  = "SSM_NANOSECOND"
-units_ SSMMicrosecond = "SSM_MICROSECOND"
-units_ SSMMillisecond = "SSM_MILLISECOND"
-units_ SSMSecond      = "SSM_SECOND"
-units_ SSMMinute      = "SSM_MINUTE"
-units_ SSMHour        = "SSM_HOUR"
+--units_ :: SSMTimeUnit -> CIdent
+--units_ SSMNanosecond  = "SSM_NANOSECOND"
+--units_ SSMMicrosecond = "SSM_MICROSECOND"
+--units_ SSMMillisecond = "SSM_MILLISECOND"
+--units_ SSMSecond      = "SSM_SECOND"
+--units_ SSMMinute      = "SSM_MINUTE"
+--units_ SSMHour        = "SSM_HOUR"
 
 -- | Obtain the name of the later method for an SSM `Type`.
 later :: CIdent -> CIdent

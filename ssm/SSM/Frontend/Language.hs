@@ -35,6 +35,7 @@ module SSM.Frontend.Language
     , Exp
     , (<.)
     , (==.)
+    , (/=.)
     , (&&.)
     , (||.)
     , not'
@@ -50,6 +51,7 @@ module SSM.Frontend.Language
     , i32
     , i64
     , u8
+    , u32
     , u64
     , min'
     , max'
@@ -66,16 +68,21 @@ module SSM.Frontend.Language
     , mins
     , hrs
     , (//)
+    , time2ns
+    , liftT
+    , lift2T
 
       -- ** Primitive statements
       {- | These are the primitive statements of the SSM language. Your procedure
       body is constructed by using these functions. The language is sequential, so the
       order in which you call these functions matters, naturally. -}
     , (<~)
+    , assign
     , wait
     , after
     , fork
     , changed
+    , unchanged
     , ifThen
     , ifThenElse
     , while
@@ -123,7 +130,11 @@ instance Assignable (Exp a) (Exp a) where
 
 -- | We can always assign an expression to a reference.
 instance Assignable (Ref a) (Exp a) where
-    (Ptr r) <~ (Exp e) = emit $ SetRef r e
+    (<~) = assign
+
+-- | Assigning values to references
+assign :: Ref a -> Exp a -> SSM ()
+assign (Ptr r) (Exp e) = emit $ SetRef r e
 
 -- | Less-than on numerical expressions
 (<.) :: (Num a, SSMType a) => Exp a -> Exp a -> Exp Bool
@@ -132,6 +143,9 @@ Exp e1 <. Exp e2  = Exp $ BOp TBool e1 e2 OLT
 -- | Equality on expressions
 (==.) :: SSMType a => Exp a -> Exp a -> Exp Bool
 Exp e1 ==. Exp e2 = Exp $ BOp TBool e1 e2 OEQ
+
+(/=.) :: SSMType a => Exp a -> Exp a -> Exp Bool
+e1 /=. e2 = not' $ e1 ==. e2
 
 -- | Boolean conjunction
 (&&.) :: Exp Bool -> Exp Bool -> Exp Bool
@@ -170,6 +184,10 @@ i64 i = Exp $ Lit TInt64 $ LInt64 i
 u64 :: Word64 -> Exp Word64
 u64 i = Exp $ Lit TUInt64 $ LUInt64 i
 
+-- | Explicity create an @Exp Word32@
+u32 :: Word32 -> Exp Word32
+u32 i = Exp $ Lit TUInt32 $ LUInt32 i
+
 -- | Explicity create an @Exp Word8@
 u8 :: Word8 -> Exp Word8
 u8 i = Exp $ Lit TUInt8 $ LUInt8 i
@@ -196,27 +214,59 @@ event' = Exp $ Lit TEvent LEvent
 
 -- | Specify @e@ has units of nanoseconds. 
 nsecs :: Exp Word64 -> SSMTime
-nsecs (Exp e) = SSMTime e SSMNanosecond
+nsecs (Exp e) = SSMTime e --SSMNanosecond
 
 -- | Specify @e@ has units of microseconds. 
 usecs :: Exp Word64 -> SSMTime
-usecs (Exp e) = SSMTime e SSMMicrosecond
+usecs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes --SSMMicrosecond
+  where
+    factor :: SSMExp
+    factor = Lit TUInt64 $ LUInt64 1000
 
 -- | Specify @e@ has units of milliseconds. 
 msecs :: Exp Word64 -> SSMTime
-msecs (Exp e) = SSMTime e SSMMillisecond
+msecs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes -- SSMMillisecond
+  where
+    factor :: SSMExp
+    factor = Lit TUInt64 $ LUInt64 1000000
 
 -- | Specify @e@ has units of seconds. 
 secs :: Exp Word64 -> SSMTime
-secs (Exp e) = SSMTime e SSMSecond
+secs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes -- SSMSecond
+  where
+    factor :: SSMExp
+    factor = Lit TUInt64 $ LUInt64 1000000000
 
 -- | Specify @e@ has units of minutes. 
 mins :: Exp Word64 -> SSMTime
-mins (Exp e) = SSMTime e SSMMinute
+mins (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes --SSMMinute
+  where
+    factor :: SSMExp
+    factor = Lit TUInt64 $ LUInt64 60000000000
 
 -- | Specify @e@ has units of hours.
 hrs :: Exp Word64 -> SSMTime
-hrs (Exp e) = SSMTime e SSMHour
+hrs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes -- SSMHour
+  where
+    factor :: SSMExp
+    factor = Lit TUInt64 $ LUInt64 3600000000000
+
+{- | Turn a `SSMTime` into a `Exp Word64`, where the @Word64@ denotes the time in
+nanoseconds. -}
+time2ns :: SSMTime -> Exp Word64
+time2ns t = case t of
+  SSMTime e        -> Exp e
+  SSMTimeAdd t1 t2 ->
+    let Exp op1 = time2ns t1
+        Exp op2 = time2ns t2
+    in Exp $ BOp TUInt64 op1 op2 OPlus
+  SSMTimeSub t1 t2 ->
+    let Exp op1 = time2ns t1
+        Exp op2 = time2ns t2
+    in Exp $ BOp TUInt64 op1 op2 OMinus
+  SSMTimeDiv t denominator ->
+    let Exp numerator = time2ns t
+    in Exp $ BOp TUInt64 numerator denominator ODiv
 
 {- | More direct division of time. E.g @t // 5@ divides a time into one fifth of the
 original time. This function can be convenient when you need to calculate delays etc. -}
@@ -224,12 +274,26 @@ original time. This function can be convenient when you need to calculate delays
 t // (Exp d) = SSMTimeDiv t d
 
 instance Num SSMTime where
-    t1 + t2       = SSMTimeAdd t1 t2
-    t1 - t2       = SSMTimeSub t1 t2
+    t1 + t2       = lift2T (+) t1 t2 --SSMTimeAdd t1 t2
+    t1 - t2       = lift2T (-) t1 t2 --SSMTimeSub t1 t2
     t1 * t2       = undefined
     fromInteger _ = undefined
     abs _         = undefined
     signum _      = undefined
+
+{- | Lift an expression operator to operate on `SSMTime` instead.
+
+Note: The time value is implicitly converted to an expression denoting the time in
+nanoseconds and then converted back to a time. -}
+liftT :: (Exp Word64 -> Exp Word64) -> SSMTime -> SSMTime
+liftT f op = nsecs $ f $ time2ns op
+
+{- | Lift a binary expression operator to operate on `SSMTime` instead.
+
+Note: The time value is implicitly converted to an expression denoting the time in
+nanoseconds and then converted back to a time. -}
+lift2T :: (Exp Word64 -> Exp Word64 -> Exp Word64) -> SSMTime -> SSMTime -> SSMTime
+lift2T f op1 op2 = nsecs $ f (time2ns op1) (time2ns op2)
 
 -- | Dereference a reference and get an expression holding the result
 deref :: forall a . SSMType a => Ref a -> Exp a
@@ -265,6 +329,12 @@ fork procs = emit $ Fork procs
 the current instant. -}
 changed :: Ref a -> Exp Bool
 changed (Ptr r) = Exp $ UOpR TBool r Changed
+
+{- | @unchanged@ returns @true'@ if the reference @r@ was not written to in
+the current instant. It is the dual to @changed@, and is equivalent to
+@not . changed@. -}
+unchanged :: Ref a -> Exp Bool
+unchanged = not' . changed
 
 -- | Conditional executing with a dangling else
 if' :: Exp Bool -> SSM () -> Maybe (SSM ()) -> SSM ()

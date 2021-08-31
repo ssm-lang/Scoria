@@ -181,8 +181,8 @@ genInitProgram p = [cunit|
       pdeps :: Int -> [(C.Exp, C.Exp)]
       pdeps cs =
         let depthsub = ceiling $ logBase (2 :: Double) $ fromIntegral $ cs :: Int
-        in [ let prio  = [cexp|PRIORITY_AT_ROOT + ($int:(i-1) * (1 << $exp:depth))|]
-                 depth = [cexp|DEPTH_AT_ROOT - $int:depthsub|]
+        in [ let prio  = [cexp|SSM_ROOT_PRIORITY + ($int:(i-1) * (1 << $exp:depth))|]
+                 depth = [cexp|SSM_ROOT_DEPTH - $int:depthsub|]
              in (prio, depth)
            | i <- [1..cs]
            ]
@@ -523,6 +523,7 @@ genExp _  (Var TEvent _         ) = [cexp|0|]
 genExp _  (Var t n              ) = [cexp|acts->$id:(identName n)|]
 genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
 genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LUInt32 i    )) = [cexp|$int:i|]
 genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename i64) $int:i|]
 genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename u64) $int:i|]
 genExp _  (Lit _ (LBool   True )) = [cexp|true|]
@@ -557,7 +558,7 @@ genExp ls (BOp ty e1 e2 op)
   gen OOr    = [cexp|$exp:c1 || $exp:c2|]
 
 genTimeDelay :: [Reference] -> SSMTime -> C.Exp
-genTimeDelay ls (SSMTime d u) = [cexp|$exp:(genExp ls d) * $id:(units_ u)|]
+genTimeDelay ls (SSMTime d {-u-}) = [cexp|$exp:(genExp ls d)|]
 genTimeDelay ls (SSMTimeAdd t1 t2) = let t1' = genTimeDelay ls t1
                                          t2' = genTimeDelay ls t2
                                      in [cexp|($exp:t1') + ($exp:t2')|]

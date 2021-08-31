@@ -205,6 +205,7 @@ pType = choice [parseType, parens parseType]
         rest <- some alphaNumChar
         case rest of
             "UInt8"  -> return TUInt8
+            "UInt32" -> return TUInt32
             "UInt64" -> return TUInt64
             "Int32"  -> return TInt32
             "Int64"  -> return TInt64
@@ -217,6 +218,7 @@ pType = choice [parseType, parens parseType]
     expected :: Set.Set (ErrorItem Char)
     expected = Set.fromList
         [ Label $ fromJust $ nonEmpty $ "UInt8"
+        , Label $ fromJust $ nonEmpty $ "UInt32"
         , Label $ fromJust $ nonEmpty $ "UInt64"
         , Label $ fromJust $ nonEmpty $ "Int32"
         , Label $ fromJust $ nonEmpty $ "Int64"

@@ -28,19 +28,19 @@ for :: [a] -> (a -> b) -> [b]
 for = flip map
 
 basetypes :: [Type]
-basetypes = [TUInt8, TUInt64, TInt32, TInt64, TBool, TEvent]
+basetypes = [TUInt8, TUInt32, TUInt64, TInt32, TInt64, TBool, TEvent]
 
 instance Arbitrary Type where
   arbitrary = elements $ basetypes ++ map Ref basetypes
 
-instance Arbitrary SSMTimeUnit where
-  arbitrary = elements [ SSMNanosecond
-                       , SSMMicrosecond
-                       , SSMMillisecond
-                       , SSMSecond
-                       , SSMMinute
-                       , SSMHour
-                       ]
+--instance Arbitrary SSMTimeUnit where
+--  arbitrary = elements [ SSMNanosecond
+--                       , SSMMicrosecond
+--                       , SSMMillisecond
+--                       , SSMSecond
+--                       , SSMMinute
+--                       , SSMHour
+--                       ]
 
 type Procedures = [(Ident, [(Ident, Type)], [Stm])]
 type Variable   = (Ident, Type)
@@ -90,7 +90,7 @@ instance Arbitrary Program where
     let procedures = Map.fromList
           [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
 
-    return $ Program entryPoint procedures globals Nothing
+    return $ Program [SSMProcedure entryPoint []] procedures globals Nothing Nothing
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program
@@ -182,22 +182,22 @@ arbProc funs vars refs c n = frequency $
       -- | Generate a delay.
       genDelay :: Int -> Gen SSMTime
       genDelay 0 = do
-          unit' <- arbitrary
-          delay <- Lit TUInt64 . LUInt64 <$> arbDelay unit'
-          return $ SSMTime delay unit'
-            where
-              arbDelay :: SSMTimeUnit -> Gen Word64
-              arbDelay SSMHour        = choose (1, 3)
-              arbDelay SSMMinute      = choose (1, 180)
-              arbDelay SSMSecond      = choose (1, 10800)
-              arbDelay SSMMillisecond = choose (1, 10800000)
-              arbDelay SSMMicrosecond = choose (1, 10800000000)
-              arbDelay SSMNanosecond  = choose (1, 10800000000000)
+--          unit' <- arbitrary
+          delay <- Lit TUInt64 . LUInt64 <$> choose (1,10000000000) --arbDelay unit'
+          return $ SSMTime delay --unit'
+--            where
+--              arbDelay :: SSMTimeUnit -> Gen Word64
+--              arbDelay SSMHour        = choose (1, 3)
+--              arbDelay SSMMinute      = choose (1, 180)
+--              arbDelay SSMSecond      = choose (1, 10800)
+--              arbDelay SSMMillisecond = choose (1, 10800000)
+--              arbDelay SSMMicrosecond = choose (1, 10800000000)
+--              arbDelay SSMNanosecond  = choose (1, 10800000000000)
       genDelay n = do
           t1 <- genDelay $ n `div` 2
           t2 <- genDelay $ n `div` 2
           oneof $ [ return $ SSMTimeAdd t1 t2
-                  , return $ SSMTimeAdd (SSMTimeSub t1 t2) (SSMTime (Lit TUInt64 (LUInt64 1)) SSMNanosecond)
+                  , return $ SSMTimeAdd (SSMTimeSub t1 t2) (SSMTime (Lit TUInt64 (LUInt64 1)) {-SSMNanosecond-})
                   ]
 
       -- | Predicate that returns True if the given procedure can be forked.
@@ -226,6 +226,7 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
       TInt32  -> return . Lit TInt32  . LInt32  =<< choose (0, 215)
       TInt64  -> return . Lit TInt64  . LInt64  =<< choose (-55050, 55050)
       TUInt8  -> return . Lit TUInt8  . LUInt8  =<< choose (0,80)
+      TUInt32 -> return . Lit TUInt32 . LUInt32 =<< choose (0, 8000)
       TUInt64 -> return . Lit TUInt64 . LUInt64 =<< choose (0, 65500)
       TBool  -> return  . Lit TBool   . LBool   =<< arbitrary
       TEvent -> return $ Lit TEvent LEvent
@@ -267,7 +268,7 @@ arbExp t vars refs n = case t of
                         return $ UOpE TBool e Not
                    ]
   TEvent -> return $ Lit TEvent LEvent
-  t | t `elem` [TUInt8, TUInt64] -> do
+  t | t `elem` [TUInt8, TUInt32, TUInt64] -> do
       e1 <- arbExp t vars refs (n `div` 2)
       e2 <- arbExp t vars refs (n `div` 2)
       elements [ BOp t e1 e2 OPlus
@@ -276,6 +277,8 @@ arbExp t vars refs n = case t of
                {- Since division by zero can not be tolerated, we force the denominator
                to be positive by simply adding a one to the generated number. -}
 --               , BOp t e1 (BOp t (e2) (one t) OPlus) ODiv
+               , BOp t e1 e2 OMin
+               , BOp t e1 e2 OMax
                ]
   _ ->    frequency [ (1, do e <- arbExp t vars refs (n-1)
                              return $ UOpE t e Neg
@@ -303,6 +306,7 @@ arbExp t vars refs n = case t of
     nonNegativeLitGen :: Type -> Gen SSMExp
     nonNegativeLitGen t = case t of
       TUInt8  -> (Lit TUInt8 . LUInt8) <$> choose (1,255)
+      TUInt32 -> (Lit TUInt32 . LUInt32) <$> choose (1,21000000)
       TUInt64 -> (Lit TUInt64 . LUInt8) <$> choose (1, maxBound)
       TInt32  -> oneof [ (Lit TInt32 . LInt32) <$> choose (minBound, -1)
                        , (Lit TInt32 . LInt32) <$> choose (1, maxBound)

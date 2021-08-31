@@ -154,6 +154,7 @@ prettyType :: Type -> String
 prettyType t = case t of
     TInt32  -> "int"
     TUInt8  -> "uint8"
+    TUInt32 -> "uint32"
     TInt64  -> "int64"
     TUInt64 -> "uint64"
     TBool   -> "bool"
@@ -164,6 +165,7 @@ prettyLit :: SSMLit -> String
 prettyLit l = case l of
     LInt32 i  -> show i
     LUInt8 i  -> show i
+    LUInt32 i -> show i
     LInt64 i  -> show i
     LUInt64 i -> show i
     LBool b   -> show b
@@ -209,7 +211,7 @@ prettyBinop op = case op of
     OOr    -> "||"
 
 prettySSMTime :: SSMTime -> String
-prettySSMTime (SSMTime d u) = (prettySSMExp d) ++ show u
+prettySSMTime (SSMTime d {-u-}) = (prettySSMExp d) -- ++ show u
 prettySSMTime (SSMTimeAdd t1 t2) = (prettySSMTime t1) ++ "+" ++ (prettySSMTime t2)
 prettySSMTime (SSMTimeSub t1 t2) = (prettySSMTime t1) ++ "-" ++ (prettySSMTime t2)
 prettySSMTime (SSMTimeDiv t1 d)  = prettySSMTime t1 ++ "/" ++ prettySSMExp d

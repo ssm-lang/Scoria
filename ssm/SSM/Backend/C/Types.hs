@@ -83,6 +83,7 @@ trace_ t n v = [cexp|$id:debug_trace($string:fmt, $exp:(signed_ t v))|]
     TInt32  -> "%d"
     TBool   -> "%u"
     TUInt64 -> "%lu"
+    TUInt32 -> "%lu"
     TUInt8  -> "%u"
     t       -> error $ "intFmt: no formatter type for type " ++ show t
 
