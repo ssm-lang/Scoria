@@ -6,6 +6,8 @@ import           Language.C.Quote.GCC           ( cexp )
 import qualified Language.C.Syntax             as C
 import qualified SSM.Interpret.Trace           as T
 
+import           Control.Monad.State
+
 -- | Obtain base type for a type, i.e., unwrapping all references.
 baseType :: Type -> Type
 baseType (Ref t) = baseType t
@@ -43,3 +45,34 @@ data CStm = Numbered Int Stm              -- ^ Annotate a statement with a numbe
           | CWhile Int SSMExp [CStm]      -- ^ While with recursive @CStm@ instead of @Stm@
           | CIf Int SSMExp [CStm] [CStm]  -- ^ If, by the same principle as @CWhile@
   deriving Show
+
+-- | Take a procedure body and number all the statements
+toCStm :: [Stm] -> [CStm]
+toCStm stmts = evalState (toCStm' stmts) 0
+ where
+  -- | Actually number the statements and turn them into `CStm`
+  toCStm' :: [Stm] -> State Int [CStm]
+  toCStm' []       = return []
+  toCStm' (x : xs) = case x of
+    If c thn els -> do
+      thn' <- toCStm' thn
+      els' <- toCStm' els
+      n    <- number
+      xs'  <- toCStm' xs
+      return $ CIf n c thn' els' : xs'
+    While c bdy -> do
+      bdy' <- toCStm' bdy
+      n    <- number
+      xs'  <- toCStm' xs
+      return $ CWhile n c bdy' : xs'
+    _ -> do
+      n   <- number
+      xs' <- toCStm' xs
+      return $ Numbered n x : xs'
+
+  -- | Generate the next unique statement number
+  number :: State Int Int
+  number = do
+    i <- get
+    put $ i + 1
+    return i

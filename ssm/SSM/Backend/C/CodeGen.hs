@@ -294,10 +294,11 @@ wraps the statements of the procedure. The heavy lifting is performed by
 -}
 genStep :: Procedure -> TR (C.Definition, C.Definition)
 genStep p = do
-  let (cstmts, sensitizemap, desensitizemap, widestwait) = analyseWait p
+  let cstmts = toCStm $ body p
+      (widestwait, semap, demap) = primitiveTriggerIDs cstmts
   modify $ \st -> st { numwaits = widestwait }
   _     <- nextCase -- Toss away 0th case
-  cases <- concat <$> mapM (genCase sensitizemap desensitizemap) cstmts
+  cases <- concat <$> mapM (genCase semap demap) cstmts
   locs  <- gets locals
   final <- nextCase
   let
@@ -371,7 +372,7 @@ Note that this compilation scheme might not work if the language were to
 support return statements. This could be fixed by generating a break, and
 moving the leave call to outside of the switch statement in 'genStep'.
 -}
-genCase :: Map.Map Int Int -> Map.Map Int Int -> CStm -> TR [C.Stm]
+genCase :: Map.Map (Reference, Int) Int -> Map.Map (Reference, Int) Int -> CStm -> TR [C.Stm]
 genCase sensitizemap desensitizemap (Numbered n stm)  = case stm of
 
   CreateRef n t -> do
@@ -418,7 +419,7 @@ genCase sensitizemap desensitizemap (Numbered n stm)  = case stm of
 
   Sensitize r -> do
     -- fetch the id of the trigger to sensitize on
-    let trigid = case Map.lookup n sensitizemap of
+    let trigid = case Map.lookup (r, n) sensitizemap of
           Just id -> id
           Nothing -> error $ 
             "wait analysis failed -- no trigger ID found for line " ++ show n ++
@@ -429,7 +430,7 @@ genCase sensitizemap desensitizemap (Numbered n stm)  = case stm of
            ]
 
   Desensitize r -> do
-    let trigid = case Map.lookup n desensitizemap of
+    let trigid = case Map.lookup (r, n) desensitizemap of
           Just id -> id
           Nothing -> error $
             "wait analysis failed -- no trigger ID found for line " ++ show n ++
