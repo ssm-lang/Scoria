@@ -44,9 +44,11 @@ on = true'
 off :: Exp LED
 off = false'
 
+-- | Is a LED on?
 isON :: Ref LED -> Exp Bool
 isON = (==.) on . deref
 
+-- | Is a LED off?
 isOFF :: Ref LED -> Exp Bool
 isOFF = not' . isON
 

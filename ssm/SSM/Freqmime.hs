@@ -27,7 +27,9 @@ freq_count = box "freq_count" ["gate", "signal", "freq"] $ \gate signal freq -> 
         ifThen (unchanged gate) $ do
             wait gate
         
-        ifThenElse (changed signal) (count <~ 1) (count <~ 0)
+        ifThenElse (changed signal)
+            (count <~ 1)
+            (count <~ 0)
         after gate_period wake event'
 
         doWhile (do
@@ -41,18 +43,16 @@ freq_mime :: Ref Frequency -> Ref LED -> SSM ()
 freq_mime = box "freq_mime" ["freq", "led_ctl"] $ \freq led_ctl -> do
     wake <- var event'
     while true' $ do
-        -- if freq is non-zero
+
         ifThen (deref freq /=. 0) $ do
-            -- turn on the LED and schedule a wakeup in the future
             led_ctl <~ true'
             after (secs 1 // deref freq) wake event'
-        -- wait for an event
+
         wait (wake, freq)
 
 one_shot :: Ref Frequency -> Ref LED -> SSM ()
 one_shot = box "one_shot" ["freq", "led_ctl"] $ \freq led_ctl -> do
     while true' $ do
-        -- wait for led to toggle
         wait led_ctl
 
         -- try to calculate delay for when it should turn off
@@ -62,7 +62,6 @@ one_shot = box "one_shot" ["freq", "led_ctl"] $ \freq led_ctl -> do
           (delay <~ (time2ns $ lift2T min' blink_time (secs 1 // deref freq // 2)))
           (delay <~ time2ns blink_time)
 
-        -- schedule the turning off of the led
         ifThen (deref led_ctl) $ do
             after (nsecs $ deref delay) led_ctl false'
 
@@ -79,7 +78,7 @@ testprogram :: Compile ()
 testprogram = do
     x <- switch 0
     y <- switch 1
-    (z, handler) <- onoffLED 0 -- z :: Ref LED, handler :: Handler
+    (z, handler) <- onoffLED 0
 
     let ?sw0 = x
         ?sw1 = y
