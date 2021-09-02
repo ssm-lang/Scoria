@@ -294,9 +294,13 @@ wraps the statements of the procedure. The heavy lifting is performed by
 -}
 genStep :: Procedure -> TR (C.Definition, C.Definition)
 genStep p = do
-  let cstmts = toCStm $ body p
-      (widestwait, semap, demap) = primitiveTriggerIDs cstmts
+  -- turn the statements that make up the body into uniquely numbered statements
+  let cstmts                     = toCStm $ body p
+  -- trigger assignment
+  let (widestwait, semap, demap) = primitiveTriggerIDs cstmts
+
   modify $ \st -> st { numwaits = widestwait }
+
   _     <- nextCase -- Toss away 0th case
   cases <- concat <$> mapM (genCase semap demap) cstmts
   locs  <- gets locals
@@ -366,7 +370,7 @@ genStep p = do
       |]
     )
 
-{- | Generate the list of statements from each 'Stm' in an SSM 'Procedure'.
+{- | Generate the list of statements.
 
 Note that this compilation scheme might not work if the language were to
 support return statements. This could be fixed by generating a break, and
