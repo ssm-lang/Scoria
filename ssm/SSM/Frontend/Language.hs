@@ -76,6 +76,7 @@ module SSM.Frontend.Language
       -- ** Global references
       -- | Global references exist in the global scope and are always alive.
     , global
+    , FromLiteral
     ) where
 
 import Data.Int
@@ -277,7 +278,7 @@ deref (Ptr r) = Exp $ UOpR (typeOf (Proxy @a)) r Deref
 it was created in terminates. -}
 var :: Exp a -> SSM (Ref a)
 var (Exp e) = do
-    n <- fresh
+    n <- ((++) "v" . show) <$> fresh
     let id = Ident n Nothing
     emit $ NewRef id e
     return $ Ptr $ makeDynamicRef id (mkReference $ expType e)
@@ -333,7 +334,7 @@ waitAll refs = fork $ map waitSingle refs
 -- | Create a global reference
 global :: forall a . SSMType a => Compile (Ref a)
 global = do
-    n <- fresh
+    n <- ((++) "glob" . show) <$> fresh
     let id = Ident n Nothing
     let t = mkReference $ typeOf $ Proxy @a
     addGlobal id t

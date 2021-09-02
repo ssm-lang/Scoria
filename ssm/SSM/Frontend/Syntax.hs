@@ -68,6 +68,7 @@ import SSM.Util.State
 import qualified SSM.Core.Syntax as S
 
 import qualified Data.Map as Map
+import Data.Maybe
 
 import Control.Monad.State
     ( gets, get, put, modify, execState, runState, forM, MonadState, State, StateT(StateT) )
@@ -215,8 +216,13 @@ type Transpile a = State TranspileState a
 data TranspileState = TranspileState
     { -- | Map that associate procedure names with their Procedure definition.
       procedures  :: Map.Map S.Ident S.Procedure
+      -- | Name of the procedure we are transpiling right now
+    , currentProc :: S.Ident
       -- | List of procedure names that have already been seen.
     , generated   :: [S.Ident]
+      {- | If a procedure need to have its name forcibly changed to produce a type-safe
+      core representation, this map associates source names with specialized variants. -}
+    , specialized :: Map.Map S.Ident [S.Ident]
       {- | Last known SSM name-generating state. A SSM computation can generate names,
       but it also contains recursive SSM computations. What we want to do is essentially
       to run all of these SSM computations with a single name generating state. This
@@ -224,6 +230,10 @@ data TranspileState = TranspileState
       the statements. -}
     , namecounter :: Int
     }
+
+instance IntState TranspileState where
+  getInt = namecounter
+  setInt i ts = ts { namecounter = i }
 
 {- | Transpile a program of the high level syntax to the low level syntax as defined
 in "SSM.Core.Syntax". -}
@@ -241,7 +251,7 @@ transpile program =
   where
       (main,st)  = runState comp state
       (stmts, c) = genStmts 0 program
-      state      = TranspileState Map.empty [] c
+      state      = TranspileState Map.empty (getProcedureName stmts) [] Map.empty c
       comp       = transpileProcedure stmts
 
 
@@ -288,19 +298,82 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       getCall :: SSM () -> Transpile (S.Ident, [Either S.SSMExp S.Reference])
       getCall ssm = do
           let stmts           = runSSM ssm
-          let name            = getProcedureName stmts
-          let (arginfo, args) = unzip $ getArgs stmts
+              name            = getProcedureName stmts
+              (arginfo, args) = unzip $ getArgs stmts
+              specializedName = specializeIdent name $ map snd arginfo 
           st                  <- get
 
-          if name `elem` generated st
-              then return () -- we've seen it before, do nothing
+          -- Have we already generated code for this procedure?
+          if specializedName `elem` generated st
+
+                   {- If we have already generated code for a procedure with this name,
+                   check if the already-generated one is the same as this one. If it is
+                   not, rename this procedure and call the new name instead. -}
+              then do nstmts     <- transpileProcedure stmts
+                      procs      <- gets procedures
+                      let fstmts = S.body $ fromJust $ Map.lookup specializedName procs
+
+                      -- does the bodies match?
+                      if nstmts == fstmts
+                        -- if they do, it's the same procedure, and we call it
+                        then return (specializedName, args)
+                        {- otherwise we need to specialize the name by looking up another
+                        name or by generating a new one to rename the current one. -}
+                        else do f <- specializeProcedure specializedName nstmts arginfo
+                                return (f, args)
+
+              -- if we have not, we will create a Procedure and call it
               else do
-                  put $ st { generated = name : generated st }
+                  put $ st { generated = specializedName : generated st }
                   nstmts <- transpileProcedure stmts
-                  let fun = S.Procedure name arginfo nstmts
-                  modify $ \st -> st { procedures = Map.insert name fun (procedures st) }
-          
-          return (name, args)
+                  let fun = S.Procedure specializedName arginfo nstmts
+                  modify $ \st -> st { procedures =
+                    Map.insert specializedName fun (procedures st) }
+                  return (specializedName, args)
+
+      {- | @specializeProcedure n body arginfo@ is called when a procedure with name @n@
+      was called, but a different procedure with name @n@ have already been
+      transpiled. In this case we might have already specialized calls to @n@ to calls of
+      another procedure, so we will cycle through such procedures. If it is found we just
+      return the name of that procedure, but if it was not we are going to specialize a
+      new name of @n@ and return that name instead. Equality of procedures is determined
+      by matching names and identical procedure bodies. -}
+      specializeProcedure :: S.Ident -> [S.Stm] -> [(S.Ident, S.Type)] -> Transpile S.Ident
+      specializeProcedure n stmts arginfo = do
+        specializeds <- gets specialized
+        case Map.lookup n specializeds of
+          Just names -> do procs <- gets procedures
+                           ms <- findCorrect names procs
+                           maybe createNewProcedure return ms
+          Nothing    -> createNewProcedure
+        where
+          -- | Create a new procedure by appending a fresh suffix to the current name
+          createNewProcedure :: Transpile S.Ident
+          createNewProcedure = do
+            -- generate new name
+            n' <- S.appendIdent n <$> S.makeIdent <$> (++) "v" <$> show <$> fresh
+            -- bundle everything up as a procedure
+            let procedure = S.Procedure n' arginfo stmts
+            modify $ \st ->
+                   {- remember that we've specialized a procedure with name @n@ to a new
+                   one with name @n'@. -}
+              st { specialized = Map.insertWith (++) n [n'] (specialized st)
+                 , procedures = Map.insert n' procedure (procedures st)
+                 }
+            return n'
+
+          {- | Look at the already specialized procedures. If one of them matches the
+          current procedure, return the same identifier. Otherwise signal that no such
+          procedure existed by returning @Nothing@. -}
+          findCorrect :: [S.Ident]
+                      -> Map.Map S.Ident S.Procedure
+                      -> Transpile (Maybe S.Ident)
+          findCorrect []      _  = return Nothing
+          findCorrect (n':ns) ps = do
+            let p = fromJust $ Map.lookup n' ps
+            if S.body p == stmts
+              then return $ Just n'
+              else findCorrect ns ps
 
       {-| Return a tuple where the first component contains information about name
       and type about the arguments, and the second compoment is a list of the actual arguments. -}
@@ -309,3 +382,33 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
       getArgs (Procedure _: xs)     = getArgs xs
       getArgs (Argument _ x a:xs)   = ((x, either S.expType S.refType a), a) : getArgs xs
       getArgs _                     = []
+
+      {- | Turns a `SSM.Core.Syntax.Type` into an `SSM.Core.Syntax.Ident` that represents
+      the type.
+      
+      @
+      > typeToMnemonic TUInt8
+      "UInt8"
+      @
+      -}
+      typeToMnemonic :: S.Type -> S.Ident
+      typeToMnemonic t = case t of
+        S.TUInt8  -> S.makeIdent "u8"
+        S.TUInt64 -> S.makeIdent "u64"
+        S.TInt32  -> S.makeIdent "i32"
+        S.TInt64  -> S.makeIdent "i64"
+        S.TBool   -> S.makeIdent "bool"
+        S.TEvent  -> S.makeIdent "event"
+        S.Ref ty  -> S.appendIdent (S.makeIdent "Ref") (typeToMnemonic ty)
+
+      {- | Specialized an identifier by appending type information at the end. Any
+      source information found in the identifier initially is not retained.
+      
+      @
+      > specializeIdent "fun1" [TInt32, TBool]
+      "fun1Int32Bool"
+      @
+      -}
+      specializeIdent :: S.Ident -> [S.Type] -> S.Ident
+      specializeIdent name argtypes =
+        foldl S.appendIdent name $ map typeToMnemonic argtypes
