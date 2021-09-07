@@ -73,11 +73,15 @@ instance CPeripheral GPIOPeripheral where
   maininit gp = initswitches
    where
     initswitches :: [C.BlockItem]
-    initswitches = map initswitch (switchpins gp)
+    initswitches = concatMap initswitch (switchpins gp)
 
-    initswitch :: (Int, Ident) -> C.BlockItem
+    initswitch :: (Int, Ident) -> [C.BlockItem]
     initswitch (i, id)
-      = [citem| $id:initialize_static_input_device(&$id:(identName id), $int:i); |]
+      = [ [citem| $esc:("// initialize switch GPIO " ++ show i) ; |]
+        , [citem| $id:(initialize_ TBool)(&$id:(identName id)); |]
+        , [citem| $id:(assign_ TBool)(&$id:(identName id), 0, false); |]
+        , [citem| $id:initialize_static_input_device(&$id:(identName id), $int:i); |]
+        ]
 
 -- | Generate C code for LED peripherals. Only on-off LEDs supported right now
 instance CPeripheral LEDPeripheral where
@@ -89,4 +93,14 @@ instance CPeripheral LEDPeripheral where
     onoffled :: (Word8, Ident) -> C.Definition
     onoffled (i, id) = [cedecl| $ty:(svt_ TBool) $id:(identName id); |]
 
-  maininit lp = []
+  maininit lp = initLEDs
+    where
+      initLEDs :: [C.BlockItem]
+      initLEDs = concatMap initLED $ onoffLEDs lp
+
+      initLED :: (Word8, Ident) -> [C.BlockItem]
+      initLED (i, id) =
+        [ [citem| $esc:("// initialize LED " ++ show i); |]
+        , [citem| $id:(initialize_ TBool)(&$id:(identName id)); |]
+        , [citem| $id:(assign_ TBool)(&$id:(identName id), 0, false); |]
+        ]

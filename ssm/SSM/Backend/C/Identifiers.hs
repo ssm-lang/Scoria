@@ -83,7 +83,7 @@ type CIdent = String
 
 -- | Name of top level program initialization function
 initialize_program :: CIdent
-initialize_program = "ssm_initialize_program"
+initialize_program = "ssm_program_initialize"
 
 -- | Name of the top level static input switch initialization function
 initialize_static_input_device :: CIdent
@@ -91,7 +91,7 @@ initialize_static_input_device = "initialize_static_input_switch"
 
 -- | Name of the top level static output initialization function
 initialize_static_output_device :: CIdent
-initialize_static_output_device = "initialize_static_output_device"
+initialize_static_output_device = "bind_static_output_device"
 
 -- | Take a handler and return a `CIdent` representing the corresponding 'enter' function
 resolveNameOfHandler :: Handler -> CIdent

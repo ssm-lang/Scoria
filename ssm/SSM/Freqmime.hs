@@ -86,3 +86,25 @@ testprogram = do
 
     schedule mmain
     schedule handler
+
+
+
+
+
+
+mmmain :: Compile ()
+mmmain = do
+    (x, handler) <- onoffLED 0
+
+    let ?led = x
+
+    schedule handler
+    schedule mmain
+  where
+      mmain :: (?led :: Ref LED) => SSM ()
+      mmain = boxNullary "mmain" $ do
+          while true' $ do
+              after (secs 1) ?led on
+              wait ?led
+              after (secs 1) ?led off
+              wait ?led

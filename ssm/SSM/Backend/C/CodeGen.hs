@@ -135,10 +135,12 @@ genGlobals = map declGlobal . globalReferences
 -- | Generate the entry point of a program - the first thing to be ran.
 genInitProgram :: Program -> [C.Definition]
 genInitProgram p = [cunit|
-  void $id:initialize_program(void) {
+  int $id:initialize_program(void) {
     $items:(map initGlobal $ globalReferences p)
     $items:(initPeripherals p)
     $items:(initialForks $ initialQueueContent p)
+
+    return 0;
   }
   |]
  where
@@ -190,7 +192,7 @@ genInitProgram p = [cunit|
       -- | Compile the arguments of a procedure to `Exp`
       cargs :: Either SSMExp Reference -> C.Exp
       cargs (Left e)  = genExp [] e
-      cargs (Right r) = refPtr r []
+      cargs (Right r) = refSV r []
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]
