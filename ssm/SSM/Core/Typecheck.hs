@@ -12,6 +12,7 @@ import           Control.Monad.Reader           ( MonadReader(..)
                                                 , forM
                                                 , forM_
                                                 , unless
+                                                , void
                                                 , when
                                                 )
 import qualified Data.Map                      as Map
@@ -109,6 +110,7 @@ typecheck prog = runExcept $ flip runReaderT emptyContext $ do
 typecheckStms :: [S.Stm] -> TC ()
 typecheckStms []                             = return ()
 typecheckStms (S.After time ref exp2 : stms) = do
+  typecheckTime time
   refTy <- typecheckRef ref
   expTy <- typecheckExp exp2
   unifyTypes expTy refTy
@@ -187,6 +189,11 @@ typecheckForkProc (name, actuals) = do
  where
   typecheckActual (Left  actualExp) = typecheckExp actualExp
   typecheckActual (Right actualRef) = typecheckRef actualRef
+
+typecheckTime :: S.SSMTime -> TC ()
+typecheckTime (S.SSMTimeAdd l r) = typecheckTime l >> typecheckTime r
+typecheckTime (S.SSMTimeSub l r) = typecheckTime l >> typecheckTime r
+typecheckTime (S.SSMTime a _) = typecheckExp a >>= void . unifyTypes S.TUInt64
 
 -- | Obtain type of a literal value.
 typeofLit :: S.SSMLit -> S.Type
