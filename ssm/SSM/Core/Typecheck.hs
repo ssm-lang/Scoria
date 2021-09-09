@@ -49,6 +49,7 @@ data CompilerError
     NameError S.Ident S.Ident
   | -- | Number of arguments don't match for procedure call
     ArgsLenError S.Ident Int Int
+    deriving (Show)
 
 -- | An empty context with no bindings.
 emptyContext :: Context
