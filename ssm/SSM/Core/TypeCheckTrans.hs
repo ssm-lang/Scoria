@@ -17,210 +17,171 @@ import SSM.Core.Syntax
 import qualified Data.Map as Map
 import System.IO ()
 
-import Control.Monad.Reader  -- Reader for context
+import Control.Monad.Reader -- Reader for context
 import Control.Monad.Except -- Except for error handling (synonymous with manually throwing around Either e a, as you are doing now)
-
-data Context = Context { procedures :: Map.Map Ident [(Ident, Type)]  -- ^ types of procedures
-                       , scopes     :: [Map.Map Ident Type]  -- ^ types of variables (head of this list is the youngest scope)
-                       }
+import qualified Data.List.NonEmpty as NE
+import Data.List.NonEmpty (NonEmpty(..), (<|))
 
 type TC a = ReaderT Context (Except TypeError) a
 
--- | Type to record and report the type error
-data TypeError = UnboundVariable Ident   -- ^ variable @Ident@ is not ins cope
-               | TypeError Type Type  -- ^ The expression failed to type check, found t1 when t2 was expected
-               -- more variants as needed
+data Context = Context { procedures :: Map.Map Ident [(Ident, Type)] -- ^ types of procedures
+                       , scopes     :: NonEmpty Scope -- ^ "stack" of scopes; head is youngest
+                       }
+
+-- | Type to record and report the type error.
+--
+-- Convention: when the two arguments to the constructor of the same type, they
+-- designate "ErrorCons expected actual".
+data TypeError = UnboundVariable Ident -- ^ variable @Ident@ is not in scope
+               | TypeError Type Type   -- ^ Types don't match
+               | NameError Ident Ident -- ^ Procedure has different name than its key in funs map
+               | CallError Int Int     -- ^ Number of arguments don't match for procedure call
+
+-- | Mapping from variable names to their types
+type Scope = Map.Map Ident Type
+
+emptyContext :: Context
+emptyContext = Context {procedures = Map.empty, scopes = NE.fromList [Map.empty]}
+
+-- | Perform a computation with a new scope in the context.
+-- Context is restored once the computation terminates.
+withNewScope :: TC a -> TC a
+withNewScope = local (\c -> c {scopes = Map.empty <| scopes c})
+
+-- | Add new variables to the top of the scope stack
+withVars :: [(Ident, Type)] -> TC a -> TC a
+withVars vars = local (\ctx -> ctx {scopes = joinScope $ scopes ctx})
+  where joinScope (s :| ss) = Map.union (Map.fromList vars) s :| ss
+
+withProcs :: [Procedure] -> TC a -> TC a
+withProcs procs = local (\ctx -> ctx {procedures = Map.union procsMap $ procedures ctx})
+  where
+    procsMap = Map.fromList $ map (\p -> (name p, arguments p)) procs
+
+-- | Lookup an identifier in a map; throw an error if not found.
+lookupIdent :: Ident -> Map.Map Ident a -> TC a
+lookupIdent ident = maybe (throwError $ UnboundVariable ident) return . Map.lookup ident
+
+-- | Lookup the name and argument types of a procedure.
+lookupProcedure :: Ident -> TC [(Ident, Type)]
+lookupProcedure ident = asks procedures >>= lookupIdent ident
+
+-- | Look up the type of a variable.
+--
+-- Map.unions collapses the stack of scopes, with preference for scopes higher
+-- in the scope stack (i.e., the younger scopes).
+lookupVar :: Ident -> TC Type
+lookupVar ident = asks (Map.unions . NE.toList . scopes) >>= lookupIdent ident
+
+-- | Ensures the two types are equal; throw error otherwise.
+unifyTypes :: Type -> Type -> TC Type
+unifyTypes t1 t2
+  | t1 == t2 = return t1
+  | otherwise = throwError $ TypeError t1 t2
+
+typeCheck :: Program -> Either TypeError ()
+typeCheck p = runExcept $ runReaderT (typeCheckProgram p) emptyContext
 
 -- | Typechecks a program
 -- We will first check whether the provided arguments for the entrypoint procedure
 -- have the correct types
 -- And then, we will check each procedure stored in the [funs] map
 typeCheckProgram :: Program -> TC ()
-typeCheckProgram Program {entry=e, funs=fs, globalReferences=gRefs} = do 
-    params <- lookupProcedure e
-    typeCheckProcs fs env'
-    where
-        env = enterProcs (return emptyContext) fs
-        env' = foldl enterArg env gRefs
+typeCheckProgram prog = do
+  procs <- forM (Map.toList $ funs prog) $ \(n, p) ->
+    if n == name p
+      then return p
+      else throwError $ NameError n $ name p
+  withVars (globalReferences prog) $ withProcs procs $ forM_ procs typeCheckProc
 
--- | Typechecks a procedure
-typeCheckProcedure ::TC Context -> Procedure -> TC ()
-typeCheckProcedure env Procedure {name=n, arguments=args, body=b} = do
-    env <- typeCheckStmLst b newEnv
-    return ()
-    where newEnv = foldl enterArg env args
-
--- | Checks the functions in a String-Procedure map all have the corret type
-typeCheckProcs :: Map.Map Ident Procedure -> TC Context -> TC ()
-typeCheckProcs funs env = mapM_ (typeCheckProcedure env) (Map.elems funs)
-
--- | Typechecks an expression, meanwhile figuring out the type of the expression
-typeCheckExp :: SSMExp -> TC a -> TC Type
-typeCheckExp (Var ty ident) tca = do
-    t <- lookupVar ident
-    assertType ty t
-    return ty
-typeCheckExp (Lit ty lit) tca = do 
-    actualTy <- typeCheckLit lit 
-    assertType actualTy ty
-    return ty
-typeCheckExp (UOpE ty expr op) tca = do
-    actualTy <- typeCheckExp expr tca
-    assertType actualTy ty
-    return ty
-typeCheckExp (UOpR ty ref op) tca = do
-    actualTy <- typeCheckRef tca ref
-    assertType actualTy ty
-    return ty
-typeCheckExp (BOp ty e1 e2 op) tca = do
-    actualTy1 <- typeCheckExp e1 tca
-    actualTy2 <- typeCheckExp e2 tca
-    assertType actualTy1 actualTy2
-    assertType actualTy1 ty
-    return ty
-
--- | Typechecks a reference
-typeCheckRef :: TC a -> Reference -> TC Type
-typeCheckRef tca (Dynamic (ident, ty)) = do
-    actualTy <- lookupVar ident
-    assertType actualTy ty
-    return ty
-typeCheckRef tca (Static (ident, ty)) = do
-    actualTy <- lookupVar ident
-    assertType actualTy ty
-    return ty
+typeCheckProc :: Procedure -> TC ()
+typeCheckProc p = withVars (arguments p) $ typeCheckStms (body p)
 
 -- | Typechecks a statement, meanwhile generating a new environment 
 -- with the definitions in the statement
-typeCheckStm :: Stm -> TC Context -> TC Context
-typeCheckStm Skip tca = tca
-typeCheckStm (After time ref exp2) tca = do
-    refTy <- typeCheckRef tca ref
-    expTy <- typeCheckExp exp2 tca
-    assertType expTy refTy
-    tca
-typeCheckStm (Wait refs) tca = do
-    mapM_ (typeCheckRef tca) refs
-    tca
-typeCheckStm (While expr stms) tca = do
-    exprTy <- typeCheckExp expr tca
-    assertType exprTy TBool
-    tca
-typeCheckStm (If expr stms1 stms2) tca = do
-    exprTy <- typeCheckExp expr tca
-    assertType exprTy TBool 
-    typeCheckStmLst (stms1 ++ stms2) tca
-typeCheckStm (SetRef ref expr) tca = do
-    refTy <- typeCheckRef tca ref
-    expTy <- typeCheckExp expr tca
-    assertType expTy refTy
-    tca
-typeCheckStm (SetLocal name ty expr) tca = do
-    actualTy <- typeCheckExp expr tca
-    assertType actualTy ty
-    local (enterVar name ty) tca
-typeCheckStm (NewRef ident ty expr) tca = do 
-    actualTy <- typeCheckExp expr tca
-    assertType actualTy ty
-    local (enterVar ident ty) tca
-typeCheckStm (Fork procs) env = do
-    typeCheckForkProcs procs env
-    env
+typeCheckStms :: [Stm] -> TC ()
+typeCheckStms [] = return ()
+typeCheckStms (Skip : stms) = typeCheckStms stms
+typeCheckStms (After time ref exp2 : stms) = do
+  refTy <- typeCheckRef ref
+  expTy <- typeCheckExp exp2
+  unifyTypes expTy refTy
+  typeCheckStms stms
+typeCheckStms (Wait refs : stms) = do
+  forM_ refs typeCheckRef
+  typeCheckStms stms
+typeCheckStms (While expr body : stms) = do
+  exprTy <- typeCheckExp expr
+  unifyTypes exprTy TBool
+  withNewScope $ typeCheckStms body
+  typeCheckStms stms
+typeCheckStms (If expr stms1 stms2 : stms) = do
+  exprTy <- typeCheckExp expr
+  unifyTypes exprTy TBool
+  withNewScope $ typeCheckStms stms1
+  withNewScope $ typeCheckStms stms2
+  typeCheckStms stms
+typeCheckStms (SetRef ref expr : stms) = do
+  refTy <- typeCheckRef ref
+  expTy <- typeCheckExp expr
+  unifyTypes expTy refTy
+  typeCheckStms stms
+typeCheckStms (SetLocal name ty expr : stms) = do
+  actualTy <- typeCheckExp expr
+  unifyTypes actualTy ty
+  withVars [(name, ty)] $ typeCheckStms stms
+typeCheckStms (NewRef ident ty expr : stms) = do
+  actualTy <- typeCheckExp expr
+  unifyTypes actualTy ty
+  withVars [(ident, ty)] $ typeCheckStms stms
+typeCheckStms (Fork procs : stms) = do
+  forM_ procs typeCheckForkProc
+  typeCheckStms stms
 
--- | Typechecks a list of statements
-typeCheckStmLst :: [Stm] -> TC Context -> TC Context
-typeCheckStmLst [] tca = tca
-typeCheckStmLst (h:t) tca = do
-    newTC <- typeCheckStm h tca
-    typeCheckStmLst t $ return newTC
+-- | Typechecks an expression, meanwhile figuring out the type of the expression
+typeCheckExp :: SSMExp -> TC Type
+typeCheckExp (Var ty ident) = do
+    t <- lookupVar ident
+    unifyTypes ty t
+typeCheckExp (Lit ty lit) = do
+    unifyTypes (typeofLit lit) ty
+typeCheckExp (UOpE ty expr op) = do
+    actualTy <- typeCheckExp expr
+    unifyTypes actualTy ty
+typeCheckExp (UOpR ty ref op) = do
+    actualTy <- typeCheckRef ref
+    unifyTypes actualTy ty
+typeCheckExp (BOp ty e1 e2 op) = do
+    actualTy1 <- typeCheckExp e1
+    actualTy2 <- typeCheckExp e2
+    unifyTypes actualTy1 actualTy2
+    unifyTypes actualTy1 ty
 
--- | Checks whether an argument has the correct type
-typeCheckArg :: TC Context -> (Either SSMExp Reference, (Ident, Type)) -> TC ()
-typeCheckArg env (Left expr, (name, ty)) = do
-    expTy <- typeCheckExp expr env
-    assertType expTy ty
-typeCheckArg env (Right (Dynamic (ident, ty1)), (name, ty2)) = assertType ty2 ty1
-typeCheckArg env (Right (Static (ident, ty1)), (name, ty2)) = assertType ty2 ty1
+-- | Typechecks a reference
+typeCheckRef :: Reference -> TC Type
+typeCheckRef (Dynamic (ident, ty)) = do
+    actualTy <- lookupVar ident
+    unifyTypes actualTy ty
+typeCheckRef (Static (ident, ty)) = do
+    actualTy <- lookupVar ident
+    unifyTypes actualTy ty
 
--- | Checks whether a list of arguments all have the correct type
-typeCheckArgs :: [Either SSMExp Reference] -> [(Ident, Type)] -> TC Context -> TC ()
-typeCheckArgs args params env = mapM_ (typeCheckArg env) (zip args params)
+-- | Typechecks one forked procedure.
+typeCheckForkProc :: (Ident, [Either SSMExp Reference]) -> TC ()
+typeCheckForkProc (name, actuals) = do
+    formals <- lookupProcedure name
+    when (length formals /= length actuals) $ throwError $ CallError (length formals) (length actuals)
+    forM_ (zip formals actuals) $ \((formal, fty), actual) -> do
+      aty <- typeCheckActual actual
+      unifyTypes fty aty
+  where typeCheckActual (Left actualExp) = typeCheckExp actualExp
+        typeCheckActual (Right actualRef) = typeCheckRef actualRef
 
--- | Typechecks forked procedures
-typeCheckForkProcs :: [(Ident, [Either SSMExp Reference])] -> TC Context -> TC ()
-typeCheckForkProcs procs env =
-    mapM_ (typeCheckForkProc env) procs
-
--- | Typechecks one forked procedure
-typeCheckForkProc :: TC Context -> (Ident, [Either SSMExp Reference]) -> TC ()
-typeCheckForkProc env (name, args) = do
-    params <- lookupProcedure name
-    typeCheckArgs args params env
-
-{- | Look up the type of a variable. As our language has scopes (e.g if-branches & while loops), we must
-dig through all the scopes to search for a type for the variable. We allow shadowing variables, so we start
-looking for the type in the youngest scope and work our way towards the oldest. If no scope contains the variable,
-it is clearly unbound and we encountered an error. -}
-lookupVar :: Ident -> TC Type
-lookupVar id = do
-  e <- ask
-  lookupVar' id (scopes e)
-  where
-    lookupVar' :: Ident -> [Map.Map Ident Type] -> TC Type
-    lookupVar' id [] = throwError $ UnboundVariable id
-    lookupVar' id (c:cs) = case Map.lookup id c of
-      Just t -> return t
-      Nothing -> lookupVar' id cs
-
--- | Look up the parameter types of a procedure.
-lookupProcedure :: Ident -> TC [(Ident, Type)]
-lookupProcedure id = do
-  e <- ask
-  case Map.lookup id (procedures e) of
-    Just t -> return t
-    Nothing -> throwError $ UnboundVariable id
-
--- | Insert an identifier and its type into the map
-insertVarToMap :: Ident -> Type -> [Map.Map Ident Type] -> [Map.Map Ident Type]
-insertVarToMap ident t (c:cs) = Map.insert ident t c : cs
-insertVarToMap ident t [] = [Map.insert ident t Map.empty]
-
--- | enter procedure definition into our environment
-enterProc' :: Procedure -> Context -> Context
-enterProc' Procedure {name=n, arguments=args, body=_} Context {procedures=p, scopes=s} =
-    Context {procedures = Map.insert n args p, scopes = s}
-
-enterProc :: TC Context -> Procedure -> TC Context
-enterProc env p = local (enterProc' p) env
-
--- | enter parameter definitions in the Map `funs` into our environment
-enterProcs :: TC Context -> Map.Map Ident Procedure -> TC Context
-enterProcs env funs = foldl enterProc env (Map.elems funs)
-
--- | enter an argument and its type into our environment
-enterArg :: TC Context -> (Ident, Type) -> TC Context
-enterArg env (name, ty) = local (enterVar name ty) env
-
--- | Add a variable to our context
-enterVar :: Ident -> Type -> Context -> Context
-enterVar ident t Context {procedures=proc_map, scopes=_scopes} =
-    Context {procedures = proc_map, scopes = insertVarToMap ident t _scopes}
-
--- | return () is t1 and t2 are the same types, otherwise, throw error
-assertType :: Type -> Type -> TC ()
-assertType t1 t2 =
-  if t1 == t2
-    then return ()
-    else throwError $ TypeError t1 t2
-
--- | an empty context with no bindings
-emptyContext :: Context
-emptyContext = Context {procedures=Map.empty, scopes=[]}
-
--- | Typechecks a literal
-typeCheckLit :: SSMLit -> TC Type
-typeCheckLit (LUInt8 _) = return TUInt8
-typeCheckLit (LInt32 _) = return TInt32
-typeCheckLit (LInt64 _) = return TInt64
-typeCheckLit (LUInt64 _) = return TUInt64
-typeCheckLit (LBool _) = return TBool
+-- | Obtains type of a literal value.
+typeofLit :: SSMLit -> Type
+typeofLit (LUInt8 _) = TUInt8
+typeofLit (LInt32 _) = TInt32
+typeofLit (LInt64 _) = TInt64
+typeofLit (LUInt64 _) = TUInt64
+typeofLit (LBool _) = TBool
+typeofLit LEvent = TEvent
