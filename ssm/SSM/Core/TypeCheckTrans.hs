@@ -157,13 +157,6 @@ typeCheckForkProc env (name, args) = do
     params <- lookupProcedure name
     typeCheckArgs args params env
 
-lookupProcedure :: Ident -> TC [(Ident, Type)]
-lookupProcedure id = do
-  e <- ask
-  case Map.lookup id (procedures e) of
-    Just t -> return t
-    Nothing -> throwError $ UnboundVariable id
-
 {- | Look up the type of a variable. As our language has scopes (e.g if-branches & while loops), we must
 dig through all the scopes to search for a type for the variable. We allow shadowing variables, so we start
 looking for the type in the youngest scope and work our way towards the oldest. If no scope contains the variable,
@@ -178,6 +171,14 @@ lookupVar id = do
     lookupVar' id (c:cs) = case Map.lookup id c of
       Just t -> return t
       Nothing -> lookupVar' id cs
+
+-- | Look up the parameter types of a procedure.
+lookupProcedure :: Ident -> TC [(Ident, Type)]
+lookupProcedure id = do
+  e <- ask
+  case Map.lookup id (procedures e) of
+    Just t -> return t
+    Nothing -> throwError $ UnboundVariable id
 
 -- | Insert an identifier and its type into the map
 insertVarToMap :: Ident -> Type -> [Map.Map Ident Type] -> [Map.Map Ident Type]
@@ -205,12 +206,14 @@ enterVar :: Ident -> Type -> Context -> Context
 enterVar ident t Context {procedures=proc_map, scopes=_scopes} =
     Context {procedures = proc_map, scopes = insertVarToMap ident t _scopes}
 
+-- | return () is t1 and t2 are the same types, otherwise, throw error
 assertType :: Type -> Type -> TC ()
 assertType t1 t2 =
   if t1 == t2
     then return ()
     else throwError $ TypeError t1 t2
 
+-- | an empty context with no bindings
 emptyContext :: Context
 emptyContext = Context {procedures=Map.empty, scopes=[]}
 
