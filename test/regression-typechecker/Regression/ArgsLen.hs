@@ -45,4 +45,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.typeIncorrectSpec "UnboundVar" p
+spec = T.typeIncorrectSpec "ArgLen" p
