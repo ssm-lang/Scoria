@@ -1,4 +1,4 @@
--- | A test that attempts to construct a bool literal from a uint64.
+-- | A test that uses a wrong name for a variable.
 module Regression.UnboundVar where
 
 import           Data.Map                       ( fromList )
