@@ -29,7 +29,7 @@ p = Program
                   , arguments = []
                   , body = [ NewRef (Ident "ref0" Nothing) TBool (Lit TBool (LBool True))
                            , SetLocal (Ident "var0" Nothing) TInt32 (Lit TInt32 (LInt32 42))
-                           , SetLocal (Ident "var1" Nothing) TInt32 (Var TInt32 (Ident "v0" Nothing))
+                           , SetLocal (Ident "var1" Nothing) TInt32 (Var TInt32 (Ident "var0" Nothing))
                            ]
                   }
                 ),
