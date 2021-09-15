@@ -1,17 +1,18 @@
 {-# LANGUAGE QuasiQuotes #-}
 module SSM.Backend.C.Types where
 
-import           SSM.Backend.C.Identifiers
-import           SSM.Core.Syntax                ( Ident(..)
-                                                , Type(..)
-                                                )
+import           SSM.Core.Syntax
+import           SSM.Core.Type
+import           SSM.Core.Ident
+
+import qualified SSM.Interpret.Trace           as T
 
 import           Language.C.Quote.GCC           ( cexp
                                                 , cstm
                                                 , cty
                                                 )
 import qualified Language.C.Syntax             as C
-import qualified SSM.Interpret.Trace           as T
+
 
 -- | Construct a 'C.Type' from an identifier.
 t_ :: CIdent -> C.Type

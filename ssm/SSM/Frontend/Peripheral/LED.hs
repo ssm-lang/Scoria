@@ -18,19 +18,31 @@ representing the two different states a LED can have.
 -}
 module SSM.Frontend.Peripheral.LED where
 
-import           SSM.Core.Ident
-import           SSM.Core.Peripheral.LED
-import           SSM.Core.Syntax         hiding ( ledperipherals )
+import           SSM.Core.Ident                 ( Ident(Ident) )
+import           SSM.Core.Peripheral.LED        ( addOnOffLED )
+import           SSM.Core.Program               ( Handler(..) )
+import           SSM.Core.Reference             ( makeStaticRef )
+import           SSM.Core.Type                  ( Type(TBool)
+                                                , mkReference
+                                                )
 
-import           SSM.Frontend.Compile
-import           SSM.Frontend.Exp
-import           SSM.Frontend.Language
-import           SSM.Frontend.Ref
+import           SSM.Frontend.Compile           ( Compile
+                                                , CompileSt(ledperipherals)
+                                                )
+import           SSM.Frontend.Exp               ( Exp )
+import           SSM.Frontend.Language          ( (==.)
+                                                , Ref
+                                                , deref
+                                                , false'
+                                                , not'
+                                                , true'
+                                                )
+import           SSM.Frontend.Ref               ( Ref(Ptr) )
 
-import           SSM.Util.State
+import           SSM.Util.State                 ( fresh )
 
-import           Control.Monad.State
-import           Data.Word
+import           Control.Monad.State            ( modify )
+import           Data.Word                      ( Word8 )
 
 {- | On-off LEDs can be either on or off, so their state is semantically equivalent to
 a boolean state. -}
@@ -62,6 +74,6 @@ onoffLED i = do
     n <- fresh
     let id = Ident n Nothing
     modify $ \st -> st { ledperipherals = addOnOffLED i id $ ledperipherals st }
-    let ref     = makeStaticRef id (Ref TBool)
+    let ref     = makeStaticRef id (mkReference TBool)
     let handler = StaticOutputHandler ref i
     return $ (Ptr ref, handler)

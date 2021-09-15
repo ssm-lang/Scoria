@@ -6,9 +6,11 @@ should be visible in the entire program, or it could be IO peripherals.
 {-# LANGUAGE FlexibleInstances #-}
 module SSM.Frontend.Compile where
 
+import           SSM.Core.Peripheral
 import           SSM.Core.Peripheral.GPIO
 import           SSM.Core.Peripheral.LED
-import           SSM.Core.Syntax hiding (initialQueueContent)
+import qualified SSM.Core.Program              as SP
+import           SSM.Core.Syntax         hiding ( initialQueueContent )
 import           SSM.Frontend.Syntax
 import           SSM.Util.State
 
@@ -18,7 +20,7 @@ import           Data.Maybe
 -- | State maintained by the `Compile` monad
 data CompileSt = CompileSt
     { compileCounter      :: Int              -- ^ Counter to generate fresh named
-    , initialQueueContent :: [QueueContent]  -- ^ Initial ready-queue content
+    , initialQueueContent :: [SP.QueueContent]  -- ^ Initial ready-queue content
     , entryPoint          :: Maybe (SSM ())  -- ^ SSM program to run
 
     -- globals & peripherals
@@ -75,15 +77,24 @@ renameNewestGlobal name = do
 {- | If you have a @Compile (SSM ())@ you have probably set up some global variables
 using the @Compile@ monad. This instance makes sure that you can compile and interpret
 something that is a program with such global variables. -}
-instance SSMProgram (Compile ()) where
+instance SP.SSMProgram (Compile ()) where
     toProgram (Compile p) =
-        let (a, s) = runState p (CompileSt 0 [] Nothing[] emptyGPIOPeripheral emptyLEDPeripheral)
+        let (a, s) = runState
+                p
+                (CompileSt 0
+                           []
+                           Nothing
+                           []
+                           emptyGPIOPeripheral
+                           emptyLEDPeripheral
+                )
             (n, f) = transpile $ fromJust $ entryPoint s
-        in  Program (reverse $ initialQueueContent s)
-                    f
-                    (generatedGlobals s)
-                    (Just $ SSM.Frontend.Compile.gpioperipherals s)
-                    (Just $ SSM.Frontend.Compile.ledperipherals s)
+        in  SP.Program (reverse $ initialQueueContent s) f (generatedGlobals s)
+                $ [ Peripheral $ SSM.Frontend.Compile.gpioperipherals s
+                  , Peripheral $ SSM.Frontend.Compile.ledperipherals s
+                  ]
+--                    (Just $ SSM.Frontend.Compile.gpioperipherals s)
+--                    (Just $ SSM.Frontend.Compile.ledperipherals s)
 
 -- | Class of types that can be scheduled for execution by the SSM RTS
 class Schedulable a where
@@ -91,17 +102,16 @@ class Schedulable a where
     schedule :: a -> Compile ()
 
 -- | Handlers can be scheduled for execution by the SSM RTS
-instance Schedulable Handler where
-    schedule h@(StaticOutputHandler ref id) =
-        modify $ \st ->
-            st { initialQueueContent = Handler h : initialQueueContent st }
+instance Schedulable SP.Handler where
+    schedule h@(SP.StaticOutputHandler ref id) = modify $ \st ->
+        st { initialQueueContent = SP.Handler h : initialQueueContent st }
 
 -- | `SSM` programs can be scheduled for execution by the SSM RTS
 instance Schedulable (SSM ()) where
     schedule ssm =
         let id = getProcedureName $ runSSM ssm
         in  modify $ \st -> st
-                { initialQueueContent = SSMProcedure id []
+                { initialQueueContent = SP.SSMProcedure id []
                                             : initialQueueContent st
                 , entryPoint          = Just ssm
                 }

@@ -25,13 +25,18 @@ import qualified Data.Map                      as Map
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
 
--- import           Data.Bifunctor                 ( second )
 import           Data.List                      ( sortOn )
 import           SSM.Backend.C.Identifiers
 import           SSM.Backend.C.Types
 import           SSM.Backend.C.Peripheral
+
 import           SSM.Core.Syntax
 import           SSM.Core.Peripheral.GPIO
+import           SSM.Core.Program
+import           SSM.Core.Reference
+import           SSM.Core.Type
+import           SSM.Core.Ident
+
 import qualified SSM.Interpret.Trace           as T
 
 -- | Given a 'Program', returns a tuple containing the compiled program and

@@ -6,8 +6,13 @@ module SSM.Interpret.Interpreter
   ) where
 
 import           SSM.Core.Syntax
+import           SSM.Core.Program
+import           SSM.Core.Ident
+import           SSM.Core.Reference
+
 import           SSM.Interpret.Internal
 import qualified SSM.Interpret.Trace           as T
+
 import           SSM.Util.Default               ( Default(def) )
 import           SSM.Util.HughesList     hiding ( (++) )
 import           SSM.Util.Operators             ( (<#>) )

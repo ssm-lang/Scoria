@@ -98,6 +98,11 @@ import           SSM.Util.HughesList            ( toHughes )
 import           SSM.Util.Operators             ( (<#>) )
 
 import           SSM.Core.Syntax
+import           SSM.Core.Ident
+import           SSM.Core.Reference
+import           SSM.Core.Type
+import           SSM.Core.Program
+
 import qualified SSM.Interpret.Trace           as T
 import           SSM.Interpret.Types
 

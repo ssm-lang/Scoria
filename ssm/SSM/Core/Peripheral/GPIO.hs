@@ -20,15 +20,36 @@ module SSM.Core.Peripheral.GPIO
   ) where
 
 import qualified Data.Map                      as Map
-import           SSM.Core.Ident
+import           Data.Word                      ( Word8 )
+import           SSM.Core.Ident                 ( Ident )
+import           SSM.Core.Peripheral            ( Initializer(..)
+                                                , IsPeripheral(..)
+                                                , StaticInputVariant(Switch)
+                                                )
+import           SSM.Core.Reference             ( makeStaticRef )
+import           SSM.Core.Type                  ( Type(TBool)
+                                                , mkReference
+                                                )
 
 -- | Datatype that describes which GPIO pins are used.
 data GPIOPeripheral = GPIOPeripheral
   { {- | This map associates a pin number with the name the reference is given in the
       source code. -}
-    switchpins' :: Map.Map Int Ident
+    switchpins' :: Map.Map Word8 Ident
   }
   deriving (Show, Read, Eq)
+
+-- | IsPeripheral instance for `GPIOPeripheral`, so that we can compile peripherals.
+instance IsPeripheral GPIOPeripheral where
+  declaredReferences gpio =
+    map (flip makeStaticRef (mkReference TBool) . snd) $ switchpins gpio
+
+  mainInitializers gpio = concatMap initializeSingle $ switchpins gpio
+   where
+    initializeSingle :: (Word8, Ident) -> [Initializer]
+    initializeSingle (i, id) =
+      let ref = makeStaticRef id $ mkReference TBool
+      in  [Normal ref, StaticInput (Switch i) ref]
 
 {- | Create an initial GPIO Peripheral description. In the initial description, no GPIO
 pins are used. -}
@@ -36,7 +57,7 @@ emptyGPIOPeripheral :: GPIOPeripheral
 emptyGPIOPeripheral = GPIOPeripheral Map.empty
 
 -- | Add a switch to a `GPIOPeripheral` and get the new peripheral back.
-addSwitchGPIO :: Int -> Ident -> GPIOPeripheral -> GPIOPeripheral
+addSwitchGPIO :: Word8 -> Ident -> GPIOPeripheral -> GPIOPeripheral
 addSwitchGPIO i id p = case Map.lookup i (switchpins' p) of
   Just _ -> error $ concat
     [ "SSM.Core.Peripheral.GPIO error: attempt to add switch "
@@ -46,5 +67,5 @@ addSwitchGPIO i id p = case Map.lookup i (switchpins' p) of
   Nothing -> p { switchpins' = Map.insert i id (switchpins' p) }
 
 -- | Get the switch GPIO pins from a `GPIOPeripheral`
-switchpins :: GPIOPeripheral -> [(Int, Ident)]
+switchpins :: GPIOPeripheral -> [(Word8, Ident)]
 switchpins gp = Map.toList $ switchpins' gp

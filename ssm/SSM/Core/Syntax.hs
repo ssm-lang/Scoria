@@ -1,203 +1,46 @@
-{-| This module implements the core abstract syntax. This syntax is meant to be
-completely detached from the embedded language, and could thus be a target for
-a parser or something else (in our case the embedded language, however). The
-rest of the compiler will work with this representation (compiler, interpreter,
-pretty printer etc). -}
+{-| This module exposes the core syntax elements that make up our SSM expressions,
+statements and time management. -}
+{-# LANGUAGE GADTs #-}
 module SSM.Core.Syntax
-    ( -- * SSM Core Syntax
-
-      -- ** Identifiers
-      {- | Some elements in the core syntax are named, and those names are represented
-      by these identifiers. In some places information is grabbed from the Haskell
-      source file and added to the identifier. -}
-      Ident(..)
-    , SrcInformation(..)
-
-      -- ** Types
-      {- | These are the types that are valid in the SSM language, and some simple
-      functions to manipulate them. The `dereference` & `mkReference` functions just
-      unwrap/wrap a type -- it does not actually dereference anything.
-
-      The type class `SSMType` is there so that we can marshal some Haskell types into
-      their corresponding `Type` representation.
-      -}
-    , Type(..)
-    , dereference
-    , mkReference
-    , isReference
-    , SSMType(..)
-
-      -- ** References
-      {- | References in the SSM language is simply something with a name and a type. If
-      the reference references something of type @a@, the type will be @Ref a@. When we
-      add IO support some references might need to be allocated globally, in which case
-      we need to add a new variant. -}
-    , Reference(..)
-    , refType
-    , refName
-    , refIdent
-    , renameRef
-    , makeDynamicRef
-    , makeStaticRef
-    , isDynamic
-    , isStatic
-
-      -- ** Expressions
+  ( -- ** Expressions
       {- | Expressions in the language are quite few at the moment. Adding support for
       new expressions here (especially more numerical operators) should be very simple.
       -}
-    , SSMExp(..)
-    , SSMLit(..)
-    , UnaryOpE(..)
-    , UnaryOpR(..)
-    , BinOp(..)
-    , expType
+    SSMExp(..)
+  , SSMLit(..)
+  , UnaryOpE(..)
+  , UnaryOpR(..)
+  , BinOp(..)
+  , expType
 
       -- ** Time
       {- Exposes units of time to wrap Word64 expressions. -}
-    , SSMTime(..)
+  , SSMTime(..)
 
       -- ** Statements
       {- | Statements that make up an SSM program take any of these forms. A program
       is made up of a list of these statements.-}
-    , Stm(..)
+  , Stm(..)
+  ) where
 
-      -- ** Procedures
-      {- | A procedure is a piece of code that is named and possibly parameterised over
-      some parameters. When the code is later turned into C code, every procedure is
-      compiled into three components -- an activation record, an initialization function
-      and a step function. -}
-    , Procedure(..)
+import           Control.Monad.State.Lazy       ( MonadState(get, put)
+                                                , State
+                                                , forM
+                                                , modify
+                                                , runState
+                                                )
+import           Data.Int                       ( Int32
+                                                , Int64
+                                                )
+import qualified Data.Map                      as Map
+import           Data.Word                      ( Word32
+                                                , Word64
+                                                , Word8
+                                                )
 
-      -- ** Programs
-      {- | A program consists of a map of names & procedures, the name of an entry point
-      of a program and any arguments the entry point should be applied to. -}
-    , Program(..)
-
-    , QueueContent(..)
-    , Handler(..)
-    , entry
-
-    , SSMProgram(..)
-    ) where
-
-import Data.Int
-import Data.Word
-import qualified Data.Map as Map
-import Control.Monad.State.Lazy
-    ( forM, modify, runState, MonadState(put, get), State )
-
-import SSM.Core.Ident
-import SSM.Core.Peripheral.GPIO
-import SSM.Core.Peripheral.LED
-
--- Types
-
--- | Data types supported by the language
-data Type
-    = TUInt8    -- ^ Unsigned 8-bit integer
-    | TUInt32   -- ^ Unsigned 32-bit integer
-    | TUInt64   -- ^ Unsigned 64-bit integer
-    | TInt32    -- ^ Signed 32-bit integer
-    | TInt64    -- ^ Signed 64-bit integer
-    | TBool     -- ^ Boolean type
-    | TEvent    -- ^ Event type
-    | Ref Type  -- ^ A reference to another type
-    deriving (Eq, Show, Read)
-
--- | Dereference a type. Throws an error if the type is not a reference.
-dereference :: Type -> Type
-dereference (Ref t) = t
-dereference t       = error $ "not a reference type: can not dereference " ++ show t
-
--- | Turn a type into a reference to that type.
-mkReference :: Type -> Type
-mkReference = Ref
-
--- | Predicate to verify that a type is a reference to some other type.
-isReference :: Type -> Bool
-isReference (Ref _) = True
-isReference _       = False
-
--- | Create a dynamic reference
-makeDynamicRef :: Ident -> Type -> Reference
-makeDynamicRef name typ = Dynamic (name, typ)
-
--- | Create a static reference
-makeStaticRef :: Ident -> Type -> Reference
-makeStaticRef name typ = Static (name, typ)
-
-{-| The class of Haskell types that can be marshalled to a representation
-in the SSM language. -}
-class SSMType a where
-    -- | Take a @proxy a@ and turn that into a `Type` that represents @a@.
-    typeOf :: proxy a -> Type
-
-instance SSMType Word8 where
-  typeOf _ = TUInt8
-
-instance SSMType Word32 where
-  typeOf _ = TUInt32
-
-instance SSMType Word64 where
-    typeOf _ = TUInt64
-
-instance SSMType Int32 where
-    typeOf _ = TInt32
-
-instance SSMType Int64 where
-    typeOf _ = TInt64
-
-instance SSMType Bool where
-    typeOf _ = TBool
-
-instance SSMType () where
-    typeOf _ = TEvent
-
-
--- References
-
--- | References have a name and a type
-type Ref = (Ident, Type)
-
--- | References in our language. They are either dynamic or static.
-data Reference 
-    {- | A Dynamic reference will be dynamically allocated and deallocated as a program
-    is running. It will reside in an activation record in the generated C-code. -}
-    = Dynamic Ref
-    {- | A static reference is allocated in the global scope of things, and does not
-    reside in an activation record in the generated C-code. It can be referenced from any
-    context. -}
-    | Static Ref
-    deriving (Eq, Show, Read)
-
--- | Type of a reference
-refType :: Reference -> Type
-refType (Dynamic (_,t)) = t
-refType (Static (_,t))  = t
-
--- | Name of a reference
-refName :: Reference -> String
-refName = identName . refIdent
-
--- | Return the `Ident` of a `Reference`
-refIdent :: Reference -> Ident
-refIdent (Dynamic (n,_)) = n
-refIdent (Static (n,_))  = n
-
--- | Rename a reference
-renameRef :: Reference -> Ident -> Reference
-renameRef (Dynamic (_,t)) n = Dynamic (n, t)
-renameRef (Static (_,t)) n  = Static (n, t)
-
--- | Returns @True@ if a reference is a dynamic reference
-isDynamic :: Reference -> Bool
-isDynamic (Dynamic _) = True
-isDynamic _           = False
-
--- | Returns @True@ if a reference is a static reference
-isStatic :: Reference -> Bool
-isStatic = not . isDynamic
+import           SSM.Core.Ident                 ( Ident )
+import           SSM.Core.Reference             ( Reference )
+import           SSM.Core.Type                  ( Type )
 
 -- Expressions
 
@@ -250,10 +93,10 @@ data BinOp
 
 -- | Return the type of an expression
 expType :: SSMExp -> Type
-expType (Var t _)     = t
-expType (Lit t _)     = t
-expType (UOpE t _ _)  = t
-expType (UOpR t _ _)  = t
+expType (Var t _    ) = t
+expType (Lit t _    ) = t
+expType (UOpE t _ _ ) = t
+expType (UOpR t _ _ ) = t
 expType (BOp t _ _ _) = t
 
 -- Time
@@ -261,8 +104,6 @@ expType (BOp t _ _ _) = t
 -- | Time values with units to be resolved by CodeGen. Used in `after` stmts.
 newtype SSMTime = SSMTime SSMExp  -- in nanoseconds
     deriving (Eq, Show, Read)
-
--- Programs
 
 {- | A lower level representation of the statements that make up the body of
 an SSM program. -}
@@ -287,68 +128,3 @@ data Stm
     site contains only that name and the arguments to apply the function to. -}
     | Fork [(Ident, [Either SSMExp Reference])]
     deriving (Show, Eq, Read)
-
--- | A procedure has a name, parameter names & types and a body.
-data Procedure = Procedure
-    { -- | Name of the procedure.
-      name       :: Ident
-      -- | Parameter names and types of the procedure.
-     , arguments :: [(Ident, Type)]
-      -- | Statements that make up this procedure.
-    , body       :: [Stm]
-    } deriving (Eq, Show, Read)
-
--- | A @QueueContent@ is something that can be scheduled when a program begins executing.
-data QueueContent
-    {- | SSM procedures can be scheduled initially. Right now it is assumed that only
-    one SSM procedure will ever be scheduled initiailly, and that it will have no
-    arguments. The constructor looks like this, however, in preparation for any future
-    changes we might want to make. I might remove this second argument... -}
-    = SSMProcedure Ident [Either SSMExp Reference]
-    | Handler Handler  -- ^ Handlers can be scheduled
-  deriving (Show, Read, Eq)
-
--- | Different variants of handlers that can be scheduled at the beginning of a program
-data Handler = StaticOutputHandler Reference Word8  -- ^ Static output handlers (LED? only?)
-  deriving (Show, Read, Eq)
-
-{- | Get the identifier of the SSM procedure that is scheduled at the start of a SSM
-program -}
-entry :: Program -> Ident
-entry p = getInitialProcedure' $ initialQueueContent p
-  where
-    getInitialProcedure' :: [QueueContent] -> Ident
-    getInitialProcedure' [] = error $ concat
-      [ "SSM.Core.Syntax.getInitialProcedure error ---\n"
-      , "no initial SSM procedure set to be scheduled when "
-      , "running the program"
-      ]
-    getInitialProcedure' (SSMProcedure id _ : _ ) = id
-    getInitialProcedure' (_                 : xs) = getInitialProcedure' xs
-
--- | Program definition
-data Program = Program
-    { -- | The things that should be scheduled when the program starts
-      initialQueueContent :: [QueueContent]
-      -- | Map that associates procedure names with their definitions.
-    , funs :: Map.Map Ident Procedure
-      -- | Name and type of references that exist in the global scope.
-    , globalReferences :: [(Ident, Type)]
-      {- | If any GPIO peripherals are used in the program, @gpioperipherals@ specifies
-      which peripherals are used, and at which names. -}
-    , gpioperipherals :: Maybe GPIOPeripheral
-      {- | If any LED peripherals are used in the program, @ledperipherals@ specifies
-      which LED peripherals are used, how, and with which names they can be
-      referenced. -}
-    , ledperipherals :: Maybe LEDPeripheral
-    }
-    deriving (Show, Read, Eq)
-
--- | Class of types that can be converted to a `Program`.
-class SSMProgram a where
-  -- | This function takes an @a@ and converts it to a `Program`
-  toProgram :: a -> Program
-
--- | Dummy instance for `Program`. Does nothing -- defined to be the identity function.
-instance SSMProgram Program where
-  toProgram = id

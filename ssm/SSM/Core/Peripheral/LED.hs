@@ -1,10 +1,17 @@
 {- | Core representation of LED peripherals. -}
 module SSM.Core.Peripheral.LED where
 
-import           SSM.Core.Ident
+import           SSM.Core.Ident                 ( Ident )
+import           SSM.Core.Peripheral            ( Initializer(Normal)
+                                                , IsPeripheral(..)
+                                                )
+import           SSM.Core.Reference             ( makeStaticRef )
+import           SSM.Core.Type                  ( Type(TBool)
+                                                , mkReference
+                                                )
 
 import qualified Data.Map                      as Map
-import           Data.Word
+import           Data.Word                      ( Word8 )
 
 -- | LED peripherals
 data LEDPeripheral = LEDPeripheral
@@ -12,6 +19,17 @@ data LEDPeripheral = LEDPeripheral
       onoffLEDs' :: Map.Map Word8 Ident
     }
     deriving (Eq, Show, Read)
+
+-- | `IsPeripheral` instance for `LEDPeripheral`, so that we can compile `LEDPeripheral`s.
+instance IsPeripheral LEDPeripheral where
+    declaredReferences lp =
+        map (flip makeStaticRef (mkReference TBool) . snd) $ onoffLEDs lp
+
+    mainInitializers lp = concatMap initializeSingle $ onoffLEDs lp
+      where
+        initializeSingle :: (Word8, Ident) -> [Initializer]
+        initializeSingle (_, id) =
+            let ref = makeStaticRef id $ mkReference TBool in [Normal ref]
 
 -- | Create an initial LED peripheral
 emptyLEDPeripheral :: LEDPeripheral

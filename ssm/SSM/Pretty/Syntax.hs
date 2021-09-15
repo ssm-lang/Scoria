@@ -10,21 +10,11 @@ import Control.Monad.Writer
     ( execWriter, MonadWriter(tell), Writer )
 
 import SSM.Core.Syntax
-    ( BinOp(..),
-      Reference,
-      refName,
-      SSMExp(..),
-      SSMLit(..),
-      SSMTime(..),
-      Type(..),
-      UnaryOpE(..),
-      UnaryOpR(..),
-      Procedure(body, name, arguments),
-      Program(..),
-      Stm(..),
-      Ident(..),
-      QueueContent(..),
-      Handler(..))
+import SSM.Core.Program
+import SSM.Core.Type
+import SSM.Core.Reference
+import SSM.Core.Ident
+
 import SSM.Util.HughesList ( fromHughes, toHughes, Hughes )
 
 type PP a = ReaderT Int                    -- current level of indentation

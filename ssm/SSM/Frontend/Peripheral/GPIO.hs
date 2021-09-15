@@ -10,6 +10,8 @@ import           SSM.Frontend.Syntax
 
 import           Control.Monad.State
 
+import           Data.Word
+
 {- | A switch can provide input that is either high or low, so we use a @Bool@ to model
 this binary state. It would perhaps improve readabilty to change this to a dedicated
 datatype with states @HIGH@ and @LOW@ later on down the road when we have support for
@@ -25,7 +27,7 @@ isLow :: Ref SW -> Exp Bool
 isLow = not' . isHigh
 
 -- | Create a @Ref SW@ by identifying a GPIO pin with a unique ID. E.g GPIO 1.
-switch :: Int -> Compile (Ref SW)
+switch :: Word8 -> Compile (Ref SW)
 switch i = do
     n <- fresh
     let id = Ident n Nothing
