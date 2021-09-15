@@ -1,5 +1,5 @@
 -- | A test that uses a wrong name for a variable.
-module Regression.UnboundVar where
+module Regression.UnboundVarSpec where
 
 import           Data.Map                       ( fromList )
 import SSM.Core.Syntax

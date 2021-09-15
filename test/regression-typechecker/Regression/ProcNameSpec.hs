@@ -1,5 +1,5 @@
 -- | A test where a procedure has different name than its key in funs map
-module Regression.ProcName where
+module Regression.ProcNameSpec where
 
 import           Data.Map                       ( fromList )
 import SSM.Core.Syntax

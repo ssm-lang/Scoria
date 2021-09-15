@@ -1,5 +1,5 @@
 -- | A test that applies a wrong number of arguments to a procedure
-module Regression.ArgsLen where
+module Regression.ArgsLenSpec where
 
 import           Data.Map                       ( fromList )
 import SSM.Core.Syntax
