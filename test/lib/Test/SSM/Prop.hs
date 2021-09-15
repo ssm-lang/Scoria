@@ -47,8 +47,7 @@ propTypechecks tn program = QC.monadicIO $ do
   reportProgramOnFail slug program
   case TC.typecheck $ toProgram program of
     Left err -> fail $ "Did not pass typechecker: " ++ show err
-    -- Right () -> return ()
-    Right () -> return $ putStr "Passed the typechecker"
+    Right () -> return ()
 
 -- | Tests that generated SSM programs compile successfully.
 propCompiles :: SSMProgram p => TestName -> p -> QC.Property
