@@ -11,6 +11,12 @@ module Test.SSM.QuickCheck.Util
     ) where
 
 import SSM.Core.Syntax
+
+import SSM.Core.Type
+import SSM.Core.Program
+import SSM.Core.Ident
+import SSM.Core.Reference
+
 import SSM.Util.HughesList hiding ( (++) )
 
 import qualified Data.Map as Map

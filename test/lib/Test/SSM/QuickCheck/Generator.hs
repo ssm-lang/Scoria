@@ -10,6 +10,11 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import SSM.Core.Syntax
+import SSM.Core.Ident
+import SSM.Core.Reference
+import SSM.Core.Program
+import SSM.Core.Type
+
 import SSM.Util.HughesList hiding ( (++) )
 
 import Test.SSM.QuickCheck.Shrink hiding (Ref, Variable)
@@ -32,15 +37,6 @@ basetypes = [TUInt8, TUInt32, TUInt64, TInt32, TInt64, TBool, TEvent]
 
 instance Arbitrary Type where
   arbitrary = elements $ basetypes ++ map Ref basetypes
-
---instance Arbitrary SSMTimeUnit where
---  arbitrary = elements [ SSMNanosecond
---                       , SSMMicrosecond
---                       , SSMMillisecond
---                       , SSMSecond
---                       , SSMMinute
---                       , SSMHour
---                       ]
 
 type Procedures = [(Ident, [(Ident, Type)], [Stm])]
 type Variable   = (Ident, Type)
@@ -90,7 +86,7 @@ instance Arbitrary Program where
     let procedures = Map.fromList
           [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
 
-    return $ Program [SSMProcedure entryPoint []] procedures globals Nothing Nothing
+    return $ Program [SSMProcedure entryPoint []] procedures globals []
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program

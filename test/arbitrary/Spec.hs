@@ -1,4 +1,4 @@
-import           SSM.Core.Syntax                ( Program )
+import           SSM.Core.Program
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
 import qualified Test.SSM.Prop                 as T

@@ -1,4 +1,5 @@
 import           SSM.Core.Syntax
+import           SSM.Core.Type
 import           SSM.Interpret.Trace
 import           SSM.Interpret.TraceParser
 

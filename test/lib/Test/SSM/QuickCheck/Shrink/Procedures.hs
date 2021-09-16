@@ -5,6 +5,8 @@ module Test.SSM.QuickCheck.Shrink.Procedures
     ) where
 
 import SSM.Core.Syntax
+import SSM.Core.Ident
+import SSM.Core.Program
 
 import Test.SSM.QuickCheck.Util
 
