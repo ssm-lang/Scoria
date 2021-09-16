@@ -9,11 +9,7 @@ import Control.Monad.Reader
 import Control.Monad.Writer
     ( execWriter, MonadWriter(tell), Writer )
 
-import SSM.Core.Syntax
-import SSM.Core.Program
-import SSM.Core.Type
-import SSM.Core.Reference
-import SSM.Core.Ident
+import SSM.Core
 
 import SSM.Util.HughesList ( fromHughes, toHughes, Hughes )
 

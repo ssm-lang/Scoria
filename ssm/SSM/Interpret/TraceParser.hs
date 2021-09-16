@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module SSM.Interpret.TraceParser where
 
-import           SSM.Core.Syntax
 import           SSM.Core.Type
 import           SSM.Interpret.Trace
 

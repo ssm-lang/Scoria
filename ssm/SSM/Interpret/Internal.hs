@@ -97,11 +97,43 @@ import           Data.Word                      ( Word64
 import           SSM.Util.HughesList            ( toHughes )
 import           SSM.Util.Operators             ( (<#>) )
 
-import           SSM.Core.Syntax
-import           SSM.Core.Ident
-import           SSM.Core.Reference
-import           SSM.Core.Type
-import           SSM.Core.Program
+import           SSM.Core                       ( BinOp
+                                                  ( OAnd
+                                                  , ODiv
+                                                  , OEQ
+                                                  , OLT
+                                                  , OMax
+                                                  , OMin
+                                                  , OMinus
+                                                  , OOr
+                                                  , OPlus
+                                                  , ORem
+                                                  , OTimes
+                                                  )
+                                                , Ident(identName)
+                                                , Procedure(arguments, body)
+                                                , Program(globalReferences)
+                                                , Reference
+                                                , SSMExp(..)
+                                                , SSMLit
+                                                  ( LBool
+                                                  , LEvent
+                                                  , LInt32
+                                                  , LInt64
+                                                  , LUInt32
+                                                  , LUInt64
+                                                  , LUInt8
+                                                  )
+                                                , SSMTime(..)
+                                                , Stm
+                                                , Type(..)
+                                                , UnaryOpE(Neg, Not)
+                                                , UnaryOpR(Changed, Deref)
+                                                , dereference
+                                                , isDynamic
+                                                , refIdent
+                                                , refName
+                                                )
 
 import qualified SSM.Interpret.Trace           as T
 import           SSM.Interpret.Types

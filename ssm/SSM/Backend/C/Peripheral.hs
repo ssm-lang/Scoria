@@ -7,10 +7,7 @@ facilitate easier code generation. -}
 {-# LANGUAGE UndecidableInstances #-}
 module SSM.Backend.C.Peripheral where
 
-import           SSM.Core.Program
-import           SSM.Core.Peripheral
-import           SSM.Core.Reference
-import           SSM.Core.Type
+import           SSM.Core
 
 import           SSM.Backend.C.Identifiers
 

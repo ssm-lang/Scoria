@@ -67,10 +67,7 @@ module SSM.Backend.C.Identifiers
   , debug_trace
   ) where
 
-import           SSM.Core.Syntax
-import           SSM.Core.Type
-import           SSM.Core.Program
-import           SSM.Core.Reference
+import           SSM.Core
 
 import           Language.C.Quote.GCC           ( cexp
                                                 , cstm

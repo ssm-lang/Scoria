@@ -5,10 +5,7 @@ module SSM.Interpret.Interpreter
   , SSMProgram(..)
   ) where
 
-import           SSM.Core.Syntax
-import           SSM.Core.Program
-import           SSM.Core.Ident
-import           SSM.Core.Reference
+import           SSM.Core
 
 import           SSM.Interpret.Internal
 import qualified SSM.Interpret.Trace           as T

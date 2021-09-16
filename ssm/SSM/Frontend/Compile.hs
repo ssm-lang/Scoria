@@ -6,11 +6,8 @@ should be visible in the entire program, or it could be IO peripherals.
 {-# LANGUAGE FlexibleInstances #-}
 module SSM.Frontend.Compile where
 
-import           SSM.Core.Peripheral
-import           SSM.Core.Peripheral.GPIO
-import           SSM.Core.Peripheral.LED
-import qualified SSM.Core.Program              as SP
-import           SSM.Core.Syntax         hiding ( initialQueueContent )
+import           SSM.Core                      as SC
+
 import           SSM.Frontend.Syntax
 import           SSM.Util.State
 
@@ -20,7 +17,7 @@ import           Data.Maybe
 -- | State maintained by the `Compile` monad
 data CompileSt = CompileSt
     { compileCounter      :: Int              -- ^ Counter to generate fresh named
-    , initialQueueContent :: [SP.QueueContent]  -- ^ Initial ready-queue content
+    , initialQueueContent :: [QueueContent]  -- ^ Initial ready-queue content
     , entryPoint          :: Maybe (SSM ())  -- ^ SSM program to run
 
     -- globals & peripherals
@@ -77,7 +74,7 @@ renameNewestGlobal name = do
 {- | If you have a @Compile (SSM ())@ you have probably set up some global variables
 using the @Compile@ monad. This instance makes sure that you can compile and interpret
 something that is a program with such global variables. -}
-instance SP.SSMProgram (Compile ()) where
+instance SSMProgram (Compile ()) where
     toProgram (Compile p) =
         let (a, s) = runState
                 p
@@ -89,7 +86,9 @@ instance SP.SSMProgram (Compile ()) where
                            emptyLEDPeripheral
                 )
             (n, f) = transpile $ fromJust $ entryPoint s
-        in  SP.Program (reverse $ initialQueueContent s) f (generatedGlobals s)
+        in  Program (reverse $ SSM.Frontend.Compile.initialQueueContent s)
+                    f
+                    (generatedGlobals s)
                 $ [ Peripheral $ SSM.Frontend.Compile.gpioperipherals s
                   , Peripheral $ SSM.Frontend.Compile.ledperipherals s
                   ]
@@ -111,16 +110,16 @@ so forth.
 schedule :: SSM () -> Compile ()
 schedule ssm = do
     case isHandler ssm of
-        Just handler ->
-            modify
-                $ \st -> st
-                      { initialQueueContent = SP.Handler handler
-                                                  : initialQueueContent st
-                      }
+        Just handler -> modify $ \st -> st
+            { SSM.Frontend.Compile.initialQueueContent = SC.Handler handler
+                : SSM.Frontend.Compile.initialQueueContent st
+            }
         Nothing ->
             let id = getProcedureName $ runSSM ssm
-            in  modify $ \st -> st
-                    { initialQueueContent = SP.SSMProcedure id []
-                                                : initialQueueContent st
-                    , entryPoint          = Just ssm
+            in
+                modify $ \st -> st
+                    { SSM.Frontend.Compile.initialQueueContent =
+                        SSMProcedure id []
+                            : SSM.Frontend.Compile.initialQueueContent st
+                    , entryPoint                               = Just ssm
                     }

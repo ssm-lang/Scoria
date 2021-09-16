@@ -30,12 +30,7 @@ import           SSM.Backend.C.Identifiers
 import           SSM.Backend.C.Types
 import           SSM.Backend.C.Peripheral
 
-import           SSM.Core.Syntax
-import           SSM.Core.Peripheral.GPIO
-import           SSM.Core.Program
-import           SSM.Core.Reference
-import           SSM.Core.Type
-import           SSM.Core.Ident
+import           SSM.Core
 
 import qualified SSM.Interpret.Trace           as T
 
