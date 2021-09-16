@@ -93,25 +93,34 @@ instance SP.SSMProgram (Compile ()) where
                 $ [ Peripheral $ SSM.Frontend.Compile.gpioperipherals s
                   , Peripheral $ SSM.Frontend.Compile.ledperipherals s
                   ]
---                    (Just $ SSM.Frontend.Compile.gpioperipherals s)
---                    (Just $ SSM.Frontend.Compile.ledperipherals s)
 
--- | Class of types that can be scheduled for execution by the SSM RTS
-class Schedulable a where
-    -- | Schedule an @a@ for execution by the SSM runtime system
-    schedule :: a -> Compile ()
+{- | Schedule an SSM procedure for execution upon program start-up. Procedures that are
+scheduled will be placed in the ready queue to be executed when the program starts.
+Currently, they are executed in the order in which they were scheduled.
 
--- | Handlers can be scheduled for execution by the SSM RTS
-instance Schedulable SP.Handler where
-    schedule h@(SP.StaticOutputHandler ref id) = modify $ \st ->
-        st { initialQueueContent = SP.Handler h : initialQueueContent st }
+Note that there are only two valid things that can be scheduled.
 
--- | `SSM` programs can be scheduled for execution by the SSM RTS
-instance Schedulable (SSM ()) where
-    schedule ssm =
-        let id = getProcedureName $ runSSM ssm
-        in  modify $ \st -> st
-                { initialQueueContent = SP.SSMProcedure id []
-                                            : initialQueueContent st
-                , entryPoint          = Just ssm
-                }
+  1. Nullary SSM procedures, aka procedures that take no arguments. These procedures must
+  be created by using the @Box@ machinery.
+  2. Handlers that are returned by creating peripherals.
+
+It is forbidden to schedule stuff like @fork [ ... ]@, @ var 0 >>= \r -> assign r 5@ and
+so forth.
+
+-}
+schedule :: SSM () -> Compile ()
+schedule ssm = do
+    case isHandler ssm of
+        Just handler ->
+            modify
+                $ \st -> st
+                      { initialQueueContent = SP.Handler handler
+                                                  : initialQueueContent st
+                      }
+        Nothing ->
+            let id = getProcedureName $ runSSM ssm
+            in  modify $ \st -> st
+                    { initialQueueContent = SP.SSMProcedure id []
+                                                : initialQueueContent st
+                    , entryPoint          = Just ssm
+                    }

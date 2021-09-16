@@ -17,6 +17,8 @@ import           SSM.Backend.C.Identifiers
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
 
+{- | Get the global declarations made by a peripheral. Usually this will just be global
+references. -}
 decls :: Peripheral -> [C.Definition]
 decls (Peripheral a) = map declSingle $ declaredReferences a
   where
@@ -24,6 +26,8 @@ decls (Peripheral a) = map declSingle $ declaredReferences a
     declSingle r =
       [cedecl| $ty:(svt_ $ dereference $ refType r) $id:(refName r);|]
 
+{- | Get the statements that initializes this peripheral. These statements should be
+executed in the program initialization point, before the program actually runs. -}
 maininit :: Peripheral -> [C.BlockItem]
 maininit (Peripheral a) = concatMap compInitializer $ mainInitializers a
     where
@@ -38,11 +42,6 @@ maininit (Peripheral a) = concatMap compInitializer $ mainInitializers a
           Switch id ->
             [ [citem| $id:initialize_static_input_device(&$id:(refName ref), $int:id);|]
             ]
-
-{- | Item to be placed in a HList, where the only thing we know about the internal object
-is that it has an instance of `CPeripheral`. -}
---data CPeripherable where
---    Peripheral ::CPeripheral a => a -> CPeripherable
 
 -- | Return all the statements that initialize the peripherals statically
 initPeripherals :: Program -> [C.BlockItem]

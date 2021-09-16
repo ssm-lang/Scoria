@@ -134,9 +134,6 @@ genGlobals = map declGlobal . globalReferences
   declGlobal :: (Ident, Type) -> C.Definition
   declGlobal (n, t) = [cedecl|$ty:(svt_ $ stripRef t) $id:(identName n);|]
 
---    $id:fork($id:(enter_ $ identName $ entry p)
---        (&ssm_top_parent, SSM_ROOT_PRIORITY, SSM_ROOT_DEPTH));
-
 -- | Generate the entry point of a program - the first thing to be ran.
 genInitProgram :: Program -> [C.Definition]
 genInitProgram p = [cunit|
@@ -528,9 +525,9 @@ refPtr r@(Static _) _ = [cexp|&$id:(refName r)|]
 genExp :: [Reference] -> SSMExp -> C.Exp
 genExp _  (Var TEvent _         ) = [cexp|0|]
 genExp _  (Var t n              ) = [cexp|acts->$id:(identName n)|]
-genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
-genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
-genExp _  (Lit _ (LUInt32 i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LInt32  i    )) = [cexp|(typename i32) $int:i|]
+genExp _  (Lit _ (LUInt8  i    )) = [cexp|(typename u8) $int:i|]
+genExp _  (Lit _ (LUInt32 i    )) = [cexp|(typename u32) $int:i|]
 genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename i64) $int:i|]
 genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename u64) $int:i|]
 genExp _  (Lit _ (LBool   True )) = [cexp|true|]
