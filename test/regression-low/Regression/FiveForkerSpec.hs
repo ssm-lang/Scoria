@@ -5,15 +5,15 @@ compiled code..
 module Regression.FiveForkerSpec where
 
 import           Data.Map                       ( fromList )
-import           SSM.Core.Syntax
+import           SSM.Core
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry            = Ident "fun0" Nothing
-  , funs             = fromList
+  { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
+  , funs  = fromList
     [ ( Ident "fun0" Nothing
       , Procedure
         { name      = Ident "fun0" Nothing
@@ -282,7 +282,7 @@ p = Program
                    OLT
               )
               [ After
-                (SSMTime (Lit TUInt64 (LUInt64 1112)) SSMNanosecond)
+                (SSMTime (Lit TUInt64 (LUInt64 1112)))
                 (Dynamic (Ident "ref1" Nothing, Ref TInt32))
                 (BOp
                   TInt32
@@ -671,13 +671,13 @@ p = Program
             ]
           , Wait [Dynamic (Ident "ref2" Nothing, Ref TUInt64)]
           , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32)]
-          , After (SSMTime (Lit TUInt64 (LUInt64 3525)) SSMNanosecond)
+          , After (SSMTime (Lit TUInt64 (LUInt64 3525)))
                   (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   (Lit TUInt64 (LUInt64 167))
           , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32)]
           , Wait [Dynamic (Ident "ref4" Nothing, Ref TUInt64)]
           , After
-            (SSMTime (Lit TUInt64 (LUInt64 4696)) SSMNanosecond)
+            (SSMTime (Lit TUInt64 (LUInt64 4696)))
             (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
             (BOp
               TUInt64
@@ -703,8 +703,7 @@ p = Program
         }
       )
     ]
-  , globalReferences = []
-  }
+  , globalReferences = [], peripherals = []}
 
 spec :: H.Spec
 spec = T.correctSpec "FiveForker" p

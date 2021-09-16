@@ -2,14 +2,14 @@
 module Regression.RecurseExhaustDepthSpec where
 
 import           Data.Map                       ( fromList )
-import           SSM.Core.Syntax
+import           SSM.Core
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = Ident "fun0" Nothing
+  { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList
               [ ( Ident "fun0" Nothing
                 , Procedure { name      = Ident "fun0" Nothing
@@ -19,7 +19,8 @@ p = Program
                 )
               , (Ident "fun1" Nothing, Procedure { name = Ident "fun1" Nothing, arguments = [], body = [] })
               ]
-  , globalReferences = []}
+  , globalReferences = []
+  , peripherals = []}
 
 spec :: H.Spec
 spec = T.correctSpec "RecurseExhaustDepth" p

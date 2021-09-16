@@ -4,13 +4,13 @@
 module Regression.EmptyFunSpec where
 
 import Data.Map (fromList)
-import SSM.Core.Syntax
+import SSM.Core
 import qualified Test.SSM.Prop as T
 import qualified Test.Hspec as H
 import qualified Test.Hspec.QuickCheck as H
 
 p :: Program
-p = Program {entry = Ident "fun1" Nothing, funs = fromList [(Ident "fun1" Nothing,Procedure {name = Ident "fun1" Nothing, arguments = [], body = []})], globalReferences = []}
+p = Program {initialQueueContent = [SSMProcedure (Ident "fun1" Nothing) []], funs = fromList [(Ident "fun1" Nothing,Procedure {name = Ident "fun1" Nothing, arguments = [], body = []})], globalReferences = [], peripherals = []}
 
 spec :: H.Spec
 spec = T.correctSpec "EmptyFun" p
