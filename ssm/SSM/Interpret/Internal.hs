@@ -145,7 +145,7 @@ globals :: Program -> ST s (Map.Map Ident (Var s))
 globals p = do
   vars <- forM (globalReferences p) $ \(id,t) -> do
     let initval = defaultValue (dereference t)
-    v <- newVar' initval maxBound
+    v <- newVar' initval 0
     return (id, v)
   return $ Map.fromList vars
 

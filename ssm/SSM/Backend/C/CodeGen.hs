@@ -133,7 +133,7 @@ genGlobals = map declGlobal . globalReferences
 genInitProgram :: Program -> [C.Definition]
 genInitProgram p = [cunit|
   int $id:initialize_program(void) {
-    $items:(map initGlobal $ globalReferences p)
+    $items:(concatMap initGlobal $ globalReferences p)
     $items:(initPeripherals p)
     $items:(initialForks $ initialQueueContent p)
 
@@ -141,15 +141,24 @@ genInitProgram p = [cunit|
   }
   |]
  where
-  -- | Initialize global reference.
-  initGlobal :: (Ident, Type) -> C.BlockItem
-  initGlobal (n, t) = [citem|$exp:init;|]
-    where init = initialize_ (stripRef t) [cexp|&$id:(identName n)|]
+  -- | Initialize global reference
+  initGlobal :: (Ident, Type) -> [C.BlockItem]
+  initGlobal (n, t) =
+    [ initialize_ (stripRef t) [cexp| &$id:(identName n)|]
+    ] ++ case stripRef t of
+      TEvent -> [[citem| $id:(assign_ t)(&$id:(identName n), 0);|]]
+      _ -> [[citem| $id:(assign_ t)(&$id:(identName n), 0, 0);|]]
 
   -- | Create statements for scheduling the initial ready-queue content
   initialForks :: [QueueContent] -> [C.BlockItem]
-  initialForks ips = map (uncurry initialFork) $
-    zip (pdeps (length ips) [cexp|SSM_ROOT_PRIORITY|] [cexp|SSM_ROOT_DEPTH|]) ips
+  initialForks ips =
+    zipWith
+      initialFork
+        (pdeps
+          (length ips)
+          [cexp|SSM_ROOT_PRIORITY|]
+          [cexp|SSM_ROOT_DEPTH|])
+        ips
     where
       -- | Create the schedule statement for a single schedulable thing
       initialFork :: (C.Exp, C.Exp) -> QueueContent -> C.BlockItem
