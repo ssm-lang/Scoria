@@ -148,7 +148,8 @@ genInitProgram p = [cunit|
 
   -- | Create statements for scheduling the initial ready-queue content
   initialForks :: [QueueContent] -> [C.BlockItem]
-  initialForks ips = map (uncurry initialFork) $ zip (pdeps (length ips)) ips
+  initialForks ips = map (uncurry initialFork) $
+    zip (pdeps (length ips) [cexp|SSM_ROOT_PRIORITY|] [cexp|SSM_ROOT_DEPTH|]) ips
     where
       -- | Create the schedule statement for a single schedulable thing
       initialFork :: (C.Exp, C.Exp) -> QueueContent -> C.BlockItem
@@ -175,21 +176,27 @@ genInitProgram p = [cunit|
         , Left $ Lit TUInt8 $ LUInt8 id
         ]
 
-      {- | Create C expressions that represent the new priorities and depths of the
-      initially scheduled processes. -}
-      pdeps :: Int -> [(C.Exp, C.Exp)]
-      pdeps cs =
-        let depthsub = ceiling $ logBase (2 :: Double) $ fromIntegral $ cs :: Int
-        in [ let prio  = [cexp|SSM_ROOT_PRIORITY + ($int:(i-1) * (1 << $exp:depth))|]
-                 depth = [cexp|SSM_ROOT_DEPTH - $int:depthsub|]
-             in (prio, depth)
-           | i <- [1..cs]
-           ]
-
       -- | Compile the arguments of a procedure to `Exp`
       cargs :: Either SSMExp Reference -> C.Exp
       cargs (Left e)  = genExp [] e
       cargs (Right r) = refSV r []
+
+{- | Create C expressions that represent the new priorities and depths of the
+initially scheduled processes. -}
+pdeps :: Int -> C.Exp -> C.Exp -> [(C.Exp, C.Exp)]
+pdeps cs currentPrio currentDepth =
+      [ let prio  = [cexp|$exp:currentPrio + ($int:(i-1) * (1 << $exp:depth))|]
+            depth = [cexp|$exp:currentDepth - $exp:(depthSub cs)|]
+        in (prio, depth)
+      | i <- [1..cs]
+      ]
+
+{- | Calculate the subexpression that should be subtracted from the current depth
+in order to achieve the new depth of the processes to fork.
+
+The argument is the number of new processes that are being forked. -}
+depthSub :: Int -> C.Exp
+depthSub k = [cexp|$int:(ceiling $ logBase (2 :: Double) $ fromIntegral $ k :: Int) |]
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]
@@ -470,32 +477,29 @@ genCase (Fork cs) = do
   locs    <- gets locals
   caseNum <- nextCase
   let
-    genCall :: Int -> (Ident, [Either SSMExp Reference]) -> C.Stm
-    genCall i (r, as) =
+    pds = pdeps (length cs) [cexp|actg->priority|] [cexp|actg->depth|]
+
+    genCall :: (C.Exp, C.Exp) -> (Ident, [Either SSMExp Reference]) -> C.Stm
+    genCall (prio, depth) (r, as) =
       [cstm|$id:fork($id:(enter_ (identName r))($args:enterArgs));|]
      where
       enterArgs =
         [ [cexp|actg|]
-          , [cexp|actg->priority + $int:i * (1 << $exp:newDepth)|]
-          , newDepth
+          , prio
+          , depth
           ]
           ++ map genArg as
       genArg :: Either SSMExp Reference -> C.Exp
       genArg (Left  e) = genExp locs e
       genArg (Right r) = refPtr r locs
 
-    newDepth :: C.Exp
-    newDepth = [cexp|actg->depth - $int:depthSub|]
-
-    depthSub :: Int
-    depthSub =
-      (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Int
-
+    -- | Generate a test that raises an exception if the program has run out of prioities
     checkNewDepth :: C.Stm
     checkNewDepth = [cstm|
-      if ($id:actg->depth < $int:depthSub)
+      if ($id:actg->depth < $exp:(depthSub (length cs)))
          $id:throw($exp:exhausted_priority); |]
 
+    -- | Generate the trace item that advertises which processes are being forked
     genTrace :: (Ident, [Either SSMExp Reference]) -> C.Stm
     genTrace (r, _) = [cstm|$id:debug_trace($string:event);|]
       where event = show $ T.ActActivate $ identName r
@@ -503,7 +507,7 @@ genCase (Fork cs) = do
   return
     $  checkNewDepth
     :  map genTrace cs
-    ++ zipWith genCall [0 :: Int ..] cs
+    ++ zipWith genCall pds cs
     ++ [ [cstm| $id:actg->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]
