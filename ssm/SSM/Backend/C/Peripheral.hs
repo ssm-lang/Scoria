@@ -10,6 +10,7 @@ module SSM.Backend.C.Peripheral where
 import           SSM.Core
 
 import           SSM.Backend.C.Identifiers
+import           SSM.Backend.C.Types
 
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
@@ -32,9 +33,9 @@ maininit (Peripheral a) = concatMap compInitializer $ mainInitializers a
       compInitializer i = case i of
         Normal ref ->
           let bt = dereference $ refType ref
-          in  [ [citem| $id:(initialize_ bt)(&$id:(refName ref));|]
-              , [citem| $id:(assign_ bt)(&$id:(refName ref), 0, 0); |]
-              ]
+              init = initialize_ bt [cexp|&$id:(refName ref)|]
+              assign = assign_ bt [cexp|&$id:(refName ref)|] [cexp|0|] [cexp|0|]
+          in [citems| $exp:init; $exp:assign; |]
         StaticInput si ref -> case si of
           Switch id ->
             [ [citem| $id:initialize_static_input_device(&$id:(refName ref), $int:id);|]

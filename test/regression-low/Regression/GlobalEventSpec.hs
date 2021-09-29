@@ -9,7 +9,7 @@
 module Regression.GlobalEventSpec where
 
 import           Data.Map                       ( fromList )
-import           SSM.Core.Syntax
+import           SSM.Core
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
@@ -19,7 +19,7 @@ spec = T.correctSpec "GlobalEventSpec" p
 
 p :: Program
 p = Program
-  { entry            = Ident { identName = "fun0", identSrcInfo = Nothing }
+  { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs             = fromList
                          [ ( Ident { identName = "fun0", identSrcInfo = Nothing }
                            , Procedure
@@ -33,4 +33,5 @@ p = Program
                          , Ref TUInt8
                          )
                        ]
+  , peripherals = []
   }

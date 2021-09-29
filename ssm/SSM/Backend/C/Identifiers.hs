@@ -219,10 +219,6 @@ i64 = "i64"
 u64 :: CIdent
 u64 = "u64"
 
--- | Return the C variant of the base type of a SSM type
-basetype :: Type -> C.Type
-basetype t = [cty|typename $id:(baseTypeId t)|]
-
 u8 :: CIdent
 u8 = "u8"
 

@@ -144,10 +144,9 @@ genInitProgram p = [cunit|
   -- | Initialize global reference
   initGlobal :: (Ident, Type) -> [C.BlockItem]
   initGlobal (n, t) =
-    [ initialize_ (stripRef t) [cexp| &$id:(identName n)|]
-    ] ++ case stripRef t of
-      TEvent -> [[citem| $id:(assign_ t)(&$id:(identName n), 0);|]]
-      _ -> [[citem| $id:(assign_ t)(&$id:(identName n), 0, 0);|]]
+    let init = initialize_ (stripRef t) [cexp| &$id:(identName n)|]
+        assign = assign_ (stripRef t) [cexp|&$id:(identName n)|] [cexp|0|] [cexp|0|]
+    in [citems| $exp:init; $exp:assign; |]
 
   -- | Create statements for scheduling the initial ready-queue content
   initialForks :: [QueueContent] -> [C.BlockItem]
@@ -188,7 +187,7 @@ genInitProgram p = [cunit|
       -- | Compile the arguments of a procedure to `Exp`
       cargs :: Either SSMExp Reference -> C.Exp
       cargs (Left e)  = genExp [] e
-      cargs (Right r) = refSV r []
+      cargs (Right r) = [cexp| $exp:(refPtr r [])->sv|]
 
 {- | Create C expressions that represent the new priorities and depths of the
 initially scheduled processes. -}
@@ -533,11 +532,11 @@ refPtr r@(Static _) _ = [cexp|&$id:(refName r)|]
 genExp :: [Reference] -> SSMExp -> C.Exp
 genExp _  (Var TEvent _         ) = [cexp|0|]
 genExp _  (Var t n              ) = [cexp|acts->$id:(identName n)|]
-genExp _  (Lit _ (LInt32  i    )) = [cexp|(typename i32) $int:i|]
-genExp _  (Lit _ (LUInt8  i    )) = [cexp|(typename u8) $int:i|]
-genExp _  (Lit _ (LUInt32 i    )) = [cexp|(typename u32) $int:i|]
-genExp _  (Lit _ (LInt64  i    )) = [cexp|(typename i64) $int:i|]
-genExp _  (Lit _ (LUInt64 i    )) = [cexp|(typename u64) $int:i|]
+genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LUInt32 i    )) = [cexp|$uint:i|]
+genExp _  (Lit _ (LInt64  i    )) = [cexp|$lint:i|]
+genExp _  (Lit _ (LUInt64 i    )) = [cexp|$ulint:i|]
 genExp _  (Lit _ (LBool   True )) = [cexp|true|]
 genExp _  (Lit _ (LBool   False)) = [cexp|false|]
 genExp _  (Lit _ (LEvent       )) = [cexp|0|]
@@ -545,29 +544,31 @@ genExp ls (UOpE _ e op)           = case op of
   Neg -> [cexp|- $exp:(genExp ls e)|]
   Not -> [cexp|! $exp:(genExp ls e)|]
 genExp ls (UOpR t r op) = case op of
-  Changed -> [cexp|$id:event_on($exp:(refPtr r ls)->sv)|]
+  Changed -> [cexp|$id:event_on(&$exp:(refPtr r ls)->sv)|]
   Deref   -> case t of
     TEvent -> [cexp|0|]
     _      -> [cexp|$exp:(refPtr r ls)->value|]
--- | Circumvent optimizations that take advantage of C's undefined signed
--- integer wraparound behavior. FIXME: remove this hack, which is probably not
--- robust anyway if C is aggressive about inlining.
-genExp ls (BOp ty e1 e2 op)
-  | ty == TInt32 && op == OPlus = [cexp|_add($exp:c1, $exp:c2)|]
-  | otherwise                   = gen op
+genExp ls (BOp ty e1 e2 op) = gen op
  where
   (c1, c2) = (genExp ls e1, genExp ls e2)
+  (s1, s2) = (signed_ (expType e1) c1, signed_ (expType e2) c2)
   gen OPlus  = [cexp|$exp:c1 + $exp:c2|]
   gen OMinus = [cexp|$exp:c1 - $exp:c2|]
   gen OTimes = [cexp|$exp:c1 * $exp:c2|]
   gen ODiv   = [cexp|$exp:c1 / $exp:c2|]
-  gen ORem   = [cexp|$exp:c1 % $exp:c2|]
-  gen OMin   = [cexp|$exp:c1 < $exp:c2 ? $exp:c1 : $exp:c2|]
-  gen OMax   = [cexp|$exp:c1 < $exp:c2 ? $exp:c2 : $exp:c1|]
-  gen OLT    = [cexp|$exp:c1 < $exp:c2|]
+  gen ORem   = [cexp|$exp:s1 % $exp:s2|]
+  gen OMin   = [cexp|$exp:ltcomparison ? $exp:c1 : $exp:c2|]
+  gen OMax   = [cexp|$exp:ltcomparison ? $exp:c2 : $exp:c1|]
+  gen OLT    = ltcomparison
   gen OEQ    = [cexp|$exp:c1 == $exp:c2|]
   gen OAnd   = [cexp|$exp:c1 && $exp:c2|]
   gen OOr    = [cexp|$exp:c1 || $exp:c2|]
+
+  ltcomparison :: C.Exp
+  ltcomparison = [cexp| $exp:lhs < $exp:rhs |]
+    where
+      lhs = [cexp| $exp:s1 |]
+      rhs = [cexp| $exp:s2 |]
 
 genTimeDelay :: [Reference] -> SSMTime -> C.Exp
 genTimeDelay ls (SSMTime d) = [cexp|$exp:(genExp ls d)|]

@@ -3,8 +3,6 @@ cabal-version: 1.12
 -- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: f7d638dfcaae587b2d874f030163feaf1ad13bd4d34b53b0b4fdac6a6c810a66
 
 name:           ssm
 version:        0.1.0.0
@@ -29,7 +27,6 @@ library
   exposed-modules:
       SSM.Backend.C.CodeGen
       SSM.Backend.C.Compile
-      SSM.Backend.C.Exp
       SSM.Backend.C.Identifiers
       SSM.Backend.C.Peripheral
       SSM.Backend.C.Types
@@ -184,6 +181,7 @@ test-suite 2-regression-low
       Test.SSM.QuickCheck.Util
       Test.SSM.Report
       Test.SSM.Trace
+      Regression.Arb63Spec
       Regression.CancelBothSpec
       Regression.CancelLaterSpec
       Regression.EmptyFunSpec
