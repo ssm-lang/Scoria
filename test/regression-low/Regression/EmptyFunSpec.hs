@@ -10,7 +10,7 @@ import qualified Test.Hspec as H
 import qualified Test.Hspec.QuickCheck as H
 
 p :: Program
-p = Program {initialQueueContent = [SSMProcedure (Ident "fun1" Nothing) []], funs = fromList [(Ident "fun1" Nothing,Procedure {name = Ident "fun1" Nothing, arguments = [], body = []})], globalReferences = [], peripherals = []}
+p = Program {initialQueueContent = [SSMProcedure (Ident "fun1" Nothing) []], funs = fromList [(Ident "fun1" Nothing,Procedure {name = Ident "fun1" Nothing, arguments = [], body = []})], peripherals = []}
 
 spec :: H.Spec
 spec = T.correctSpec "EmptyFun" p

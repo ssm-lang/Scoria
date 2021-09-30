@@ -19,7 +19,6 @@ p = Program
                 )
               , (Ident "fun1" Nothing, Procedure { name = Ident "fun1" Nothing, arguments = [], body = [] })
               ]
-  , globalReferences = []
   , peripherals = []}
 
 spec :: H.Spec

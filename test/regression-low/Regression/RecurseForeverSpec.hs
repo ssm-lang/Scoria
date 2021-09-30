@@ -22,7 +22,6 @@ p = Program
                   }
                 )
               ]
-  , globalReferences = []
   , peripherals = []}
 
 spec :: H.Spec

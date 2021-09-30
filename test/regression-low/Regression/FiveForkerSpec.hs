@@ -703,7 +703,7 @@ p = Program
         }
       )
     ]
-  , globalReferences = [], peripherals = []}
+  , peripherals = []}
 
 spec :: H.Spec
 spec = T.correctSpec "FiveForker" p

@@ -183,7 +183,6 @@ test-suite 2-regression-low
       Test.SSM.QuickCheck.Util
       Test.SSM.Report
       Test.SSM.Trace
-      Regression.Arb63Spec
       Regression.CancelBothSpec
       Regression.CancelLaterSpec
       Regression.EmptyFunSpec

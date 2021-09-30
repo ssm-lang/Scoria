@@ -29,9 +29,5 @@ p = Program
                              }
                            )
                          ]
-  , globalReferences = [ ( Ident { identName = "glob0", identSrcInfo = Nothing }
-                         , Ref TUInt8
-                         )
-                       ]
-  , peripherals = []
+  , peripherals = [Peripheral $ IdentityPeripheral (fromList [(Ident "glob0" Nothing, Ref TUInt8)])]
   }

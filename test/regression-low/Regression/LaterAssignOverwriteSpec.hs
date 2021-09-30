@@ -48,7 +48,6 @@ p = Program
                   }
                 )
               ]
-  , globalReferences = []
   , peripherals = []
   }
 

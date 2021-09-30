@@ -14,6 +14,8 @@ import SSM.Core.Ident
 import SSM.Core.Reference
 import SSM.Core.Program
 import SSM.Core.Type
+import SSM.Core.Peripheral.Identity
+import SSM.Core.Peripheral
 
 import SSM.Util.HughesList hiding ( (++) )
 
@@ -60,9 +62,7 @@ instance Arbitrary Program where
     let funs = entry:[(Ident ("fun" ++ show i) Nothing, as) | (as,i) <- zip funTypes [1..]]
 
     -- generate global references
-    globaltypes    <- genListOfLength (elements (map Ref basetypes)) =<< choose (0,5)
-    let globals    = [ (Ident ("glob" ++ show i) Nothing, t) | (t, i) <- zip globaltypes [0..] ]
-    let globalrefs = map (uncurry makeStaticRef) globals
+    (identityperipheral, globalrefs) <- genGlobals
 
     -- Generate type, args, and body for each procedure signature.
     tab <- mfix $ \tab -> sequence
@@ -86,7 +86,21 @@ instance Arbitrary Program where
     let procedures = Map.fromList
           [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
 
-    return $ Program [SSMProcedure entryPoint []] procedures globals []
+    return $ Program [SSMProcedure entryPoint []] procedures [Peripheral identityperipheral]
+
+genGlobals :: Gen (IdentityPeripheral, [Reference])
+genGlobals = do
+  globaltypes <-
+    genListOfLength (elements (map Ref basetypes)) =<< choose (0,5)
+
+  let globals =
+       [ (Ident ("glob" ++ show i) Nothing, t) | (t, i) <- zip globaltypes [0..] ]
+
+  let globalrefs =
+       map (uncurry makeStaticRef) globals
+
+  let idsvs = foldl (\svs (id, t) -> addIdentitySV id t svs) emptyIdentityPeripheral globals
+  return (idsvs, globalrefs)
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program
