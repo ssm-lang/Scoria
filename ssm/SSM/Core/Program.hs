@@ -58,7 +58,6 @@ data Program = Program
       -- | Map that associates procedure names with their definitions.
     , funs                :: Map.Map Ident Procedure
       -- | Name and type of references that exist in the global scope.
-    , globalReferences    :: [(Ident, Type)]
       -- | Any peripherals used by the program
     , peripherals         :: [Peripheral]
     }

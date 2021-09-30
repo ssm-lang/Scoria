@@ -47,7 +47,7 @@ prettyProgram' p = do
     mapM_ (indent . emit . prettyQueueContent) (initialQueueContent p) 
     emit ""
     emit "global variables:"
-    prettyGlobals (globalReferences p)
+    mapM_ prettyPeripheralDeclarations (peripherals p)
     emit ""
     intercalateM (emit "") $ map prettyProcedure (Map.elems (funs p))
     return ()
@@ -60,9 +60,13 @@ prettyQueueContent (Handler h           ) = case h of
         , [Right ref, Left $ Lit TUInt8 $ LUInt8 id]
         )
 
-prettyGlobals :: [(Ident, Type)] -> PP ()
-prettyGlobals xs = flip mapM_ xs $ \(n,t) ->
-    indent $ emit $ concat [prettyType t, " ", identName n]
+prettyReferenceDecls :: [Reference] -> PP ()
+prettyReferenceDecls xs = flip mapM_ xs $ \ref ->
+    indent $ emit $ concat [prettyType (refType ref), " ", refName ref]
+
+prettyPeripheralDeclarations :: Peripheral -> PP ()
+prettyPeripheralDeclarations (Peripheral p) =
+    prettyReferenceDecls $ declaredReferences p
 
 prettyProcedure :: Procedure -> PP ()
 prettyProcedure p = do

@@ -97,43 +97,7 @@ import           Data.Word                      ( Word64
 import           SSM.Util.HughesList            ( toHughes )
 import           SSM.Util.Operators             ( (<#>) )
 
-import           SSM.Core                       ( BinOp
-                                                  ( OAnd
-                                                  , ODiv
-                                                  , OEQ
-                                                  , OLT
-                                                  , OMax
-                                                  , OMin
-                                                  , OMinus
-                                                  , OOr
-                                                  , OPlus
-                                                  , ORem
-                                                  , OTimes
-                                                  )
-                                                , Ident(identName)
-                                                , Procedure(arguments, body)
-                                                , Program(globalReferences)
-                                                , Reference
-                                                , SSMExp(..)
-                                                , SSMLit
-                                                  ( LBool
-                                                  , LEvent
-                                                  , LInt32
-                                                  , LInt64
-                                                  , LUInt32
-                                                  , LUInt64
-                                                  , LUInt8
-                                                  )
-                                                , SSMTime(..)
-                                                , Stm
-                                                , Type(..)
-                                                , UnaryOpE(Neg, Not)
-                                                , UnaryOpR(Changed, Deref)
-                                                , dereference
-                                                , isDynamic
-                                                , refIdent
-                                                , refName
-                                                )
+import           SSM.Core
 
 import qualified SSM.Interpret.Trace           as T
 import           SSM.Interpret.Types
@@ -143,11 +107,12 @@ import           SSM.Interpret.Types
 -- | Create initial global variable storage
 globals :: Program -> ST s (Map.Map Ident (Var s))
 globals p = do
-  vars <- forM (globalReferences p) $ \(id,t) -> do
-    let initval = defaultValue (dereference t)
-    v <- newVar' initval 0
-    return (id, v)
-  return $ Map.fromList vars
+  vars <- forM (peripherals p) $ \(Peripheral p) -> do
+    forM (declaredReferences p) $ \ref -> do
+      let initval = defaultValue (dereference (refType ref))
+      v <- newVar' initval 0
+      return (refIdent ref, v)
+  return $ Map.fromList $ concat vars
 
 -- | Default values for SSM types.
 defaultValue :: Type -> SSMExp

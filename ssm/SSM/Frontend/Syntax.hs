@@ -173,7 +173,7 @@ the frontend representation into something that it can generate code for. Just c
 a program does not introduce any global variables. -}
 instance SP.SSMProgram (SSM ()) where
   toProgram p =
-    let (n, f) = transpile p in SP.Program [SP.SSMProcedure n []] f [] [] --Nothing Nothing
+    let (n, f) = transpile p in SP.Program [SP.SSMProcedure n []] f []
 
 {-********** Transpiling to core syntax **********-}
 

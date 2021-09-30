@@ -2,6 +2,7 @@
 module SSM.Core
     ( module SSM.Core.Ident
     , module SSM.Core.Peripheral
+    , module SSM.Core.Peripheral.Identity
     , module SSM.Core.Peripheral.GPIO
     , module SSM.Core.Peripheral.LED
     , module SSM.Core.Program
@@ -13,6 +14,7 @@ module SSM.Core
 import           SSM.Core.Ident
 import           SSM.Core.Peripheral
 import           SSM.Core.Peripheral.GPIO
+import           SSM.Core.Peripheral.Identity
 import           SSM.Core.Peripheral.LED
 import           SSM.Core.Program
 import           SSM.Core.Reference

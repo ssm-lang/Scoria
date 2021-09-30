@@ -41,17 +41,12 @@ compile_ program = (compUnit, includes)
  where
   -- | The file to generate, minus include statements
   compUnit :: [C.Definition]
-  compUnit = concat [ globals
-                    , declarePeripherals program
+  compUnit = concat [ declarePeripherals program
                     , preamble
                     , decls
                     , defns
                     , initProg
                     ]
-
-  -- | Global reference declarations
-  globals :: [C.Definition]
-  globals = genGlobals program
 
   initProg :: [C.Definition]
   initProg = genInitProgram program
@@ -120,20 +115,10 @@ acts = "acts"
 actm :: CIdent
 actm = "act"
 
-{- | Generate the declarations of global variables and the function that initializes
-them. These variables can be accessed without an activation record. -}
-genGlobals :: Program -> [C.Definition]
-genGlobals = map declGlobal . globalReferences
- where
-  -- | Declare global variable.
-  declGlobal :: (Ident, Type) -> C.Definition
-  declGlobal (n, t) = [cedecl|$ty:(svt_ $ stripRef t) $id:(identName n);|]
-
 -- | Generate the entry point of a program - the first thing to be ran.
 genInitProgram :: Program -> [C.Definition]
 genInitProgram p = [cunit|
   int $id:initialize_program(void) {
-    $items:(concatMap initGlobal $ globalReferences p)
     $items:(initPeripherals p)
     $items:(initialForks $ initialQueueContent p)
 
@@ -141,13 +126,6 @@ genInitProgram p = [cunit|
   }
   |]
  where
-  -- | Initialize global reference
-  initGlobal :: (Ident, Type) -> [C.BlockItem]
-  initGlobal (n, t) =
-    let init = initialize_ (stripRef t) [cexp| &$id:(identName n)|]
-        assign = assign_ (stripRef t) [cexp|&$id:(identName n)|] [cexp|0|] [cexp|0|]
-    in [citems| $exp:init; $exp:assign; |]
-
   -- | Create statements for scheduling the initial ready-queue content
   initialForks :: [QueueContent] -> [C.BlockItem]
   initialForks ips =

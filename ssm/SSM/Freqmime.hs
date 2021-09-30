@@ -10,6 +10,7 @@ import           Data.Word
 
 import           SSM.Frontend.Peripheral.GPIO
 import           SSM.Frontend.Peripheral.LED
+import           SSM.Frontend.Peripheral.Identity
 
 gate_period :: SSMTime
 gate_period = secs 1
@@ -108,3 +109,18 @@ mmmain = do
               wait ?led
               after (secs 1) ?led off
               wait ?led
+
+testGlobal :: Compile ()
+testGlobal = do
+    x <- global @Word8
+    y <- global @Word64
+
+    let ?x = x
+        ?y = y
+
+    schedule prog
+  where
+      prog :: (?x :: Ref Word8, ?y :: Ref Word64) => SSM ()
+      prog = boxNullary "prog" $ do
+          ?x <~ 5
+          ?y <~ 10

@@ -35,6 +35,7 @@ library
       SSM.Core.Ident
       SSM.Core.Peripheral
       SSM.Core.Peripheral.GPIO
+      SSM.Core.Peripheral.Identity
       SSM.Core.Peripheral.LED
       SSM.Core.Program
       SSM.Core.Reference
@@ -46,6 +47,7 @@ library
       SSM.Frontend.Exp
       SSM.Frontend.Language
       SSM.Frontend.Peripheral.GPIO
+      SSM.Frontend.Peripheral.Identity
       SSM.Frontend.Peripheral.LED
       SSM.Frontend.Ref
       SSM.Frontend.Syntax
