@@ -15,7 +15,8 @@ module SSM.Interpret.Trace where
 
 import qualified Data.Text                     as T
 import           Data.Word
-import           SSM.Core.Syntax
+
+import           SSM.Core.Type
 
 import           Test.QuickCheck
 

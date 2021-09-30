@@ -3,8 +3,6 @@ cabal-version: 1.12
 -- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: b6b1d2295b3ba8b6c31ad298a0c9ba4fbf9ec6fe6349924d842fad5defd3cd84
 
 name:           ssm
 version:        0.1.0.0
@@ -30,12 +28,30 @@ library
       SSM.Backend.C.CodeGen
       SSM.Backend.C.Compile
       SSM.Backend.C.Identifiers
+      SSM.Backend.C.Peripheral
       SSM.Backend.C.Types
       SSM.Compile
+      SSM.Core
+      SSM.Core.Ident
+      SSM.Core.Peripheral
+      SSM.Core.Peripheral.GPIO
+      SSM.Core.Peripheral.Identity
+      SSM.Core.Peripheral.LED
+      SSM.Core.Program
+      SSM.Core.Reference
       SSM.Core.Syntax
+      SSM.Core.Type
+      SSM.Freqmime
       SSM.Frontend.Box
+      SSM.Frontend.Compile
+      SSM.Frontend.Exp
       SSM.Frontend.Language
+      SSM.Frontend.Peripheral.GPIO
+      SSM.Frontend.Peripheral.Identity
+      SSM.Frontend.Peripheral.LED
+      SSM.Frontend.Ref
       SSM.Frontend.Syntax
+      SSM.Frontend.Waitable
       SSM.Interpret
       SSM.Interpret.Internal
       SSM.Interpret.Interpreter
@@ -66,6 +82,7 @@ library
     , mtl
     , parser-combinators
     , prettyprinter
+    , template-haskell
     , text
     , time
   default-language: Haskell2010
@@ -93,6 +110,7 @@ test-suite 0-trace-parser
     , parser-combinators
     , prettyprinter
     , ssm
+    , template-haskell
     , text
     , time
   default-language: Haskell2010
@@ -141,6 +159,7 @@ test-suite 1-regression-high
     , prettyprinter
     , process
     , ssm
+    , template-haskell
     , text
     , time
   default-language: Haskell2010
@@ -202,6 +221,7 @@ test-suite 2-regression-low
     , prettyprinter
     , process
     , ssm
+    , template-haskell
     , text
     , time
   default-language: Haskell2010
@@ -248,6 +268,7 @@ test-suite 3-arbitrary
     , prettyprinter
     , process
     , ssm
+    , template-haskell
     , text
     , time
   default-language: Haskell2010

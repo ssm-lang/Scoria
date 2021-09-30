@@ -64,7 +64,7 @@ module SSM.Pretty
     ) where
 
 --import SSM.Core.Syntax ( SSM )
-import SSM.Core.Syntax
+import SSM.Core.Program
 import SSM.Pretty.Syntax ( prettyProgram )
 
 prettySSM :: SSMProgram a => a -> String

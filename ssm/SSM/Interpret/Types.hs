@@ -46,7 +46,8 @@ import           Data.Maybe
 import           Data.STRef.Lazy
 import           Data.Word
 
-import           SSM.Core.Syntax
+import           SSM.Core
+
 import           SSM.Util.Default               ( Default(..) )
 import           SSM.Util.HughesList
 

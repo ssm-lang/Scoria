@@ -2,6 +2,10 @@
 module Test.SSM.QuickCheck.Shrink.ProcedureArity where
 
 import SSM.Core.Syntax
+import SSM.Core.Ident
+import SSM.Core.Reference
+import SSM.Core.Program
+import SSM.Core.Type
 
 import Test.SSM.QuickCheck.Util
 

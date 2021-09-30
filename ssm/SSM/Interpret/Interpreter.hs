@@ -5,9 +5,11 @@ module SSM.Interpret.Interpreter
   , SSMProgram(..)
   ) where
 
-import           SSM.Core.Syntax
+import           SSM.Core
+
 import           SSM.Interpret.Internal
 import qualified SSM.Interpret.Trace           as T
+
 import           SSM.Util.Default               ( Default(def) )
 import           SSM.Util.HughesList     hiding ( (++) )
 import           SSM.Util.Operators             ( (<#>) )
@@ -41,13 +43,14 @@ interpret config program = runST $ do
   fun <- case Map.lookup (entry p) (funs p) of
     Just p' -> return p'
     Nothing ->
-      error $ "Interpreter error: cannot find entry point: " ++ identName (entry p)
+      error $ "Interpreter error: cannot find entry point: " ++ identName
+        (entry p)
   globs       <- globals p
   -- Run the interpret action and produce it's output
-  (_, events) <- runWriterT $ runStateT run $ initState config p 0 globs $ mkProc
-    config
-    p
-    fun
+  (_, events) <-
+    runWriterT $ runStateT run $ initState config p 0 globs $ mkProc config
+                                                                     p
+                                                                     fun
   return $ fromHughes events
 
 -- | Run the interpreter, serving the role of the @main@ function.
@@ -126,7 +129,7 @@ step = do
       Skip        -> continue
 
       After d r v -> do
-        let d' = genTimeDelay d
+        d' <- genTimeDelay d
         v' <- eval v
         n' <- getNow
         scheduleEvent r (n' + d') v'

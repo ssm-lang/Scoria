@@ -2,6 +2,8 @@ module Test.SSM.QuickCheck.Shrink.Statements
     ( statements ) where
 
 import SSM.Core.Syntax
+import SSM.Core.Program
+
 import SSM.Util.HughesList hiding ( (++) )
 
 import Test.SSM.QuickCheck.Util

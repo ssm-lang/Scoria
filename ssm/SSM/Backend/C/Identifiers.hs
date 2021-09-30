@@ -8,7 +8,11 @@ module SSM.Backend.C.Identifiers
 
       -- * Identifiers recognized by the C runtime system.
   , initialize_program
+  , initialize_static_input_device
+  , initialize_static_output_device
+  , resolveNameOfHandler
   , top_return
+  , top_parent
   , fork
   , act_enter
   , act_leave
@@ -47,7 +51,7 @@ module SSM.Backend.C.Identifiers
   , trig_
 
       -- * Constructing SSM time macros from SSMTimeUnit
-  , units_
+  --, units_
 
       -- * Constructing Identifiers from types
       {- | Some identifiers need to be prefixed or suffixed with some type information,
@@ -63,7 +67,7 @@ module SSM.Backend.C.Identifiers
   , debug_trace
   ) where
 
-import           SSM.Core.Syntax
+import           SSM.Core
 
 import           Language.C.Quote.GCC           ( cexp
                                                 , cstm
@@ -79,11 +83,33 @@ type CIdent = String
 
 -- | Name of top level program initialization function
 initialize_program :: CIdent
-initialize_program = "ssm_initialize_program"
+initialize_program = "ssm_program_initialize"
+
+-- | Name of the top level static input switch initialization function
+initialize_static_input_device :: CIdent
+initialize_static_input_device = "initialize_static_input_switch"
+
+-- | Name of the top level static output initialization function
+initialize_static_output_device :: CIdent
+initialize_static_output_device = "bind_static_output_device"
+
+-- | Take a handler and return a `CIdent` representing the corresponding 'enter' function
+resolveNameOfHandler :: Handler -> CIdent
+resolveNameOfHandler (StaticOutputHandler _ _) = initialize_static_output_device
+resolveNameOfHandler s                         = error $ concat
+  [ "SSM.Backend.C.Identifiers error ---\n"
+  , "trying to resolve name of handler "
+  , show s
+  , " but it is not known how to resolve such a handler"
+  ]
 
 -- | Name of top level return step-function
 top_return :: CIdent
 top_return = "top_return"
+
+-- | Name of top level parent activation record
+top_parent :: CIdent
+top_parent = "ssm_top_parent"
 
 -- | Name of top level return step-function
 entry_point :: CIdent
@@ -129,6 +155,7 @@ never = "SSM_NEVER"
 throw :: CIdent
 throw = "SSM_THROW"
 
+-- | Exhausted priority
 exhausted_priority :: C.Exp
 exhausted_priority = [cexp|SSM_EXHAUSTED_PRIORITY|]
 
@@ -212,15 +239,6 @@ initialize ty = "ssm_initialize_" ++ ty
 -- | Obtain the name of the assign method for an SSM `Type`.
 assign :: CIdent -> CIdent
 assign ty = "ssm_assign_" ++ ty
-
--- | Obtain the name of the unit macro for an `SSMTimeUnit`.
-units_ :: SSMTimeUnit -> CIdent
-units_ SSMNanosecond  = "SSM_NANOSECOND"
-units_ SSMMicrosecond = "SSM_MICROSECOND"
-units_ SSMMillisecond = "SSM_MILLISECOND"
-units_ SSMSecond      = "SSM_SECOND"
-units_ SSMMinute      = "SSM_MINUTE"
-units_ SSMHour        = "SSM_HOUR"
 
 -- | Obtain the name of the later method for an SSM `Type`.
 later :: CIdent -> CIdent

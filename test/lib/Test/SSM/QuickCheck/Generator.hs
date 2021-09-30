@@ -10,6 +10,13 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import SSM.Core.Syntax
+import SSM.Core.Ident
+import SSM.Core.Reference
+import SSM.Core.Program
+import SSM.Core.Type
+import SSM.Core.Peripheral.Identity
+import SSM.Core.Peripheral
+
 import SSM.Util.HughesList hiding ( (++) )
 
 import Test.SSM.QuickCheck.Shrink hiding (Ref, Variable)
@@ -28,19 +35,10 @@ for :: [a] -> (a -> b) -> [b]
 for = flip map
 
 basetypes :: [Type]
-basetypes = [TUInt8, TUInt64, TInt32, TInt64, TBool, TEvent]
+basetypes = [TUInt8, TUInt32, TUInt64, TInt32, TInt64, TBool, TEvent]
 
 instance Arbitrary Type where
   arbitrary = elements $ basetypes ++ map Ref basetypes
-
-instance Arbitrary SSMTimeUnit where
-  arbitrary = elements [ SSMNanosecond
-                       , SSMMicrosecond
-                       , SSMMillisecond
-                       , SSMSecond
-                       , SSMMinute
-                       , SSMHour
-                       ]
 
 type Procedures = [(Ident, [(Ident, Type)], [Stm])]
 type Variable   = (Ident, Type)
@@ -64,9 +62,7 @@ instance Arbitrary Program where
     let funs = entry:[(Ident ("fun" ++ show i) Nothing, as) | (as,i) <- zip funTypes [1..]]
 
     -- generate global references
-    globaltypes    <- genListOfLength (elements (map Ref basetypes)) =<< choose (0,5)
-    let globals    = [ (Ident ("glob" ++ show i) Nothing, t) | (t, i) <- zip globaltypes [0..] ]
-    let globalrefs = map (uncurry makeStaticRef) globals
+    (identityperipheral, globalrefs) <- genGlobals
 
     -- Generate type, args, and body for each procedure signature.
     tab <- mfix $ \tab -> sequence
@@ -90,7 +86,21 @@ instance Arbitrary Program where
     let procedures = Map.fromList
           [(fun, Procedure fun params bdy) | (fun, params, bdy) <- tab]
 
-    return $ Program entryPoint procedures globals
+    return $ Program [SSMProcedure entryPoint []] procedures [Peripheral identityperipheral]
+
+genGlobals :: Gen (IdentityPeripheral, [Reference])
+genGlobals = do
+  globaltypes <-
+    genListOfLength (elements (map Ref basetypes)) =<< choose (0,5)
+
+  let globals =
+       [ (Ident ("glob" ++ show i) Nothing, t) | (t, i) <- zip globaltypes [0..] ]
+
+  let globalrefs =
+       map (uncurry makeStaticRef) globals
+
+  let idsvs = foldl (\svs (id, t) -> addIdentitySV id t svs) emptyIdentityPeripheral globals
+  return (idsvs, globalrefs)
 
 -- | Generate a procedure body.
 arbProc :: Procedures     -- ^ All procedures in the program
@@ -150,7 +160,7 @@ arbProc funs vars refs c n = frequency $
       , (1, do r        <- elements refs
                v        <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs
                (rest,c') <- arbProc funs vars refs c (n-1)
-               delay     <- choose (0, 3) >>= genDelay
+               delay     <- genDelay
                let stm   = After delay r v
                return (stm:rest, c')
         )
@@ -180,25 +190,10 @@ arbProc funs vars refs c n = frequency $
           return (n, args)
 
       -- | Generate a delay.
-      genDelay :: Int -> Gen SSMTime
-      genDelay 0 = do
-          unit' <- arbitrary
-          delay <- Lit TUInt64 . LUInt64 <$> arbDelay unit'
-          return $ SSMTime delay unit'
-            where
-              arbDelay :: SSMTimeUnit -> Gen Word64
-              arbDelay SSMHour        = choose (1, 3)
-              arbDelay SSMMinute      = choose (1, 180)
-              arbDelay SSMSecond      = choose (1, 10800)
-              arbDelay SSMMillisecond = choose (1, 10800000)
-              arbDelay SSMMicrosecond = choose (1, 10800000000)
-              arbDelay SSMNanosecond  = choose (1, 10800000000000)
-      genDelay n = do
-          t1 <- genDelay $ n `div` 2
-          t2 <- genDelay $ n `div` 2
-          oneof $ [ return $ SSMTimeAdd t1 t2
-                  , return $ SSMTimeSub t1 t2
-                  ]
+      genDelay :: Gen SSMTime
+      genDelay = do
+          delay <- Lit TUInt64 . LUInt64 <$> choose (1,10000000000)
+          return $ SSMTime delay
 
       -- | Predicate that returns True if the given procedure can be forked.
       -- What determines this is what references we have in scope. If the procedure
@@ -226,9 +221,11 @@ arbExp t vars refs 0 = oneof $ concat [ [litGen]
       TInt32  -> return . Lit TInt32  . LInt32  =<< choose (0, 215)
       TInt64  -> return . Lit TInt64  . LInt64  =<< choose (-55050, 55050)
       TUInt8  -> return . Lit TUInt8  . LUInt8  =<< choose (0,80)
+      TUInt32 -> return . Lit TUInt32 . LUInt32 =<< choose (0, 8000)
       TUInt64 -> return . Lit TUInt64 . LUInt64 =<< choose (0, 65500)
       TBool  -> return  . Lit TBool   . LBool   =<< arbitrary
       TEvent -> return $ Lit TEvent LEvent
+      _ -> error "not a base type"
 
     -- | Generator that returns a randomly selected variable from the set of variables.
     varGen :: [Gen SSMExp]
@@ -256,14 +253,27 @@ arbExp t vars refs n = case t of
                         e1 <- arbExp typ vars refs (n `div` 2)
                         e2 <- arbExp typ vars refs (n `div` 2)
                         return $ BOp TBool e1 e2 OEQ
+                   , do e1 <- arbExp TBool vars refs (n `div` 2)
+                        e2 <- arbExp TBool vars refs (n `div` 2)
+                        return $ BOp TBool e1 e2 OAnd
+                   , do e1 <- arbExp TBool vars refs (n `div` 2)
+                        e2 <- arbExp TBool vars refs (n `div` 2)
+                        return $ BOp TBool e1 e2 OOr
+                   , do e <- arbExp TBool vars refs (n `div` 2)
+                        return $ UOpE TBool e Not
                    ]
   TEvent -> return $ Lit TEvent LEvent
-  t | t `elem` [TUInt8, TUInt64] -> do
+  t | t `elem` [TUInt8, TUInt32, TUInt64] -> do
       e1 <- arbExp t vars refs (n `div` 2)
       e2 <- arbExp t vars refs (n `div` 2)
       elements [ BOp t e1 e2 OPlus
                , BOp t e1 e2 OMinus
                , BOp t e1 e2 OTimes
+               {- Since division by zero can not be tolerated, we force the denominator
+               to be positive by simply adding a one to the generated number. -}
+--               , BOp t e1 (BOp t (e2) (one t) OPlus) ODiv
+               , BOp t e1 e2 OMin
+               , BOp t e1 e2 OMax
                ]
   _ ->    frequency [ (1, do e <- arbExp t vars refs (n-1)
                              return $ UOpE t e Neg
@@ -273,6 +283,30 @@ arbExp t vars refs n = case t of
                              elements [ BOp t e1 e2 OPlus
                                       , BOp t e1 e2 OMinus
                                       , BOp t e1 e2 OTimes
+                                      , BOp t e1 e2 OMin
+                                      , BOp t e1 e2 OMax
                                       ]
                       )
+                    , (1, do e1 <- arbExp t vars refs (n `div` 2)
+                             e2 <- nonNegativeLitGen t
+                             elements [ BOp t e1 e2 ODiv
+                                      , BOp t e1 e2 ORem
+                                      ]
+                    )
                     ]
+  where
+    {- | We can not perform a computation that is modulo zero, so we use this function
+    to generate the second operand of modulo. We make sure that we only generate values
+    that are non zero. -}
+    nonNegativeLitGen :: Type -> Gen SSMExp
+    nonNegativeLitGen t = case t of
+      TUInt8  -> (Lit TUInt8 . LUInt8) <$> choose (1,255)
+      TUInt32 -> (Lit TUInt32 . LUInt32) <$> choose (1,21000000)
+      TUInt64 -> (Lit TUInt64 . LUInt8) <$> choose (1, maxBound)
+      TInt32  -> oneof [ (Lit TInt32 . LInt32) <$> choose (minBound, -1)
+                       , (Lit TInt32 . LInt32) <$> choose (1, maxBound)
+                       ]
+      TInt64  -> oneof [ (Lit TInt64 . LInt64) <$> choose (minBound, -1)
+                       , (Lit TInt64 . LInt64) <$> choose (1, maxBound)
+                       ]
+      _ -> error "nonNegativeLitGen: generator error - not a numerical type"

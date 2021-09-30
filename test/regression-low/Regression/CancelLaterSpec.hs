@@ -2,14 +2,14 @@
 module Regression.CancelLaterSpec where
 
 import           Data.Map                       ( fromList )
-import           SSM.Core.Syntax
+import           SSM.Core
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = Ident "fun0" Nothing
+  { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList
               [ ( Ident "fun0" Nothing
                 , Procedure
@@ -18,15 +18,14 @@ p = Program
                   , body = [ NewRef (Ident "v0" Nothing)
                                     TInt32
                                     (Lit TInt32 (LInt32 0))
-                           , After (SSMTime (Lit TUInt64 (LUInt64 2))
-                                            SSMNanosecond)
+                           , After (SSMTime (Lit TUInt64 (LUInt64 2)))
                                    (Dynamic (Ident "v0" Nothing, Ref TInt32))
                                    (Lit TInt32 (LInt32 1))
                            ]
                   }
                 )
               ]
-  , globalReferences = []}
+  , peripherals = []}
 
 spec :: H.Spec
 spec = T.correctSpec "CancelLater" p

@@ -1,6 +1,10 @@
 module Test.SSM.QuickCheck.Shrink.Expressions where
 
 import SSM.Core.Syntax
+import SSM.Core.Ident
+import SSM.Core.Reference
+import SSM.Core.Program
+import SSM.Core.Type
 
 import Test.SSM.QuickCheck.Util
     ( transformProcedures, distributeMutate )
@@ -74,11 +78,19 @@ shrinkExp :: SSMExp -> [SSMExp]
 shrinkExp e = case e of
     Var t n        -> []
     Lit t l        -> []
-    UOpE t e op    -> []
+    UOpE t e op    -> case op of
+        Neg -> [e]
+        Not -> [e]
     UOpR t r op    -> []
     BOp t e1 e2 op -> case op of
         OPlus  -> [e1,e2]
         OMinus -> [e1,e2]
         OTimes -> [e1,e2]
+        ODiv   -> [e1,e2]
+        ORem   -> [e1,e2]
+        OMin   -> [e1,e2]
+        OMax   -> [e1,e2]
         OLT    -> []
         OEQ    -> if (expType e1) == TBool then [e1,e2] else []
+        OAnd   -> [e1,e2]
+        OOr    -> [e1,e2]
