@@ -11,29 +11,13 @@ This module is intended to act as a simple example of what we can do. Our ambiti
 add support for the entire BLE stack.
 
 -}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
 module SSM.Core.Peripheral.BasicBLE where
 
 import           SSM.Core.Ident
+import           SSM.Core.Reference
 import           SSM.Core.Type
 
 import           SSM.Core.Peripheral
-
-import qualified Language.C.Syntax as C
-
-data Backend = C | Python | JS
-
-class IsPeripheral2 (backend :: k) a where
-    type Init backend
-    init :: a -> [Init backend]
-
-instance IsPeripheral2 C BasicBLE where
-    type Init C = C.Stm
 
 -- | Basic BLE data type
 data BasicBLE = BasicBLE
@@ -44,9 +28,29 @@ data BasicBLE = BasicBLE
     }
 
 instance IsPeripheral BasicBLE where
-    declaredReferences ble = undefined
+    declaredReferences = basicBLERefs
 
     mainInitializers ble = undefined
+      where
+        (broadcast : broadcastControl : scan : scanControl : _) =
+            basicBLERefs ble
+        normalInits =
+            [ Normal broadcast
+            , Normal broadcastControl
+            , Normal scan
+            , Normal scanControl
+            ]
+        specials =
+            [ StaticOutput BLEBroadcast broadcast
+            , StaticInput BLEScan scan
+            , StaticOutput BLEBroadcastControl broadcastControl
+            , StaticOutput BLEScanControl      scanControl
+            ]
+
+basicBLERefs :: BasicBLE -> [Reference]
+basicBLERefs ble = map
+    (uncurry makeStaticRef)
+    [broadcast ble, broadcastControl ble, scan ble, scanControl ble]
 
 {- | This function returns a peripheral that enables the BLE stack. The arguments are:
 
