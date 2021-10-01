@@ -34,6 +34,7 @@ library
       SSM.Core
       SSM.Core.Ident
       SSM.Core.Peripheral
+      SSM.Core.Peripheral.BasicBLE
       SSM.Core.Peripheral.GPIO
       SSM.Core.Peripheral.Identity
       SSM.Core.Peripheral.LED
