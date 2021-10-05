@@ -173,10 +173,10 @@ typecheckExp (S.BOp ty e1 e2 op) = do
 
 -- | Typecheck a reference, and returns its type.
 typecheckRef :: R.Reference -> TC T.Type
-typecheckRef (Dynamic (ident, ty)) = do
+typecheckRef (R.Dynamic (ident, ty)) = do
   actualTy <- lookupVar ident
   unifyTypes actualTy ty
-typecheckRef (Static (ident, ty)) = do
+typecheckRef (R.Static (ident, ty)) = do
   actualTy <- lookupVar ident
   unifyTypes actualTy ty
 
@@ -196,8 +196,8 @@ typecheckForkProc (name, actuals) = do
   typecheckActual (Right actualRef) = typecheckRef actualRef
 
 typecheckTime :: S.SSMTime -> TC ()
-typecheckTime (SSMTimeAdd l r) = typecheckTime l >> typecheckTime r
-typecheckTime (SSMTimeSub l r) = typecheckTime l >> typecheckTime r
+-- typecheckTime (SSMTimeAdd l r) = typecheckTime l >> typecheckTime r
+-- typecheckTime (SSMTimeSub l r) = typecheckTime l >> typecheckTime r
 typecheckTime (SSMTime a _) = typecheckExp a >>= void . unifyTypes TUInt64
 
 -- | Obtain type of a literal value.
