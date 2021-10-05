@@ -17,10 +17,10 @@ import           Control.Monad.Reader           ( MonadReader(..)
                                                 )
 import qualified Data.Map                      as Map
 import qualified SSM.Core.Syntax               as S
-import SSM.Core.Ident
-import SSM.Core.Type
-import SSM.Core.Program
-import SSM.Core.Peripheral
+import qualified SSM.Core.Ident                as R
+import qualified SSM.Core.Type                 as T
+import qualified SSM.Core.Program              as Prog
+import qualified SSM.Core.Peripheral           as Peri
 
 {----- Typechecker context -----}
 
@@ -153,25 +153,25 @@ typecheckStms (S.Skip : stms) = typecheckStms stms
 
 -- | Typechecks an expression, and returns its type.
 typecheckExp :: S.SSMExp -> TC Type
-typecheckExp (Var ty ident) = do
+typecheckExp (S.Var ty ident) = do
   t <- lookupVar ident
   unifyTypes ty t
-typecheckExp (Lit ty lit) = do
+typecheckExp (S.Lit ty lit) = do
   unifyTypes (typeofLit lit) ty
-typecheckExp (UOpE ty expr op) = do
+typecheckExp (S.UOpE ty expr op) = do
   actualTy <- typecheckExp expr
   unifyTypes actualTy ty
-typecheckExp (UOpR ty ref op) = do
+typecheckExp (S.UOpR ty ref op) = do
   actualTy <- typecheckRef ref
   unifyTypes actualTy ty
-typecheckExp (BOp ty e1 e2 op) = do
+typecheckExp (S.BOp ty e1 e2 op) = do
   actualTy1 <- typecheckExp e1
   actualTy2 <- typecheckExp e2
   unifyTypes actualTy1 actualTy2
   unifyTypes actualTy1 ty
 
 -- | Typecheck a reference, and returns its type.
-typecheckRef :: Reference -> TC Type
+typecheckRef :: R.Reference -> TC Type
 typecheckRef (Dynamic (ident, ty)) = do
   actualTy <- lookupVar ident
   unifyTypes actualTy ty
@@ -180,7 +180,7 @@ typecheckRef (Static (ident, ty)) = do
   unifyTypes actualTy ty
 
 -- | Typecheck the invocation of a procedure.
-typecheckForkProc :: (Ident, [Either S.SSMExp Reference]) -> TC ()
+typecheckForkProc :: (Ident, [Either S.SSMExp R.Reference]) -> TC ()
 typecheckForkProc (name, actuals) = do
   formals <- lookupProcedure name
 
@@ -194,16 +194,16 @@ typecheckForkProc (name, actuals) = do
   typecheckActual (Left  actualExp) = typecheckExp actualExp
   typecheckActual (Right actualRef) = typecheckRef actualRef
 
-typecheckTime :: SSMTime -> TC ()
+typecheckTime :: S.SSMTime -> TC ()
 typecheckTime (SSMTimeAdd l r) = typecheckTime l >> typecheckTime r
 typecheckTime (SSMTimeSub l r) = typecheckTime l >> typecheckTime r
 typecheckTime (SSMTime a _) = typecheckExp a >>= void . unifyTypes TUInt64
 
 -- | Obtain type of a literal value.
-typeofLit :: SSMLit -> Type
-typeofLit (LUInt8  _) = TUInt8
-typeofLit (LInt32  _) = TInt32
-typeofLit (LInt64  _) = TInt64
-typeofLit (LUInt64 _) = TUInt64
-typeofLit (LBool   _) = TBool
-typeofLit LEvent      = TEvent
+typeofLit :: S.SSMLit -> Type
+typeofLit (S.LUInt8  _) = TUInt8
+typeofLit (S.LInt32  _) = TInt32
+typeofLit (S.LInt64  _) = TInt64
+typeofLit (S.LUInt64 _) = TUInt64
+typeofLit (S.LBool   _) = TBool
+typeofLit S.LEvent      = TEvent
