@@ -69,7 +69,7 @@ withVars vars =
 withProcs :: [Procedure] -> TC a -> TC a
 withProcs procs = local
   (\ctx -> ctx { procedures = Map.union procsMap $ procedures ctx })
-  where procsMap = Map.fromList $ map (\p -> (S.name p, S.arguments p)) procs
+  where procsMap = Map.fromList $ map (\p -> (name p, arguments p)) procs
 
 -- | Look up the arguments of a procedure.
 lookupProcedure :: Ident -> TC [(Ident, Type)]
@@ -92,95 +92,95 @@ unifyTypes t1 t2 | t1 == t2  = return t1
 {----- Recursive typechecking -----}
 
 -- Typecheck (and scope-check) a program.
-typecheck :: S.Program -> Either CompilerError ()
+typecheck :: Program -> Either CompilerError ()
 typecheck prog = runExcept $ flip runReaderT emptyContext $ do
-  procs <- forM (Map.toList $ S.funs prog) $ \(n, p) ->
-    if n == S.name p then return p else throwError $ NameError n $ S.name p
+  procs <- forM (Map.toList $ funs prog) $ \(n, p) ->
+    if n == name p then return p else throwError $ NameError n $ name p
 
   -- The global context with which we will check the whole program.
-  let withCtx = withVars (S.globalReferences prog) . withProcs procs
+  let withCtx = withVars (globalReferences prog) . withProcs procs
 
   -- Check that the entry point (1) exists and (2) takes no arguments.
   withCtx $ do
-    args <- lookupProcedure (S.entry prog)
+    args <- lookupProcedure (entry prog)
     unless (null args) $ do
-      throwError $ ArgsLenError (S.entry prog) 0 (length args)
+      throwError $ ArgsLenError (entry prog) 0 (length args)
 
   -- Check each procedure defined in the program.
   withCtx $ forM_ procs $ \p ->
-    withVars (S.arguments p) $ typecheckStms (S.body p)
+    withVars (arguments p) $ typecheckStms (body p)
 
 -- | Typecheck a list of statements.
-typecheckStms :: [S.Stm] -> TC ()
+typecheckStms :: [Stm] -> TC ()
 typecheckStms []                             = return ()
-typecheckStms (S.After time ref exp2 : stms) = do
+typecheckStms (After time ref exp2 : stms) = do
   typecheckTime time
   refTy <- typecheckRef ref
   expTy <- typecheckExp exp2
   unifyTypes expTy refTy
   typecheckStms stms
-typecheckStms (S.Wait refs : stms) = do
+typecheckStms (Wait refs : stms) = do
   forM_ refs typecheckRef
   typecheckStms stms
-typecheckStms (S.While expr body : stms) = do
+typecheckStms (While expr body : stms) = do
   exprTy <- typecheckExp expr
-  unifyTypes exprTy S.TBool
+  unifyTypes exprTy TBool
   typecheckStms body
   typecheckStms stms
-typecheckStms (S.If expr stms1 stms2 : stms) = do
+typecheckStms (If expr stms1 stms2 : stms) = do
   exprTy <- typecheckExp expr
-  unifyTypes exprTy S.TBool
+  unifyTypes exprTy TBool
   typecheckStms stms1
   typecheckStms stms2
   typecheckStms stms
-typecheckStms (S.SetRef ref expr : stms) = do
+typecheckStms (SetRef ref expr : stms) = do
   refTy <- typecheckRef ref
   expTy <- typecheckExp expr
   unifyTypes expTy refTy
   typecheckStms stms
-typecheckStms (S.SetLocal name ty expr : stms) = do
+typecheckStms (SetLocal name ty expr : stms) = do
   actualTy <- typecheckExp expr
   unifyTypes actualTy ty
   withVars [(name, ty)] $ typecheckStms stms
-typecheckStms (S.NewRef ident ty expr : stms) = do
+typecheckStms (NewRef ident ty expr : stms) = do
   actualTy <- typecheckExp expr
   unifyTypes actualTy ty
   withVars [(ident, ty)] $ typecheckStms stms
-typecheckStms (S.Fork procs : stms) = do
+typecheckStms (Fork procs : stms) = do
   forM_ procs typecheckForkProc
   typecheckStms stms
-typecheckStms (S.Skip : stms) = typecheckStms stms
+typecheckStms (Skip : stms) = typecheckStms stms
 
 -- | Typechecks an expression, and returns its type.
-typecheckExp :: S.SSMExp -> TC Type
-typecheckExp (S.Var ty ident) = do
+typecheckExp :: SSMExp -> TC Type
+typecheckExp (Var ty ident) = do
   t <- lookupVar ident
   unifyTypes ty t
-typecheckExp (S.Lit ty lit) = do
+typecheckExp (Lit ty lit) = do
   unifyTypes (typeofLit lit) ty
-typecheckExp (S.UOpE ty expr op) = do
+typecheckExp (UOpE ty expr op) = do
   actualTy <- typecheckExp expr
   unifyTypes actualTy ty
-typecheckExp (S.UOpR ty ref op) = do
+typecheckExp (UOpR ty ref op) = do
   actualTy <- typecheckRef ref
   unifyTypes actualTy ty
-typecheckExp (S.BOp ty e1 e2 op) = do
+typecheckExp (BOp ty e1 e2 op) = do
   actualTy1 <- typecheckExp e1
   actualTy2 <- typecheckExp e2
   unifyTypes actualTy1 actualTy2
   unifyTypes actualTy1 ty
 
 -- | Typecheck a reference, and returns its type.
-typecheckRef :: S.Reference -> TC Type
-typecheckRef (S.Dynamic (ident, ty)) = do
+typecheckRef :: Reference -> TC Type
+typecheckRef (Dynamic (ident, ty)) = do
   actualTy <- lookupVar ident
   unifyTypes actualTy ty
-typecheckRef (S.Static (ident, ty)) = do
+typecheckRef (Static (ident, ty)) = do
   actualTy <- lookupVar ident
   unifyTypes actualTy ty
 
 -- | Typecheck the invocation of a procedure.
-typecheckForkProc :: (Ident, [Either S.SSMExp S.Reference]) -> TC ()
+typecheckForkProc :: (Ident, [Either SSMExp Reference]) -> TC ()
 typecheckForkProc (name, actuals) = do
   formals <- lookupProcedure name
 
@@ -194,16 +194,16 @@ typecheckForkProc (name, actuals) = do
   typecheckActual (Left  actualExp) = typecheckExp actualExp
   typecheckActual (Right actualRef) = typecheckRef actualRef
 
-typecheckTime :: S.SSMTime -> TC ()
-typecheckTime (S.SSMTimeAdd l r) = typecheckTime l >> typecheckTime r
-typecheckTime (S.SSMTimeSub l r) = typecheckTime l >> typecheckTime r
-typecheckTime (S.SSMTime a _) = typecheckExp a >>= void . unifyTypes S.TUInt64
+typecheckTime :: SSMTime -> TC ()
+typecheckTime (SSMTimeAdd l r) = typecheckTime l >> typecheckTime r
+typecheckTime (SSMTimeSub l r) = typecheckTime l >> typecheckTime r
+typecheckTime (SSMTime a _) = typecheckExp a >>= void . unifyTypes TUInt64
 
 -- | Obtain type of a literal value.
-typeofLit :: S.SSMLit -> Type
-typeofLit (S.LUInt8  _) = S.TUInt8
-typeofLit (S.LInt32  _) = S.TInt32
-typeofLit (S.LInt64  _) = S.TInt64
-typeofLit (S.LUInt64 _) = S.TUInt64
-typeofLit (S.LBool   _) = S.TBool
-typeofLit S.LEvent      = S.TEvent
+typeofLit :: SSMLit -> Type
+typeofLit (LUInt8  _) = TUInt8
+typeofLit (LInt32  _) = TInt32
+typeofLit (LInt64  _) = TInt64
+typeofLit (LUInt64 _) = TUInt64
+typeofLit (LBool   _) = TBool
+typeofLit LEvent      = TEvent
