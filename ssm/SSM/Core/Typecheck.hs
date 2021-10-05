@@ -70,7 +70,7 @@ withVars vars =
 withProcs :: [Prog.Procedure] -> TC a -> TC a
 withProcs procs = local
   (\ctx -> ctx { procedures = Map.union procsMap $ procedures ctx })
-  where procsMap = Map.fromList $ map (\p -> (name p, arguments p)) procs
+  where procsMap = Map.fromList $ map (\p -> (Prog.name p, Prog.arguments p)) procs
 
 -- | Look up the arguments of a procedure.
 lookupProcedure :: I.Ident -> TC [(I.Ident, T.Type)]
@@ -95,21 +95,21 @@ unifyTypes t1 t2 | t1 == t2  = return t1
 -- Typecheck (and scope-check) a program.
 typecheck :: Prog.Program -> Either CompilerError ()
 typecheck prog = runExcept $ flip runReaderT emptyContext $ do
-  procs <- forM (Map.toList $ funs prog) $ \(n, p) ->
-    if n == name p then return p else throwError $ NameError n $ name p
+  procs <- forM (Map.toList $ Prog.funs prog) $ \(n, p) ->
+    if n == Prog.name p then return p else throwError $ NameError n $ Prog.name p
 
   -- The global context with which we will check the whole program.
-  let withCtx = withVars (globalReferences prog) . withProcs procs
+  -- let withCtx = withVars (globalReferences prog) . withProcs procs
 
-  -- Check that the entry point (1) exists and (2) takes no arguments.
-  withCtx $ do
-    args <- lookupProcedure (entry prog)
-    unless (null args) $ do
-      throwError $ ArgsLenError (entry prog) 0 (length args)
+  -- -- Check that the entry point (1) exists and (2) takes no arguments.
+  -- withCtx $ do
+  --   args <- lookupProcedure (entry prog)
+  --   unless (null args) $ do
+  --     throwError $ ArgsLenError (entry prog) 0 (length args)
 
-  -- Check each procedure defined in the program.
-  withCtx $ forM_ procs $ \p ->
-    withVars (arguments p) $ typecheckStms (body p)
+  -- -- Check each procedure defined in the program.
+  -- withCtx $ forM_ procs $ \p ->
+  --   withVars (arguments p) $ typecheckStms (body p)
 
 -- | Typecheck a list of statements.
 typecheckStms :: [S.Stm] -> TC ()
@@ -125,12 +125,12 @@ typecheckStms (S.Wait refs : stms) = do
   typecheckStms stms
 typecheckStms (S.While expr body : stms) = do
   exprTy <- typecheckExp expr
-  unifyTypes exprTy TBool
+  unifyTypes exprTy T.TBool
   typecheckStms body
   typecheckStms stms
 typecheckStms (S.If expr stms1 stms2 : stms) = do
   exprTy <- typecheckExp expr
-  unifyTypes exprTy TBool
+  unifyTypes exprTy T.TBool
   typecheckStms stms1
   typecheckStms stms2
   typecheckStms stms
@@ -198,13 +198,13 @@ typecheckForkProc (name, actuals) = do
 typecheckTime :: S.SSMTime -> TC ()
 -- typecheckTime (SSMTimeAdd l r) = typecheckTime l >> typecheckTime r
 -- typecheckTime (SSMTimeSub l r) = typecheckTime l >> typecheckTime r
-typecheckTime (S.SSMTime a _) = typecheckExp a >>= void . unifyTypes TUInt64
+typecheckTime (S.SSMTime a) = typecheckExp a >>= void . unifyTypes TUInt64
 
 -- | Obtain type of a literal value.
 typeofLit :: S.SSMLit -> T.Type
-typeofLit (S.LUInt8  _) = TUInt8
-typeofLit (S.LInt32  _) = TInt32
-typeofLit (S.LInt64  _) = TInt64
-typeofLit (S.LUInt64 _) = TUInt64
-typeofLit (S.LBool   _) = TBool
-typeofLit S.LEvent      = TEvent
+typeofLit (S.LUInt8  _) = T.TUInt8
+typeofLit (S.LInt32  _) = T.TInt32
+typeofLit (S.LInt64  _) = T.TInt64
+typeofLit (S.LUInt64 _) = T.TUInt64
+typeofLit (S.LBool   _) = T.TBool
+typeofLit S.LEvent      = T.TEvent
