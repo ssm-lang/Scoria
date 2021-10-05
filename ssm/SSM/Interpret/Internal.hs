@@ -97,7 +97,8 @@ import           Data.Word                      ( Word64
 import           SSM.Util.HughesList            ( toHughes )
 import           SSM.Util.Operators             ( (<#>) )
 
-import           SSM.Core.Syntax
+import           SSM.Core
+
 import qualified SSM.Interpret.Trace           as T
 import           SSM.Interpret.Types
 
@@ -106,18 +107,20 @@ import           SSM.Interpret.Types
 -- | Create initial global variable storage
 globals :: Program -> ST s (Map.Map Ident (Var s))
 globals p = do
-  vars <- forM (globalReferences p) $ \(id,t) -> do
-    let initval = defaultValue (dereference t)
-    v <- newVar' initval maxBound
-    return (id, v)
-  return $ Map.fromList vars
+  vars <- forM (peripherals p) $ \(Peripheral p) -> do
+    forM (declaredReferences p) $ \ref -> do
+      let initval = defaultValue (dereference (refType ref))
+      v <- newVar' initval 0
+      return (refIdent ref, v)
+  return $ Map.fromList $ concat vars
 
 -- | Default values for SSM types.
 defaultValue :: Type -> SSMExp
 defaultValue TInt32  = Lit TInt32 $ LInt32 0
 defaultValue TInt64  = Lit TInt64 $ LInt64 0
-defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
 defaultValue TUInt8  = Lit TUInt8 $ LUInt8 0
+defaultValue TUInt32 = Lit TUInt32 $ LUInt32 0
+defaultValue TUInt64 = Lit TUInt64 $ LUInt64 0
 defaultValue TBool   = Lit TBool $ LBool False
 defaultValue TEvent  = Lit TEvent LEvent
 defaultValue (Ref _) = error "default value of reference not allowed"
@@ -625,15 +628,19 @@ eval e = do
     UOpR _ r op -> case op of
       Changed -> wasWritten r
       Deref   -> readRef r
-    UOpE _ e Neg -> do
+    UOpE _ e op -> do
       e' <- eval e
-      return $ neg e'
+      case op of
+        Neg -> return $ neg e'
+        Not -> return $ not' e'
     BOp TBool e1 e2 op -> do
       l1 <- eval e1
       l2 <- eval e2
       case op of
-        OLT -> return $ lessthan l1 l2
-        OEQ -> return $ equals l1 l2
+        OLT  -> return $ lessthan l1 l2
+        OEQ  -> return $ equals l1 l2
+        OAnd -> return $ conjunction l1 l2
+        OOr  -> return $ disjunction l1 l2
         _ ->
           crash
             $  "Type error: binary operator does not return TBool: "
@@ -645,6 +652,10 @@ eval e = do
         OPlus  -> return $ addition i1 i2
         OMinus -> return $ SSM.Interpret.Internal.subtract i1 i2
         OTimes -> return $ multiply i1 i2
+        ODiv   -> return $ divide i1 i2
+        ORem   -> return $ remainder i1 i2
+        OMin   -> return $ min' i1 i2
+        OMax   -> return $ max' i1 i2
         _ ->
           crash
             $  "Type error: binary operator does not return int type: "
@@ -669,25 +680,39 @@ neg (Lit _ (LInt32 i)) = Lit TInt32 $ LInt32 (-i)
 neg (Lit _ (LInt64 i)) = Lit TInt64 $ LInt64 (-i)
 neg _                  = error "can only negate signed integer types"
 
+not' :: SSMExp -> SSMExp
+not' (Lit TBool (LBool b)) = Lit TBool $ LBool $ not b
+not' _                     = error "can only negate boolean expressions"
+
 -- | Compute the ordering of an expression
 lessthan :: SSMExp -> SSMExp -> SSMExp
 lessthan (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) = Lit TBool $ LBool $ i1 < i2
 lessthan (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) = Lit TBool $ LBool $ i1 < i2
+lessthan (Lit _ (LUInt32 i1)) (Lit _ (LUInt32 i2)) = Lit TBool $ LBool $ i1 < i2
 lessthan (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
   Lit TBool $ LBool $ i1 < i2
-lessthan (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) = Lit TBool $ LBool $ i1 < i2
 lessthan le re = expOpTypeError "compare" le re
 
 -- | Check if two expressions are equal
 equals :: SSMExp -> SSMExp -> SSMExp
 equals (Lit _ (LInt32  i1)) (Lit _ (LInt32  i2)) = Lit TBool $ LBool $ i1 == i2
 equals (Lit _ (LInt64  i1)) (Lit _ (LInt64  i2)) = Lit TBool $ LBool $ i1 == i2
-equals (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TBool $ LBool $ i1 == i2
 equals (Lit _ (LUInt8  i1)) (Lit _ (LUInt8  i2)) = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LUInt32  i1)) (Lit _ (LUInt32  i2)) = Lit TBool $ LBool $ i1 == i2
+equals (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TBool $ LBool $ i1 == i2
 equals (Lit _ (LBool   b1)) (Lit _ (LBool   b2)) = Lit TBool $ LBool $ b1 == b2
 -- FIXME: We haven't fully fleshed out equality semantics of TEvent yet.
 equals (Lit _ LEvent      ) (Lit _ LEvent      ) = Lit TBool $ LBool True
 equals le re = expOpTypeError "compare" le re
+
+conjunction :: SSMExp -> SSMExp -> SSMExp
+conjunction (Lit TBool (LBool b1)) (Lit TBool (LBool b2)) = Lit TBool $ LBool $ b1 && b2
+conjunction le re = expOpTypeError "conjunction" le re
+
+disjunction :: SSMExp -> SSMExp -> SSMExp
+disjunction (Lit TBool (LBool b1)) (Lit TBool (LBool b2)) = Lit TBool $ LBool $ b1 || b2
+disjunction le re = expOpTypeError "disjunction"  le re
 
 -- | Add two expressions
 addition :: SSMExp -> SSMExp -> SSMExp
@@ -695,10 +720,12 @@ addition (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
   Lit TInt32 $ LInt32 $ i1 + i2
 addition (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
   Lit TInt64 $ LInt64 $ i1 + i2
-addition (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
-  Lit TUInt64 $ LUInt64 $ i1 + i2
 addition (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
   Lit TUInt8 $ LUInt8 $ i1 + i2
+addition (Lit _ (LUInt32 i1)) (Lit _ (LUInt32 i2)) =
+  Lit TUInt32 $ LUInt32 $ i1 + i2
+addition (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TUInt64 $ LUInt64 $ i1 + i2
 addition le re = expOpTypeError "add" le re
 
 -- | Subtract two expressions
@@ -707,10 +734,12 @@ subtract (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
   Lit TInt32 $ LInt32 $ i1 - i2
 subtract (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
   Lit TInt64 $ LInt64 $ i1 - i2
-subtract (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
-  Lit TUInt64 $ LUInt64 $ i1 - i2
 subtract (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
   Lit TUInt8 $ LUInt8 $ i1 - i2
+subtract (Lit _ (LUInt32 i1)) (Lit _ (LUInt32 i2)) =
+  Lit TUInt32 $ LUInt32 $ i1 - i2
+subtract (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TUInt64 $ LUInt64 $ i1 - i2
 subtract le re = expOpTypeError "subtract" le re
 
 -- | Multiply two expressions
@@ -719,11 +748,55 @@ multiply (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
   Lit TInt32 $ LInt32 $ i1 * i2
 multiply (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
   Lit TInt64 $ LInt64 $ i1 * i2
-multiply (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
-  Lit TUInt64 $ LUInt64 $ i1 * i2
 multiply (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
   Lit TUInt8 $ LUInt8 $ i1 * i2
+multiply (Lit _ (LUInt32 i1)) (Lit _ (LUInt32 i2)) =
+  Lit TUInt32 $ LUInt32 $ i1 * i2
+multiply (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TUInt64 $ LUInt64 $ i1 * i2
 multiply le re = expOpTypeError "multiply" le re
+
+divide :: SSMExp -> SSMExp -> SSMExp
+divide (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
+  Lit TInt32 $ LInt32 $ let x = i1 `div` i2 in if x < 0 then 0 else x
+divide (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
+  Lit TInt64 $ LInt64 $ let x = i1 `div` i2 in if x < 0 then 0 else x
+divide (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
+  Lit TUInt8 $ LUInt8 $ i1 `div` i2
+divide (Lit _ (LUInt32 i1)) (Lit _ (LUInt32 i2)) =
+  Lit TUInt32 $ LUInt32 $ i1 `div` i2
+divide (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TUInt64 $ LUInt64 $ i1 `div` i2
+divide le re = expOpTypeError "divide" le re
+
+remainder :: SSMExp -> SSMExp -> SSMExp
+remainder (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) =
+  Lit TInt32 $ LInt32 $ i1 `rem` i2
+remainder (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) =
+  Lit TInt64 $ LInt64 $ i1 `rem` i2
+remainder (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) =
+  Lit TUInt8 $ LUInt8 $ i1 `rem` i2
+remainder (Lit _ (LUInt32 i1)) (Lit _ (LUInt32 i2)) =
+  Lit TUInt32 $ LUInt32 $ i1 `rem` i2
+remainder (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) =
+  Lit TUInt64 $ LUInt64 $ i1 `rem` i2
+remainder le re = expOpTypeError "rem" le re
+
+min' :: SSMExp -> SSMExp -> SSMExp
+min' (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) = Lit TInt32 $ LInt32 $ min i1 i2
+min' (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ min i1 i2
+min' (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) = Lit TUInt8 $ LUInt8 $ min i1 i2
+min' (Lit _ (LUInt32 i1)) (Lit _ (LUInt32 i2)) = Lit TUInt32 $ LUInt32 $ min i1 i2
+min' (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ min i1 i2
+min' le re = expOpTypeError "min" le re
+
+max' :: SSMExp -> SSMExp -> SSMExp
+max' (Lit _ (LInt32 i1)) (Lit _ (LInt32 i2)) = Lit TInt32 $ LInt32 $ max i1 i2
+max' (Lit _ (LInt64 i1)) (Lit _ (LInt64 i2)) = Lit TInt64 $ LInt64 $ max i1 i2
+max' (Lit _ (LUInt8 i1)) (Lit _ (LUInt8 i2)) = Lit TUInt8 $ LUInt8 $ max i1 i2
+max' (Lit _ (LUInt32 i1)) (Lit _ (LUInt32 i2)) = Lit TUInt32 $ LUInt32 $ max i1 i2
+max' (Lit _ (LUInt64 i1)) (Lit _ (LUInt64 i2)) = Lit TUInt64 $ LUInt64 $ max i1 i2
+max' le re = expOpTypeError "max" le re
 
 {- | Retrieve a Haskell @Int32@ from an expression. Will crash if the expression
 is not an @Int32@. -}
@@ -755,21 +828,9 @@ getBool :: SSMExp -> Bool
 getBool (Lit _ (LBool b)) = b
 getBool e                 = expTypeError "Bool" e
 
-{- | Retrieve a Haskell @Word64@ from applying @SSMTimeUnit@s to a @Word64@.
-Note that SSM time is in nanoseconds. -}
-applyUnit :: Word64 -> SSMTimeUnit -> Word64
-applyUnit d SSMNanosecond  = d
-applyUnit d SSMMicrosecond = d * 1000
-applyUnit d SSMMillisecond = d * 1000000
-applyUnit d SSMSecond      = d * 1000000000
-applyUnit d SSMMinute      = d * 60000000000
-applyUnit d SSMHour        = d * 3600000000000
-
 -- | Recursively evaluate an @SSMTime@ value.
-genTimeDelay :: SSMTime -> Word64
-genTimeDelay (SSMTime d u)      = applyUnit (getUInt64 d) u
-genTimeDelay (SSMTimeAdd t1 t2) = (genTimeDelay t1) + (genTimeDelay t2)
-genTimeDelay (SSMTimeSub t1 t2) = (genTimeDelay t1) - (genTimeDelay t2)
+genTimeDelay :: SSMTime -> Interp s Word64
+genTimeDelay (SSMTime d) = getUInt64 <$> eval d
 
 -- | Obtain type and concrete representation of an expression; only works for
 -- literals.
@@ -777,6 +838,7 @@ getTypeConcreteVal :: SSMExp -> (Type, T.ConcreteValue)
 getTypeConcreteVal (Lit t (LInt32  i    )) = (t, T.IntegralVal $ fromIntegral i)
 getTypeConcreteVal (Lit t (LInt64  i    )) = (t, T.IntegralVal $ fromIntegral i)
 getTypeConcreteVal (Lit t (LUInt8  i    )) = (t, T.IntegralVal $ fromIntegral i)
+getTypeConcreteVal (Lit t (LUInt32 i    )) = (t, T.IntegralVal $ fromIntegral i)
 getTypeConcreteVal (Lit t (LUInt64 i    )) = (t, T.IntegralVal $ fromIntegral i)
 getTypeConcreteVal (Lit t (LBool   True )) = (t, T.IntegralVal 1)
 getTypeConcreteVal (Lit t (LBool   False)) = (t, T.IntegralVal 0)

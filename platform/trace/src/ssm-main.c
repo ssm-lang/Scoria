@@ -3,7 +3,7 @@
 extern uint16_t event_queue_len;
 
 int main(void) {
-  ssm_initialize_program();
+  ssm_program_initialize();
 
   for (;;) {
     ssm_tick();

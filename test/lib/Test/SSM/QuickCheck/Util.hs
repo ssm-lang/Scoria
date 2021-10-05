@@ -11,6 +11,12 @@ module Test.SSM.QuickCheck.Util
     ) where
 
 import SSM.Core.Syntax
+
+import SSM.Core.Type
+import SSM.Core.Program
+import SSM.Core.Ident
+import SSM.Core.Reference
+
 import SSM.Util.HughesList hiding ( (++) )
 
 import qualified Data.Map as Map
@@ -144,6 +150,7 @@ removeVars = go
           Lit t l        -> Lit t l
           UOpE t e op    -> case op of
               Neg -> UOpE t (rewriteExp e invalid validrefs) Neg
+              Not -> UOpE t (rewriteExp e invalid validrefs) Not
           UOpR t r op    -> case op of
               Changed -> if r `elem` validrefs
                   then UOpR t r Changed
@@ -159,18 +166,15 @@ removeVars = go
 
       -- | Rewrite an SSMTime expression
       rewriteDelay :: SSMTime -> [Ident] -> [Reference] -> SSMTime
-      rewriteDelay d invalid validrefs = case d of
-          SSMTime del units -> SSMTime (rewriteExp del invalid validrefs) units
-          SSMTimeAdd t1 t2  -> SSMTimeAdd (rewriteDelay t1 invalid validrefs)
-                                          (rewriteDelay t2 invalid validrefs)
-          SSMTimeSub t1 t2  -> SSMTimeSub (rewriteDelay t1 invalid validrefs)
-                                          (rewriteDelay t2 invalid validrefs)
+      rewriteDelay (SSMTime del) invalid validrefs =
+          SSMTime (rewriteExp del invalid validrefs)
 
       -- | Default literal of expressions
       defaultExp :: Type -> SSMExp
       defaultExp TInt32  = Lit TInt32 (LInt32 1)
       defaultExp TInt64  = Lit TInt64 (LInt64 1)
       defaultExp TUInt8  = Lit TUInt8 (LUInt8 1)
+      defaultExp TUInt32 = Lit TUInt32 (LUInt32 1)
       defaultExp TUInt64 = Lit TUInt64 (LUInt64 1)
       defaultExp TBool   = Lit TBool (LBool True)
       defaultExp TEvent  = Lit TEvent LEvent

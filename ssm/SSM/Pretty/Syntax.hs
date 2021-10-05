@@ -9,20 +9,8 @@ import Control.Monad.Reader
 import Control.Monad.Writer
     ( execWriter, MonadWriter(tell), Writer )
 
-import SSM.Core.Syntax
-    ( BinOp(..),
-      Reference,
-      refName,
-      SSMExp(..),
-      SSMLit(..),
-      SSMTime(..),
-      Type(..),
-      UnaryOpE(..),
-      UnaryOpR(..),
-      Procedure(body, name, arguments),
-      Program(..),
-      Stm(..),
-      Ident(..))
+import SSM.Core
+
 import SSM.Util.HughesList ( fromHughes, toHughes, Hughes )
 
 type PP a = ReaderT Int                    -- current level of indentation
@@ -55,18 +43,30 @@ prettyProgram ssm = let wr = runReaderT (prettyProgram' ssm) 0
 
 prettyProgram' :: Program -> PP ()
 prettyProgram' p = do
-    emit "entrypoint:"
-    indent $ emit $ prettyApp (entry p, [])
+    emit "initial ready-queue content:"
+    mapM_ (indent . emit . prettyQueueContent) (initialQueueContent p) 
     emit ""
     emit "global variables:"
-    prettyGlobals (globalReferences p)
+    mapM_ prettyPeripheralDeclarations (peripherals p)
     emit ""
     intercalateM (emit "") $ map prettyProcedure (Map.elems (funs p))
     return ()
 
-prettyGlobals :: [(Ident, Type)] -> PP ()
-prettyGlobals xs = flip mapM_ xs $ \(n,t) ->
-    indent $ emit $ concat [prettyType t, " ", identName n]
+prettyQueueContent :: QueueContent -> String
+prettyQueueContent (SSMProcedure id args) = prettyApp (id, args)
+prettyQueueContent (Handler h           ) = case h of
+    StaticOutputHandler ref id -> prettyApp
+        ( Ident "static_output_handler" Nothing
+        , [Right ref, Left $ Lit TUInt8 $ LUInt8 id]
+        )
+
+prettyReferenceDecls :: [Reference] -> PP ()
+prettyReferenceDecls xs = flip mapM_ xs $ \ref ->
+    indent $ emit $ concat [prettyType (refType ref), " ", refName ref]
+
+prettyPeripheralDeclarations :: Peripheral -> PP ()
+prettyPeripheralDeclarations (Peripheral p) =
+    prettyReferenceDecls $ declaredReferences p
 
 prettyProcedure :: Procedure -> PP ()
 prettyProcedure p = do
@@ -144,6 +144,7 @@ prettyType :: Type -> String
 prettyType t = case t of
     TInt32  -> "int"
     TUInt8  -> "uint8"
+    TUInt32 -> "uint32"
     TInt64  -> "int64"
     TUInt64 -> "uint64"
     TBool   -> "bool"
@@ -154,6 +155,7 @@ prettyLit :: SSMLit -> String
 prettyLit l = case l of
     LInt32 i  -> show i
     LUInt8 i  -> show i
+    LUInt32 i -> show i
     LInt64 i  -> show i
     LUInt64 i -> show i
     LBool b   -> show b
@@ -177,6 +179,7 @@ prettySSMExp e = case e of
 prettyUnaryOpE :: UnaryOpE -> SSMExp -> String
 prettyUnaryOpE op e = case op of
     Neg -> concat ["(-", prettySSMExp e, ")"] 
+    Not -> concat ["!", prettySSMExp e]
 
 prettyUnaryOpR :: UnaryOpR -> Reference -> String
 prettyUnaryOpR op r = case op of
@@ -188,10 +191,14 @@ prettyBinop op = case op of
     OPlus  -> "+"
     OMinus -> "-"
     OTimes -> "*"
+    ODiv   -> "/"
+    ORem   -> "%"
+    OMin   -> "`min`"
+    OMax   -> "`max`"
     OLT    -> "<"
     OEQ    -> "=="
+    OAnd   -> "&&"
+    OOr    -> "||"
 
 prettySSMTime :: SSMTime -> String
-prettySSMTime (SSMTime d u) = (prettySSMExp d) ++ show u
-prettySSMTime (SSMTimeAdd t1 t2) = (prettySSMTime t1) ++ "+" ++ (prettySSMTime t2)
-prettySSMTime (SSMTimeSub t1 t2) = (prettySSMTime t1) ++ "-" ++ (prettySSMTime t2)
+prettySSMTime (SSMTime d) = prettySSMExp d

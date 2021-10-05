@@ -5,14 +5,14 @@
 module Regression.RecurseForeverSpec where
 
 import           Data.Map                       ( fromList )
-import           SSM.Core.Syntax
+import           SSM.Core
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = Ident "fun0" Nothing
+  { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList
               [ ( Ident "fun0" Nothing
                 , Procedure
@@ -22,7 +22,7 @@ p = Program
                   }
                 )
               ]
-  , globalReferences = []}
+  , peripherals = []}
 
 spec :: H.Spec
 spec = T.correctSpec "RecurseForever" p

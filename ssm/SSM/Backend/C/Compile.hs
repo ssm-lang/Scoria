@@ -4,7 +4,7 @@ module SSM.Backend.C.Compile
   ) where
 
 import           SSM.Backend.C.CodeGen
-import           SSM.Core.Syntax
+import           SSM.Core.Program
 
 import           Data.List                      ( nub )
 

@@ -25,11 +25,13 @@ import qualified Data.Map                      as Map
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
 
--- import           Data.Bifunctor                 ( second )
 import           Data.List                      ( sortOn )
 import           SSM.Backend.C.Identifiers
 import           SSM.Backend.C.Types
-import           SSM.Core.Syntax
+import           SSM.Backend.C.Peripheral
+
+import           SSM.Core
+
 import qualified SSM.Interpret.Trace           as T
 
 -- | Given a 'Program', returns a tuple containing the compiled program and
@@ -39,11 +41,12 @@ compile_ program = (compUnit, includes)
  where
   -- | The file to generate, minus include statements
   compUnit :: [C.Definition]
-  compUnit = globals ++ preamble ++ decls ++ defns ++ initProg
-
-  -- | Global reference declarations
-  globals :: [C.Definition]
-  globals = genGlobals program
+  compUnit = concat [ declarePeripherals program
+                    , preamble
+                    , decls
+                    , defns
+                    , initProg
+                    ]
 
   initProg :: [C.Definition]
   initProg = genInitProgram program
@@ -112,29 +115,74 @@ acts = "acts"
 actm :: CIdent
 actm = "act"
 
-{- | Generate the declarations of global variables and the function that initializes
-them. These variables can be accessed without an activation record. -}
-genGlobals :: Program -> [C.Definition]
-genGlobals = map declGlobal . globalReferences
- where
-  -- | Declare global variable.
-  declGlobal :: (Ident, Type) -> C.Definition
-  declGlobal (n, t) = [cedecl|$ty:(svt_ $ stripRef t) $id:(identName n);|]
-
 -- | Generate the entry point of a program - the first thing to be ran.
 genInitProgram :: Program -> [C.Definition]
 genInitProgram p = [cunit|
-  void $id:initialize_program(void) {
-    $items:(map initGlobal $ globalReferences p)
-    $id:fork($id:(enter_ $ identName $ entry p)
-        (&ssm_top_parent, SSM_ROOT_PRIORITY, SSM_ROOT_DEPTH));
+  int $id:initialize_program(void) {
+    $items:(initPeripherals p)
+    $items:(initialForks $ initialQueueContent p)
+
+    return 0;
   }
   |]
  where
-  -- | Initialize global reference.
-  initGlobal :: (Ident, Type) -> C.BlockItem
-  initGlobal (n, t) = [citem|$exp:init;|]
-    where init = initialize_ (stripRef t) [cexp|&$id:(identName n)|]
+  -- | Create statements for scheduling the initial ready-queue content
+  initialForks :: [QueueContent] -> [C.BlockItem]
+  initialForks ips =
+    zipWith
+      initialFork
+        (pdeps
+          (length ips)
+          [cexp|SSM_ROOT_PRIORITY|]
+          [cexp|SSM_ROOT_DEPTH|])
+        ips
+    where
+      -- | Create the schedule statement for a single schedulable thing
+      initialFork :: (C.Exp, C.Exp) -> QueueContent -> C.BlockItem
+      initialFork (priority, depth) (SSMProcedure id args) =
+        [citem| $id:fork($id:(enter_ (identName id))( &$id:top_parent
+                                                    , $exp:priority
+                                                    , $exp:depth
+                                                    , $args:(map cargs args)
+                                                    )
+                        ); |]
+      initialFork (priority, depth) (Handler h) =
+        [citem|$id:fork($id:(resolveNameOfHandler h)
+                                          ( &$id:top_parent
+                                          , $exp:priority
+                                          , $exp:depth
+                                          , $args:(map cargs $ argsOfHandler h)
+                                          )
+                       );|]
+
+      -- | Take a handler and return a list of arguments to it
+      argsOfHandler :: Handler -> [Either SSMExp Reference]
+      argsOfHandler (StaticOutputHandler ref id) =
+        [ Right ref
+        , Left $ Lit TUInt8 $ LUInt8 id
+        ]
+
+      -- | Compile the arguments of a procedure to `Exp`
+      cargs :: Either SSMExp Reference -> C.Exp
+      cargs (Left e)  = genExp [] e
+      cargs (Right r) = [cexp| $exp:(refPtr r [])->sv|]
+
+{- | Create C expressions that represent the new priorities and depths of the
+initially scheduled processes. -}
+pdeps :: Int -> C.Exp -> C.Exp -> [(C.Exp, C.Exp)]
+pdeps cs currentPrio currentDepth =
+      [ let prio  = [cexp|$exp:currentPrio + ($int:(i-1) * (1 << $exp:depth))|]
+            depth = [cexp|$exp:currentDepth - $exp:(depthSub cs)|]
+        in (prio, depth)
+      | i <- [1..cs]
+      ]
+
+{- | Calculate the subexpression that should be subtracted from the current depth
+in order to achieve the new depth of the processes to fork.
+
+The argument is the number of new processes that are being forked. -}
+depthSub :: Int -> C.Exp
+depthSub k = [cexp|$int:(ceiling $ logBase (2 :: Double) $ fromIntegral $ k :: Int) |]
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]
@@ -415,32 +463,29 @@ genCase (Fork cs) = do
   locs    <- gets locals
   caseNum <- nextCase
   let
-    genCall :: Int -> (Ident, [Either SSMExp Reference]) -> C.Stm
-    genCall i (r, as) =
+    pds = pdeps (length cs) [cexp|actg->priority|] [cexp|actg->depth|]
+
+    genCall :: (C.Exp, C.Exp) -> (Ident, [Either SSMExp Reference]) -> C.Stm
+    genCall (prio, depth) (r, as) =
       [cstm|$id:fork($id:(enter_ (identName r))($args:enterArgs));|]
      where
       enterArgs =
         [ [cexp|actg|]
-          , [cexp|actg->priority + $int:i * (1 << $exp:newDepth)|]
-          , newDepth
+          , prio
+          , depth
           ]
           ++ map genArg as
       genArg :: Either SSMExp Reference -> C.Exp
       genArg (Left  e) = genExp locs e
       genArg (Right r) = refPtr r locs
 
-    newDepth :: C.Exp
-    newDepth = [cexp|actg->depth - $int:depthSub|]
-
-    depthSub :: Int
-    depthSub =
-      (ceiling $ logBase (2 :: Double) $ fromIntegral $ length cs) :: Int
-
+    -- | Generate a test that raises an exception if the program has run out of prioities
     checkNewDepth :: C.Stm
     checkNewDepth = [cstm|
-      if ($id:actg->depth < $int:depthSub)
+      if ($id:actg->depth < $exp:(depthSub (length cs)))
          $id:throw($exp:exhausted_priority); |]
 
+    -- | Generate the trace item that advertises which processes are being forked
     genTrace :: (Ident, [Either SSMExp Reference]) -> C.Stm
     genTrace (r, _) = [cstm|$id:debug_trace($string:event);|]
       where event = show $ T.ActActivate $ identName r
@@ -448,7 +493,7 @@ genCase (Fork cs) = do
   return
     $  checkNewDepth
     :  map genTrace cs
-    ++ zipWith genCall [0 :: Int ..] cs
+    ++ zipWith genCall pds cs
     ++ [ [cstm| $id:actg->pc = $int:caseNum; |]
        , [cstm| return; |]
        , [cstm| case $int:caseNum: ; |]
@@ -463,40 +508,48 @@ refPtr r@(Static _) _ = [cexp|&$id:(refName r)|]
 
 -- | Generate C expression from 'SSMExp' and a list of local variables.
 genExp :: [Reference] -> SSMExp -> C.Exp
-genExp _    (Var TEvent n              ) = [cexp|0|]
-genExp _    (Var _      n              ) = [cexp|$id:acts->$id:(identName n)|]
-genExp _    (Lit _      (LInt32  i    )) = [cexp|$int:i|]
-genExp _    (Lit _      (LUInt8  i    )) = [cexp|$int:i|]
-genExp _    (Lit _      (LInt64  i    )) = [cexp|$lint:i|]
-genExp _    (Lit _      (LUInt64 i    )) = [cexp|$ulint:i|]
-genExp _    (Lit _      (LBool   True )) = [cexp|true|]
-genExp _    (Lit _      (LBool   False)) = [cexp|false|]
-genExp _    (Lit _      LEvent         ) = [cexp|0|]
-genExp locs (UOpE _ e Neg              ) = [cexp|- $exp:(genExp locs e)|]
-genExp locs (UOpR t r op               ) = case op of
-  Changed -> [cexp|$id:event_on(&$exp:(refPtr r locs)->sv)|]
+genExp _  (Var TEvent _         ) = [cexp|0|]
+genExp _  (Var t n              ) = [cexp|acts->$id:(identName n)|]
+genExp _  (Lit _ (LInt32  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LUInt8  i    )) = [cexp|$int:i|]
+genExp _  (Lit _ (LUInt32 i    )) = [cexp|$uint:i|]
+genExp _  (Lit _ (LInt64  i    )) = [cexp|$lint:i|]
+genExp _  (Lit _ (LUInt64 i    )) = [cexp|$ulint:i|]
+genExp _  (Lit _ (LBool   True )) = [cexp|true|]
+genExp _  (Lit _ (LBool   False)) = [cexp|false|]
+genExp _  (Lit _ (LEvent       )) = [cexp|0|]
+genExp ls (UOpE _ e op)           = case op of
+  Neg -> [cexp|- $exp:(genExp ls e)|]
+  Not -> [cexp|! $exp:(genExp ls e)|]
+genExp ls (UOpR t r op) = case op of
+  Changed -> [cexp|$id:event_on(&$exp:(refPtr r ls)->sv)|]
   Deref   -> case t of
     TEvent -> [cexp|0|]
-    _      -> [cexp|$exp:(refPtr r locs)->value|]
+    _      -> [cexp|$exp:(refPtr r ls)->value|]
 genExp ls (BOp ty e1 e2 op) = gen op
  where
   (c1, c2) = (genExp ls e1, genExp ls e2)
+  (s1, s2) = (signed_ (expType e1) c1, signed_ (expType e2) c2)
   gen OPlus  = [cexp|$exp:c1 + $exp:c2|]
   gen OMinus = [cexp|$exp:c1 - $exp:c2|]
   gen OTimes = [cexp|$exp:c1 * $exp:c2|]
+  gen ODiv   = [cexp|$exp:c1 / $exp:c2|]
+  gen ORem   = [cexp|$exp:s1 % $exp:s2|]
+  gen OMin   = [cexp|$exp:ltcomparison ? $exp:c1 : $exp:c2|]
+  gen OMax   = [cexp|$exp:ltcomparison ? $exp:c2 : $exp:c1|]
+  gen OLT    = ltcomparison
   gen OEQ    = [cexp|$exp:c1 == $exp:c2|]
-  gen OLT =
-    [cexp|$exp:(signed_ (expType e1) c1) < $exp:(signed_ (expType e2) c2)|]
+  gen OAnd   = [cexp|$exp:c1 && $exp:c2|]
+  gen OOr    = [cexp|$exp:c1 || $exp:c2|]
 
--- | Generate C expression which computes an SSM time value.
+  ltcomparison :: C.Exp
+  ltcomparison = [cexp| $exp:lhs < $exp:rhs |]
+    where
+      lhs = [cexp| $exp:s1 |]
+      rhs = [cexp| $exp:s2 |]
+
 genTimeDelay :: [Reference] -> SSMTime -> C.Exp
-genTimeDelay ls (SSMTime d u) = [cexp|$exp:(genExp ls d) * $id:(units_ u)|]
-genTimeDelay ls (SSMTimeAdd t1 t2) = [cexp|($exp:t1') + ($exp:t2')|]
-  where t1' = genTimeDelay ls t1
-        t2' = genTimeDelay ls t2
-genTimeDelay ls (SSMTimeSub t1 t2) = [cexp|($exp:t1') - ($exp:t2')|]
-  where t1' = genTimeDelay ls t1
-        t2' = genTimeDelay ls t2
+genTimeDelay ls (SSMTime d) = [cexp|$exp:(genExp ls d)|]
 
 -- | Promote a C expression to a C statement.
 expToStm :: C.Exp -> C.Stm

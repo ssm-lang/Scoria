@@ -15,7 +15,7 @@ import           System.Exit                    ( ExitCode(..)
                                                 )
 
 import           SSM.Backend.C.Compile
-import           SSM.Core.Syntax
+import           SSM.Core.Program
 
 -- | Compile a program to a C-file.
 --

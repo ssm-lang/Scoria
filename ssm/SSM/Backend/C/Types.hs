@@ -1,17 +1,20 @@
 {-# LANGUAGE QuasiQuotes #-}
 module SSM.Backend.C.Types where
 
+import           SSM.Core.Syntax
+import           SSM.Core.Type
+import           SSM.Core.Ident
+
 import           SSM.Backend.C.Identifiers
-import           SSM.Core.Syntax                ( Ident(..)
-                                                , Type(..)
-                                                )
+
+import qualified SSM.Interpret.Trace           as T
 
 import           Language.C.Quote.GCC           ( cexp
                                                 , cstm
                                                 , cty
                                                 )
 import qualified Language.C.Syntax             as C
-import qualified SSM.Interpret.Trace           as T
+
 
 -- | Construct a 'C.Type' from an identifier.
 t_ :: CIdent -> C.Type
@@ -29,6 +32,7 @@ base :: Type -> CIdent
 base TInt32  = u32
 base TInt64  = u64
 base TUInt64 = u64
+base TUInt32 = u32  
 base TUInt8  = u8
 base TBool   = bool
 base TEvent  = event
@@ -83,6 +87,7 @@ trace_ t n v = [cexp|$id:debug_trace($string:fmt, $exp:(signed_ t v))|]
     TInt32  -> "%d"
     TBool   -> "%u"
     TUInt64 -> "%lu"
+    TUInt32 -> "%lu"
     TUInt8  -> "%u"
     t       -> error $ "intFmt: no formatter type for type " ++ show t
 
@@ -93,4 +98,5 @@ trace_ t n v = [cexp|$id:debug_trace($string:fmt, $exp:(signed_ t v))|]
 signed_ :: Type -> C.Exp -> C.Exp
 signed_ TInt32 e = [cexp|($ty:(t_ i32)) $exp:e|]
 signed_ TInt64 e = [cexp|($ty:(t_ i64)) $exp:e|]
-signed_ _      e = e
+signed_ t      e = [cexp|($ty:(t_ (base t))) $exp:e|]
+--signed_ _      e = e

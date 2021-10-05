@@ -1,6 +1,6 @@
 module Test.SSM.QuickCheck.Shrink where
 
-import SSM.Core.Syntax ( Program )
+import SSM.Core.Program
 
 import Test.SSM.QuickCheck.Shrink.Procedures
     ( shrinkSingleProcedures,

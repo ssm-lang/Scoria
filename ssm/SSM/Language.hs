@@ -6,9 +6,11 @@ module SSM.Language
     , module SSM.Frontend.Box
     , SSM
     , Compile
+    , schedule
 
     ) where
 
 import SSM.Frontend.Language
 import SSM.Frontend.Box
 import SSM.Frontend.Syntax
+import SSM.Frontend.Compile

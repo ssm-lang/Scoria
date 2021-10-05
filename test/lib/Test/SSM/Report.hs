@@ -125,7 +125,7 @@ reportProgramOnFail slug program = do
     , "module Regression." ++ show slug ++ "Spec where"
     , ""
     , "import Data.Map (fromList)"
-    , "import SSM.Core.Syntax"
+    , "import SSM.Core"
     , "import qualified Test.SSM.Prop as T"
     , "import qualified Test.Hspec as H"
     , "import qualified Test.Hspec.QuickCheck as H"
