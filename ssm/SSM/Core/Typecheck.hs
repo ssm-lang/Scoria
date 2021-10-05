@@ -17,7 +17,8 @@ import           Control.Monad.Reader           ( MonadReader(..)
                                                 )
 import qualified Data.Map                      as Map
 import qualified SSM.Core.Syntax               as S
-import qualified SSM.Core.Ident                as R
+import qualified SSM.Core.Ident                as I
+import qualified SSM.Core.Reference            as R
 import qualified SSM.Core.Type                 as T
 import qualified SSM.Core.Program              as Prog
 import qualified SSM.Core.Peripheral           as Peri
@@ -36,9 +37,9 @@ type TC a = ReaderT Context (Except CompilerError) a
 -- | The state carried by the typechecker.
 data Context = Context
   { -- | types of procedures
-    procedures :: Map.Map Ident [(Ident, Type)]
+    procedures :: Map.Map I.Ident [(I.Ident, T.Type)]
   , -- | mapping from variable names to their types
-    scope      :: Map.Map Ident Type
+    scope      :: Map.Map I.Ident T.Type
   }
 
 -- | Type to record and report the type error.
@@ -47,13 +48,13 @@ data Context = Context
 -- designate "ErrorCons expected actual".
 data CompilerError
   = -- | variable @Ident@ is not in scope
-    UnboundVariable Ident
+    UnboundVariable I.Ident
   | -- | Types don't match
-    TypeError Type Type
+    TypeError T.Type T.Type
   | -- | Procedure has different name than its key in funs map
-    NameError Ident Ident
+    NameError I.Ident I.Ident
   | -- | Number of arguments don't match for procedure call
-    ArgsLenError Ident Int Int
+    ArgsLenError I.Ident Int Int
     deriving (Show)
 
 -- | An empty context with no bindings.
@@ -61,38 +62,38 @@ emptyContext :: Context
 emptyContext = Context { procedures = Map.empty, scope = Map.empty }
 
 -- | Add new variables to environment scope.
-withVars :: [(Ident, Type)] -> TC a -> TC a
+withVars :: [(I.Ident, T.Type)] -> TC a -> TC a
 withVars vars =
   local (\ctx -> ctx { scope = Map.union (Map.fromList vars) $ scope ctx })
 
 -- | Add new procedures to the environment.
-withProcs :: [Procedure] -> TC a -> TC a
+withProcs :: [Prog.Procedure] -> TC a -> TC a
 withProcs procs = local
   (\ctx -> ctx { procedures = Map.union procsMap $ procedures ctx })
   where procsMap = Map.fromList $ map (\p -> (name p, arguments p)) procs
 
 -- | Look up the arguments of a procedure.
-lookupProcedure :: Ident -> TC [(Ident, Type)]
+lookupProcedure :: I.Ident -> TC [(I.Ident, T.Type)]
 lookupProcedure ident = asks procedures >>= lookupIdent ident
 
 -- | Look up the type of a variable.
-lookupVar :: Ident -> TC Type
+lookupVar :: I.Ident -> TC T.Type
 lookupVar ident = asks scope >>= lookupIdent ident
 
 -- | Look up an identifier in a map; throw an error if not found.
-lookupIdent :: Ident -> Map.Map Ident a -> TC a
+lookupIdent :: I.Ident -> Map.Map I.Ident a -> TC a
 lookupIdent ident =
   maybe (throwError $ UnboundVariable ident) return . Map.lookup ident
 
 -- | Ensure the two types are equal; throw type error otherwise.
-unifyTypes :: Type -> Type -> TC Type
+unifyTypes :: T.Type -> T.Type -> TC T.Type
 unifyTypes t1 t2 | t1 == t2  = return t1
                  | otherwise = throwError $ TypeError t1 t2
 
 {----- Recursive typechecking -----}
 
 -- Typecheck (and scope-check) a program.
-typecheck :: Program -> Either CompilerError ()
+typecheck :: Prog.Program -> Either CompilerError ()
 typecheck prog = runExcept $ flip runReaderT emptyContext $ do
   procs <- forM (Map.toList $ funs prog) $ \(n, p) ->
     if n == name p then return p else throwError $ NameError n $ name p
@@ -152,7 +153,7 @@ typecheckStms (S.Fork procs : stms) = do
 typecheckStms (S.Skip : stms) = typecheckStms stms
 
 -- | Typechecks an expression, and returns its type.
-typecheckExp :: S.SSMExp -> TC Type
+typecheckExp :: S.SSMExp -> TC T.Type
 typecheckExp (S.Var ty ident) = do
   t <- lookupVar ident
   unifyTypes ty t
@@ -171,7 +172,7 @@ typecheckExp (S.BOp ty e1 e2 op) = do
   unifyTypes actualTy1 ty
 
 -- | Typecheck a reference, and returns its type.
-typecheckRef :: R.Reference -> TC Type
+typecheckRef :: R.Reference -> TC T.Type
 typecheckRef (Dynamic (ident, ty)) = do
   actualTy <- lookupVar ident
   unifyTypes actualTy ty
@@ -180,7 +181,7 @@ typecheckRef (Static (ident, ty)) = do
   unifyTypes actualTy ty
 
 -- | Typecheck the invocation of a procedure.
-typecheckForkProc :: (Ident, [Either S.SSMExp R.Reference]) -> TC ()
+typecheckForkProc :: (I.Ident, [Either S.SSMExp R.Reference]) -> TC ()
 typecheckForkProc (name, actuals) = do
   formals <- lookupProcedure name
 
@@ -200,7 +201,7 @@ typecheckTime (SSMTimeSub l r) = typecheckTime l >> typecheckTime r
 typecheckTime (SSMTime a _) = typecheckExp a >>= void . unifyTypes TUInt64
 
 -- | Obtain type of a literal value.
-typeofLit :: S.SSMLit -> Type
+typeofLit :: S.SSMLit -> T.Type
 typeofLit (S.LUInt8  _) = TUInt8
 typeofLit (S.LInt32  _) = TInt32
 typeofLit (S.LInt64  _) = TInt64
