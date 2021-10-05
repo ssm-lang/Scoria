@@ -111,48 +111,48 @@ typecheck prog = runExcept $ flip runReaderT emptyContext $ do
     withVars (arguments p) $ typecheckStms (body p)
 
 -- | Typecheck a list of statements.
-typecheckStms :: [Stm] -> TC ()
+typecheckStms :: [S.Stm] -> TC ()
 typecheckStms []                             = return ()
-typecheckStms (After time ref exp2 : stms) = do
+typecheckStms (S.After time ref exp2 : stms) = do
   typecheckTime time
   refTy <- typecheckRef ref
   expTy <- typecheckExp exp2
   unifyTypes expTy refTy
   typecheckStms stms
-typecheckStms (Wait refs : stms) = do
+typecheckStms (S.Wait refs : stms) = do
   forM_ refs typecheckRef
   typecheckStms stms
-typecheckStms (While expr body : stms) = do
+typecheckStms (S.While expr body : stms) = do
   exprTy <- typecheckExp expr
   unifyTypes exprTy TBool
   typecheckStms body
   typecheckStms stms
-typecheckStms (If expr stms1 stms2 : stms) = do
+typecheckStms (S.If expr stms1 stms2 : stms) = do
   exprTy <- typecheckExp expr
   unifyTypes exprTy TBool
   typecheckStms stms1
   typecheckStms stms2
   typecheckStms stms
-typecheckStms (SetRef ref expr : stms) = do
+typecheckStms (S.SetRef ref expr : stms) = do
   refTy <- typecheckRef ref
   expTy <- typecheckExp expr
   unifyTypes expTy refTy
   typecheckStms stms
-typecheckStms (SetLocal name ty expr : stms) = do
+typecheckStms (S.SetLocal name ty expr : stms) = do
   actualTy <- typecheckExp expr
   unifyTypes actualTy ty
   withVars [(name, ty)] $ typecheckStms stms
-typecheckStms (NewRef ident ty expr : stms) = do
+typecheckStms (S.NewRef ident ty expr : stms) = do
   actualTy <- typecheckExp expr
   unifyTypes actualTy ty
   withVars [(ident, ty)] $ typecheckStms stms
-typecheckStms (Fork procs : stms) = do
+typecheckStms (S.Fork procs : stms) = do
   forM_ procs typecheckForkProc
   typecheckStms stms
-typecheckStms (Skip : stms) = typecheckStms stms
+typecheckStms (S.Skip : stms) = typecheckStms stms
 
 -- | Typechecks an expression, and returns its type.
-typecheckExp :: SSMExp -> TC Type
+typecheckExp :: S.SSMExp -> TC Type
 typecheckExp (Var ty ident) = do
   t <- lookupVar ident
   unifyTypes ty t
@@ -180,7 +180,7 @@ typecheckRef (Static (ident, ty)) = do
   unifyTypes actualTy ty
 
 -- | Typecheck the invocation of a procedure.
-typecheckForkProc :: (Ident, [Either SSMExp Reference]) -> TC ()
+typecheckForkProc :: (Ident, [Either S.SSMExp Reference]) -> TC ()
 typecheckForkProc (name, actuals) = do
   formals <- lookupProcedure name
 
