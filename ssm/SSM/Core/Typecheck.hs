@@ -198,7 +198,7 @@ typecheckForkProc (name, actuals) = do
 typecheckTime :: S.SSMTime -> TC ()
 -- typecheckTime (SSMTimeAdd l r) = typecheckTime l >> typecheckTime r
 -- typecheckTime (SSMTimeSub l r) = typecheckTime l >> typecheckTime r
-typecheckTime (SSMTime a _) = typecheckExp a >>= void . unifyTypes TUInt64
+typecheckTime (S.SSMTime a _) = typecheckExp a >>= void . unifyTypes TUInt64
 
 -- | Obtain type of a literal value.
 typeofLit :: S.SSMLit -> T.Type
