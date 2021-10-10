@@ -5,7 +5,7 @@ import Data.Int
 import           SSM.Frontend.Language
 import           SSM.Frontend.Box
 import           SSM.Frontend.Syntax
-import           SSM.Core.Syntax(SSMType(..))
+import           SSM.Core.Syntax
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
