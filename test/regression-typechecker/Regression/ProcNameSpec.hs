@@ -3,16 +3,15 @@ module Regression.ProcNameSpec where
 
 import           Data.Map                       ( fromList )
 import SSM.Core.Syntax
-    ( Ident(Ident),
-      Procedure(Procedure, body, arguments, name),
-      Program(..),
-      Reference(Dynamic),
-      SSMExp(Lit, Var),
+    ( SSMExp(Lit, Var),
       SSMLit(LUInt64, LBool, LInt32),
       SSMTime(SSMTime),
       SSMTimeUnit(SSMNanosecond),
-      Stm(After, NewRef, SetLocal, Fork),
-      Type(Ref, TUInt64, TBool, TInt32) )
+      Stm(After, NewRef, SetLocal, Fork))
+import SSM.Core.Program               ( Program )
+import SSM.Core.Ident                 ( Ident )
+import SSM.Core.Peripheral            ( Peripheral )
+import SSM.Core.Reference             ( Reference )
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
