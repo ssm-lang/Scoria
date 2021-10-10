@@ -22,7 +22,8 @@ import qualified SSM.Core.Reference            as R
 import qualified SSM.Core.Type                 as T
 import qualified SSM.Core.Program              as Prog
 import qualified SSM.Core.Peripheral           as Peri
-
+-- | Put it in Frontend/Syntax.hs
+-- | SSMProgram
 {----- Typechecker context -----}
 
 -- | The typechecking monad.
@@ -66,6 +67,16 @@ withVars :: [(I.Ident, T.Type)] -> TC a -> TC a
 withVars vars =
   local (\ctx -> ctx { scope = Map.union (Map.fromList vars) $ scope ctx })
 
+-- | Get the global references from the peripherals
+allGlobalReferences :: [Peri.Peripheral] -> [R.Reference]
+allGlobalReferences []                 = []
+allGlobalReferences (Peri.Peripheral x: xs) = Peri.declaredReferences x ++ allGlobalReferences xs
+
+-- | Unwraps a Reference type to (Ident, Type)
+unwrapReference :: R.Reference -> (I.Ident, T.Type)
+unwrapReference (R.Dynamic (i, t)) = (i, t)
+unwrapReference (R.Static (i, t)) = (i, t)
+
 -- | Add new procedures to the environment.
 withProcs :: [Prog.Procedure] -> TC a -> TC a
 withProcs procs = local
@@ -99,17 +110,17 @@ typecheck prog = runExcept $ flip runReaderT emptyContext $ do
     if n == Prog.name p then return p else throwError $ NameError n $ Prog.name p
 
   -- The global context with which we will check the whole program.
-  -- let withCtx = withVars (globalReferences prog) . withProcs procs
+  let withCtx = withVars (map unwrapReference $ allGlobalReferences $ Prog.peripherals prog) . withProcs procs
 
-  -- -- Check that the entry point (1) exists and (2) takes no arguments.
-  -- withCtx $ do
-  --   args <- lookupProcedure (entry prog)
-  --   unless (null args) $ do
-  --     throwError $ ArgsLenError (entry prog) 0 (length args)
+  -- Check that the entry point (1) exists and (2) takes no arguments.
+  withCtx $ do
+    args <- lookupProcedure (Prog.entry prog)
+    unless (null args) $ do
+      throwError $ ArgsLenError (Prog.entry prog) 0 (length args)
 
-  -- -- Check each procedure defined in the program.
-  -- withCtx $ forM_ procs $ \p ->
-  --   withVars (arguments p) $ typecheckStms (body p)
+  -- Check each procedure defined in the program.
+  withCtx $ forM_ procs $ \p ->
+    withVars (Prog.arguments p) $ typecheckStms (Prog.body p)
 
 -- | Typecheck a list of statements.
 typecheckStms :: [S.Stm] -> TC ()
@@ -198,7 +209,7 @@ typecheckForkProc (name, actuals) = do
 typecheckTime :: S.SSMTime -> TC ()
 -- typecheckTime (SSMTimeAdd l r) = typecheckTime l >> typecheckTime r
 -- typecheckTime (SSMTimeSub l r) = typecheckTime l >> typecheckTime r
-typecheckTime (S.SSMTime a) = typecheckExp a >>= void . unifyTypes TUInt64
+typecheckTime (S.SSMTime a) = typecheckExp a >>= void . unifyTypes T.TUInt64
 
 -- | Obtain type of a literal value.
 typeofLit :: S.SSMLit -> T.Type
