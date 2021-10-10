@@ -2,20 +2,27 @@
 --
 -- We should not run out of depth, because that should only be incremented if
 -- forking multiple children.
---
--- This is the front-end version of regression-low/Regression/RecurseForeverSpec.hs
 module Regression.RecurseForeverSpec where
 
-import           SSM.Frontend.Language
-import           SSM.Frontend.Box
-import           SSM.Frontend.Syntax
+import           Data.Map                       ( fromList )
+import           SSM.Core
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 
-fun0 :: SSM ()
-fun0 = boxNullary "fun0" $ do
-    fork [ fun0 ]
+p :: Program
+p = Program
+  { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
+  , funs  = fromList
+              [ ( Ident "fun0" Nothing
+                , Procedure
+                  { name      = Ident "fun0" Nothing
+                  , arguments = []
+                  , body      = [ Fork [(Ident "fun0" Nothing, [])] ]
+                  }
+                )
+              ]
+  , peripherals = []}
 
 spec :: H.Spec
-spec = T.correctSpec "RecurseForever" fun0
+spec = T.correctSpec "RecurseForever" p

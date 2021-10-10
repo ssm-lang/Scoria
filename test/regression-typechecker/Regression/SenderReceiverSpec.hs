@@ -17,7 +17,7 @@ sender = box "sender" ["myEvent"] $ \myEvent -> do
         
 receiver :: Ref () -> SSM ()
 receiver = box "receiver" ["myEvent"] $ \myEvent -> do
-    wait [myEvent]
+    wait myEvent
 
 main ::  SSM ()
 main = boxNullary "main" $ do

@@ -6,7 +6,6 @@ import SSM.Core.Syntax
     ( SSMExp(Lit, Var),
       SSMLit(LUInt64, LBool, LInt32),
       SSMTime(SSMTime),
-      SSMTimeUnit(SSMNanosecond),
       Stm(After, NewRef, SetLocal, Fork))
 import SSM.Core.Program               ( Program )
 import SSM.Core.Ident                 ( Ident )

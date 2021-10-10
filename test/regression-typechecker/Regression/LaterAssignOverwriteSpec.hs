@@ -10,14 +10,14 @@
 module Regression.LaterAssignOverwriteSpec where
 
 import           Data.Map                       ( fromList )
-import           SSM.Core.Syntax
+import           SSM.Core
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 
 p :: Program
 p = Program
-  { entry = Ident "fun0" Nothing
+  { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList
               [ ( Ident "fun0" Nothing
                 , Procedure
@@ -35,12 +35,10 @@ p = Program
                 , Procedure
                   { name = Ident "fun1" Nothing
                   , arguments = [(Ident "ref1" Nothing, Ref TBool), (Ident "ref3" Nothing, Ref TInt32)]
-                  , body = [ After (SSMTime (Lit TUInt64 (LUInt64 2))
-                                            SSMNanosecond)
+                  , body = [ After (SSMTime (Lit TUInt64 (LUInt64 2)))
                                    (Dynamic (Ident "ref1" Nothing, Ref TBool))
                                    (Lit TBool (LBool True))
-                           , After (SSMTime (Lit TUInt64 (LUInt64 1))
-                                            SSMNanosecond)
+                           , After (SSMTime (Lit TUInt64 (LUInt64 1)))
                                    (Dynamic (Ident "ref3" Nothing, Ref TInt32))
                                    (Lit TInt32 (LInt32 3))
                            , SetRef (Dynamic (Ident "ref3" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 4))
@@ -50,7 +48,7 @@ p = Program
                   }
                 )
               ]
-  , globalReferences = []
+  , peripherals = []
   }
 
 spec :: H.Spec
