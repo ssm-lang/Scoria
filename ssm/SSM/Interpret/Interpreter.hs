@@ -6,6 +6,7 @@ module SSM.Interpret.Interpreter
   ) where
 
 import           SSM.Core
+import SSM.Core.Typecheck ( typecheck )
 
 import           SSM.Interpret.Internal
 import qualified SSM.Interpret.Trace           as T
@@ -38,7 +39,9 @@ give you @10000@ trace items, it will not evaluate more.
 -}
 interpret :: SSMProgram p => InterpretConfig -> p -> T.Trace
 interpret config program = runST $ do
-  let p = toProgram program
+  let p = (case typecheck $ toProgram program of
+            Left e -> error "Type error"
+            Right () -> toProgram program)
   -- Fetch procedure body
   fun <- case Map.lookup (entry p) (funs p) of
     Just p' -> return p'

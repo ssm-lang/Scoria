@@ -1,5 +1,6 @@
 module SSM.Core.Typecheck
-  ( typecheck
+  ( typecheck,
+    CompilerError
   ) where
 
 import           Control.Monad.Except           ( Except

@@ -65,7 +65,10 @@ module SSM.Pretty
 
 --import SSM.Core.Syntax ( SSM )
 import SSM.Core.Program
+import SSM.Core.Typecheck ( typecheck, CompilerError )
 import SSM.Pretty.Syntax ( prettyProgram )
 
-prettySSM :: SSMProgram a => a -> String
-prettySSM = prettyProgram . toProgram
+prettySSM :: SSMProgram a => a -> Either CompilerError String
+prettySSM p = do
+  typecheck $ toProgram p
+  return $ prettyProgram $ toProgram p
