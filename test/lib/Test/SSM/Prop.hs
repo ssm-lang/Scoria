@@ -5,14 +5,18 @@ module Test.SSM.Prop
   , TestName(..)
   , correctSpec
   , semanticIncorrectSpec
+  , typeCorrectSpec
+  , typeIncorrectSpec
   ) where
 
 import           SSM.Compile                    ( SSMProgram(..) )
+import qualified SSM.Core.Typecheck            as TC
 import           Test.SSM.QuickCheck.Generator  ( ) -- instance Arbitrary Program
 
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.QuickCheck               as QC
+import qualified Test.QuickCheck.Property      as QC
 import qualified Test.QuickCheck.Monadic       as QC
 
 import           Test.SSM.Build                 ( doCompile
@@ -34,6 +38,16 @@ import           Test.SSM.Trace                 ( doCompareTraces
 -- | List of act and event queue sizes to test.
 queueSizes :: [(Int, Int)]
 queueSizes = [(32, 32), (256, 256), (2048, 2048)]
+
+
+propTypechecks :: SSMProgram p => TestName -> p -> QC.Property
+propTypechecks tn program = QC.monadicIO $ do
+  slug <- QC.run $ getSlug tn
+  reportSlug slug
+  reportProgramOnFail slug program
+  case TC.typecheck $ toProgram program of
+    Left err -> fail $ "Did not pass typechecker: " ++ show err
+    Right () -> return ()
 
 -- | Tests that generated SSM programs compile successfully.
 propCompiles :: SSMProgram p => TestName -> p -> QC.Property
@@ -115,6 +129,22 @@ semanticIncorrectSpec name p = do
   once $ H.prop "compiles" $ propCompiles tn p
   once $ H.prop "no memory errors" $ propValgrind tn p
   once $ H.prop "matches interpreter" $ QC.expectFailure $ propCorrect tn p
+ where
+  once = H.modifyMaxSuccess (const 1)
+  tn   = NamedTest name
+
+-- | Spec that asserts a program does not contain type errors.
+typeCorrectSpec :: SSMProgram p => String -> p -> H.Spec
+typeCorrectSpec name p = do
+  once $ H.prop "typechecks" $ propTypechecks tn p
+ where
+  once = H.modifyMaxSuccess (const 1)
+  tn   = NamedTest name
+
+-- | Spec that asserts a program contains type errors.
+typeIncorrectSpec :: SSMProgram p => String -> p -> H.Spec
+typeIncorrectSpec name p = do
+  once $ H.prop "typechecks" $ QC.expectFailure $ propTypechecks tn p
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name

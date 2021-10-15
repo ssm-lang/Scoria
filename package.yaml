@@ -52,6 +52,23 @@ tests:
     - ssm
     - QuickCheck
     - hspec
+  0-regression-typechecker:
+    main:                Spec.hs
+    source-dirs:
+    - test/lib
+    - test/regression-typechecker
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - ssm
+    - directory
+    - process
+    - text
+    - QuickCheck
+    - hspec
+    - Diff
   1-regression-high:
     main:                Spec.hs
     source-dirs:

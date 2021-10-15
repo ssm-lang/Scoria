@@ -16,12 +16,15 @@ import           System.Exit                    ( ExitCode(..)
 
 import           SSM.Backend.C.Compile
 import           SSM.Core.Program
+import SSM.Core.Typecheck ( typecheck, CompilerError(..) )
 
 -- | Compile a program to a C-file.
 --
 -- TODO: This can fail, so it should return Either CompileError String.
 toC :: SSMProgram a => a -> String
-toC = compile . toProgram
+toC p = case typecheck (toProgram p) of
+  Left err -> error $ show err
+  Right _ -> compile $ toProgram p
 
 -- | Compile a program and write it to the specified path.
 compileFile :: SSMProgram a => FilePath -> a -> IO ()
