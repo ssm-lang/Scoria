@@ -34,15 +34,27 @@ data Initializer
     reference, and that it needs to be initialized as the kind of static input described
     by the `StaticInputVariant` type. -}
     | StaticInput StaticInputVariant Reference
-    | StaticOutput StaticOutputVariant Reference
 
 -- | Static input variants.
 data StaticInputVariant = Switch Word8 -- ^ Switch GPIO
                         | BLEScan
 
-data StaticOutputVariant = BLEBroadcast
-                         | BLEBroadcastControl
-                         | BLEScanControl
+-- | Different variants of handlers that can be scheduled at the beginning of a program
+data Handler
+--    = StaticOutputHandler Reference Word8  -- ^ Static output handlers (LED? only?)
+    = Output StaticOutputVariant Reference
+    deriving (Show, Read, Eq)
+
+data StaticOutputVariant
+    = LED Word8
+    | BLE BLEHandler
+  deriving (Show, Read, Eq)
+
+data BLEHandler
+    = Broadcast
+    | BroadcastControl
+    | ScanControl String
+  deriving (Show, Read, Eq)
 
 -- | Class of types that are peripherals
 class IsPeripheral a where

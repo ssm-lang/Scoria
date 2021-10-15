@@ -65,6 +65,7 @@ import qualified SSM.Core.Program              as SP
 import           SSM.Core.Reference
 import qualified SSM.Core.Syntax               as S
 import           SSM.Core.Type
+import           SSM.Core.Peripheral
 
 import qualified Data.Map                      as Map
 import           SSM.Util.State
@@ -106,7 +107,7 @@ data SSMStm
     {-| Records the name an argument has and what value the procedure was applied to -}
     | Argument Ident Ident (Either S.SSMExp Reference)
     | Result Ident  -- ^ Mark the end of a procedure
-    | Handler SP.Handler
+    | Handler Handler
 
 renameStmt :: SSMStm -> (Maybe String, Maybe (String, Int, Int)) -> SSMStm
 renameStmt s (Nothing, _      ) = s
@@ -119,10 +120,21 @@ renameStmt s (Just n, info) =
 
 {- | Check if an `SSM` computation represents a call to a single handler. In that case,
 return the handler. Otherwise, return Nothing. -}
-isHandler :: SSM () -> Maybe SP.Handler
-isHandler ssm = case runSSM ssm of
-  [Handler h] -> Just h
-  _           -> Nothing
+isHandler :: SSM () -> Maybe [Handler]
+isHandler ssm = case fetchHandlers $ runSSM ssm of
+  [] -> Nothing
+  handlers -> Just handlers
+  where
+    fetchHandlers :: [SSMStm] -> [Handler]
+    fetchHandlers stmts = map unwrapHandler $ filter isHandler' stmts
+
+    isHandler' :: SSMStm -> Bool
+    isHandler' (Handler _) = True
+    isHandler' _           = False
+
+    unwrapHandler :: SSMStm -> Handler
+    unwrapHandler (Handler h) = h
+    unwrapHandler _           = error "not a handler, robert did a mistake somewhere"
 
 {- | The state maintained by the SSM monad. A counter for generating fresh names and
 a list of statements that make up the program. -}

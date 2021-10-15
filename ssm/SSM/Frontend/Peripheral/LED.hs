@@ -20,7 +20,7 @@ module SSM.Frontend.Peripheral.LED where
 
 import           SSM.Core.Ident                 ( Ident(Ident) )
 import           SSM.Core.Peripheral.LED        ( addOnOffLED )
-import           SSM.Core.Program               ( Handler(..) )
+import           SSM.Core.Peripheral
 import           SSM.Core.Reference             ( makeStaticRef )
 import           SSM.Core.Type                  ( Type(TBool)
                                                 , mkReference
@@ -86,7 +86,7 @@ onoffLED i = do
     let ref     = makeStaticRef id (mkReference TBool)
 
     -- create the SSM handler to return to the developer
-    let handler = emit $ Handler $ StaticOutputHandler ref i
+    let handler = emit $ Handler $ Output (LED i) ref
 
     -- return the reference and the SSM () that performs the actual IO
     return $ (Ptr ref, handler)

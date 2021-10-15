@@ -4,7 +4,7 @@ represented. -}
 module SSM.Core.Program where
 
 import           SSM.Core.Ident                 ( Ident )
-import           SSM.Core.Peripheral            ( Peripheral )
+import           SSM.Core.Peripheral            ( Peripheral, Handler )
 import           SSM.Core.Reference             ( Reference )
 import           SSM.Core.Syntax                ( SSMExp
                                                 , Stm
@@ -32,10 +32,6 @@ data QueueContent
     = SSMProcedure Ident [Either SSMExp Reference]
     | Handler Handler  -- ^ Handlers can be scheduled
   deriving (Show, Read, Eq)
-
--- | Different variants of handlers that can be scheduled at the beginning of a program
-data Handler = StaticOutputHandler Reference Word8  -- ^ Static output handlers (LED? only?)
-    deriving (Show, Read, Eq)
 
 {- | Get the identifier of the SSM procedure that is scheduled at the start of a SSM
 program -}

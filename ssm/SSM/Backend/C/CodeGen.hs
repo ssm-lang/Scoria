@@ -151,18 +151,23 @@ genInitProgram p = [cunit|
                                           ( &$id:top_parent
                                           , $exp:priority
                                           , $exp:depth
-                                          , $args:(map cargs $ argsOfHandler h)
+                                          , $args:(argsOfHandler h)
                                           )
                        );|]
 
       -- | Take a handler and return a list of arguments to it
-      argsOfHandler :: Handler -> [Either SSMExp Reference]
-      argsOfHandler (StaticOutputHandler ref id) =
-        [ Right ref
-        , Left $ Lit TUInt8 $ LUInt8 id
-        ]
+      argsOfHandler :: Handler -> [C.Exp]
+      argsOfHandler (Output variant ref) = case variant of
+        LED id -> [ [cexp| &$id:(refName ref).sv |]
+                  , [cexp| $uint:id |]
+                  ]
+        BLE bh -> case bh of
+          Broadcast          -> [ [cexp| &$id:(refName ref).sv |] ]
+          BroadcastControl   -> [ [cexp| &$id:(refName ref).sv |] ]
+          ScanControl device -> [ [cexp| &$id:(refName ref).sv |]
+                                , [cexp| $string:device |]
+                                ]
 
-      -- | Compile the arguments of a procedure to `Exp`
       cargs :: Either SSMExp Reference -> C.Exp
       cargs (Left e)  = genExp [] e
       cargs (Right r@(Static _)) = [cexp| &$id:(refName r).sv|]
@@ -425,7 +430,12 @@ genCase (If c t e) = do
   let cnd = genExp locs c
   thn <- concat <$> mapM genCase t
   els <- concat <$> mapM genCase e
-  return [[cstm| if ($exp:cnd) { $stms:thn } else { $stms:els }|]]
+  return [[cstm| if ($exp:cnd) $stm:(wrapBranch thn) else $stm:(wrapBranch els)|]]
+  where
+    wrapBranch :: [C.Stm] -> C.Stm
+    wrapBranch []  = [cstm| {} |]
+    wrapBranch [x] = [cstm| $stm:x |]
+    wrapBranch stms@(x:y:xs) = [cstm| { $stms:stms; } |]
 genCase (While c b) = do
   locs <- gets locals
   let cnd = genExp locs c
@@ -538,17 +548,22 @@ genExp ls (BOp ty e1 e2 op) = gen op
  where
   (c1, c2) = (genExp ls e1, genExp ls e2)
   (s1, s2) = (signed_ (expType e1) c1, signed_ (expType e2) c2)
-  gen OPlus  = [cexp|$exp:c1 + $exp:c2|]
-  gen OMinus = [cexp|$exp:c1 - $exp:c2|]
-  gen OTimes = [cexp|$exp:c1 * $exp:c2|]
-  gen ODiv   = [cexp|$exp:c1 / $exp:c2|]
-  gen ORem   = [cexp|$exp:s1 % $exp:s2|]
-  gen OMin   = [cexp|$exp:ltcomparison ? $exp:c1 : $exp:c2|]
-  gen OMax   = [cexp|$exp:ltcomparison ? $exp:c2 : $exp:c1|]
-  gen OLT    = ltcomparison
-  gen OEQ    = [cexp|$exp:c1 == $exp:c2|]
-  gen OAnd   = [cexp|$exp:c1 && $exp:c2|]
-  gen OOr    = [cexp|$exp:c1 || $exp:c2|]
+  gen OPlus   = [cexp|$exp:c1 + $exp:c2|]
+  gen OMinus  = [cexp|$exp:c1 - $exp:c2|]
+  gen OTimes  = [cexp|$exp:c1 * $exp:c2|]
+  gen ODiv    = [cexp|$exp:c1 / $exp:c2|]
+  gen ORem    = [cexp|$exp:s1 % $exp:s2|]
+  gen OMin    = [cexp|$exp:ltcomparison ? $exp:c1 : $exp:c2|]
+  gen OMax    = [cexp|$exp:ltcomparison ? $exp:c2 : $exp:c1|]
+  gen OLT     = ltcomparison
+  gen OEQ     = [cexp|$exp:c1 == $exp:c2|]
+  gen OAnd    = [cexp|$exp:c1 && $exp:c2|]
+  gen OOr     = [cexp|$exp:c1 || $exp:c2|]
+  gen OLShift = [cexp|$exp:c1 << $exp:c2|]
+  gen ORShift = [cexp|$exp:c1 >> $exp:c2|]
+  gen OBAnd   = [cexp|$exp:c1 & $exp:c2|]
+  gen OBOr    = [cexp|$exp:c1 | $exp:c2|]
+  gen OBXor   = [cexp|$exp:c1 ^ $exp:c2|]
 
   ltcomparison :: C.Exp
   ltcomparison = [cexp| $exp:lhs < $exp:rhs |]

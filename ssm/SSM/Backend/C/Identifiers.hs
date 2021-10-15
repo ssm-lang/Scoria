@@ -9,7 +9,11 @@ module SSM.Backend.C.Identifiers
       -- * Identifiers recognized by the C runtime system.
   , initialize_program
   , initialize_static_input_device
+  , initialize_static_input_ble_scan_device
   , initialize_static_output_device
+  , initialize_static_output_ble_scan_control_device
+  , initialize_static_output_ble_broadcast_control_device
+  , initialize_static_output_ble_broadcast_device
   , resolveNameOfHandler
   , top_return
   , top_parent
@@ -34,7 +38,6 @@ module SSM.Backend.C.Identifiers
   , stepf_t
   , act_t
   , sv_t
-
   , i32
   , u32
   , i64
@@ -89,19 +92,32 @@ initialize_program = "ssm_program_initialize"
 initialize_static_input_device :: CIdent
 initialize_static_input_device = "bind_static_input_device"
 
+initialize_static_input_ble_scan_device :: CIdent
+initialize_static_input_ble_scan_device = "bind_static_ble_scanning_device"
+
 -- | Name of the top level static output initialization function
 initialize_static_output_device :: CIdent
 initialize_static_output_device = "bind_static_output_device"
 
--- | Take a handler and return a `CIdent` representing the corresponding 'enter' function
+initialize_static_output_ble_scan_control_device :: CIdent
+initialize_static_output_ble_scan_control_device =
+  "bind_static_output_ble_scan_control_device"
+
+initialize_static_output_ble_broadcast_control_device :: CIdent
+initialize_static_output_ble_broadcast_control_device =
+  "bind_static_output_ble_broadcast_control_device"
+
+initialize_static_output_ble_broadcast_device :: CIdent
+initialize_static_output_ble_broadcast_device =
+  "bind_static_ble_broadcast_device"
+
 resolveNameOfHandler :: Handler -> CIdent
-resolveNameOfHandler (StaticOutputHandler _ _) = initialize_static_output_device
-resolveNameOfHandler s                         = error $ concat
-  [ "SSM.Backend.C.Identifiers error ---\n"
-  , "trying to resolve name of handler "
-  , show s
-  , " but it is not known how to resolve such a handler"
-  ]
+resolveNameOfHandler (Output variant _) = case variant of
+  LED _  -> initialize_static_output_device
+  BLE bh -> case bh of
+    Broadcast        -> initialize_static_output_ble_broadcast_device
+    BroadcastControl -> initialize_static_output_ble_broadcast_control_device
+    ScanControl s    -> initialize_static_output_ble_scan_control_device
 
 -- | Name of top level return step-function
 top_return :: CIdent

@@ -26,26 +26,27 @@ data BasicBLE = BasicBLE
     , scan             :: (Ident, Type)  -- ^ Name and type of scan reference
     , scanControl      :: (Ident, Type)  -- ^ Name and type of scan control reference
     }
+  deriving (Show, Read, Eq)
 
 instance IsPeripheral BasicBLE where
     declaredReferences = basicBLERefs
 
-    mainInitializers ble = undefined
+    mainInitializers ble = concat [normalInits, specials]
       where
         (broadcast : broadcastControl : scan : scanControl : _) =
             basicBLERefs ble
+
+        -- initialize the references like you normally initialize them
         normalInits =
             [ Normal broadcast
             , Normal broadcastControl
             , Normal scan
             , Normal scanControl
             ]
+
+        -- perform the BLE input-specific initializations
         specials =
-            [ StaticOutput BLEBroadcast broadcast
-            , StaticInput BLEScan scan
-            , StaticOutput BLEBroadcastControl broadcastControl
-            , StaticOutput BLEScanControl      scanControl
-            ]
+            [ StaticInput BLEScan scan ]
 
 basicBLERefs :: BasicBLE -> [Reference]
 basicBLERefs ble = map
