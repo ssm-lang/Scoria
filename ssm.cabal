@@ -41,6 +41,7 @@ library
       SSM.Core.Reference
       SSM.Core.Syntax
       SSM.Core.Type
+      SSM.FreqGen
       SSM.Freqmime
       SSM.Frontend.Box
       SSM.Frontend.Compile
