@@ -62,7 +62,7 @@ entry = boxNullary "entry" $ do
 compiler :: Compile ()
 compiler = do
   switch0        <- switch 0
-  switch1        <- switch 2
+  switch1        <- switch 1
   (led, handler) <- onoffLED 0
 
   let ?led0 = led
