@@ -23,7 +23,14 @@ Pseudocode of intended behavior:
 Nits with EDSL noted inline.
 -}
 {-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE RebindableSyntax #-}
 module SSM.FreqGen where
+
+{- RebindableSyntax rebinds some things to identifiers that are in scope. It allows
+us to e.g rebind (>>=) and return, so without explicitly importing the Prelude (and
+and Monad class within it) there will be no such identifiers in scope.
+-}
+import           Prelude
 
 import           SSM.Compile
 import           SSM.Language
@@ -40,11 +47,9 @@ buttonHandler :: (?sw0::Ref SW, ?sw1::Ref SW) => Ref Word64 -> SSM ()
 buttonHandler = box "buttonHandler" ["period"] $ \period -> while true' $ do
   wait (?sw0, ?sw1)
   -- Nit: using parens for each branch is annoying
-  ifThenElse (changed ?sw0)
-             -- Nit: (<~) is higher precedence than (*)
-             (period <~ (deref period * 2))
-             -- Nit: (/.) is inconsistent with (*)
-             (period <~ max' (deref period /. 2) 1)
+  if changed ?sw0
+     then period <~ deref period * 2
+     else period <~ max' (deref period /. 2) 1
 
 freqGen :: (?led0::Ref LED) => Ref Word64 -> SSM ()
 freqGen = box "freqGen" ["period"] $ \period -> while true' $ do
