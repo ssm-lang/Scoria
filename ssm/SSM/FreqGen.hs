@@ -29,6 +29,8 @@ module SSM.FreqGen where
 {- RebindableSyntax rebinds some things to identifiers that are in scope. It allows
 us to e.g rebind (>>=) and return, so without explicitly importing the Prelude (and
 and Monad class within it) there will be no such identifiers in scope.
+See https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/rebindable_syntax.html
+for details.
 -}
 import           Prelude
 
