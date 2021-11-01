@@ -130,6 +130,8 @@ instance Assignable (Exp a) (Exp a) where
 instance Assignable (Ref a) (Exp a) where
     (<~) = assign
 
+infixl 1 <~
+
 -- | Assigning values to references
 assign :: Ref a -> Exp a -> SSM ()
 assign (Ptr r) (Exp e) = emit $ SetRef r e

@@ -38,7 +38,7 @@ maininit (Peripheral a) = concatMap compInitializer $ mainInitializers a
           in [citems| $exp:init; $exp:assign; |]
         StaticInput si ref -> case si of
           Switch id ->
-            [ [citem| $id:initialize_static_input_device(&$id:(refName ref), $int:id);|]
+            [ [citem| $id:initialize_static_input_device(&$id:(refName ref).sv, $int:id);|]
             ]
 
 -- | Return all the statements that initialize the peripherals statically

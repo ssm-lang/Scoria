@@ -165,7 +165,9 @@ genInitProgram p = [cunit|
       -- | Compile the arguments of a procedure to `Exp`
       cargs :: Either SSMExp Reference -> C.Exp
       cargs (Left e)  = genExp [] e
-      cargs (Right r) = [cexp| $exp:(refPtr r [])->sv|]
+      cargs (Right r@(Static _)) = [cexp| &$id:(refName r).sv|]
+      cargs (Right r@(Dynamic _)) = error "Why does StaticOutputHandler refer to a non-static var?"
+      x = refName
 
 {- | Create C expressions that represent the new priorities and depths of the
 initially scheduled processes. -}
@@ -208,6 +210,12 @@ typedef char $id:event;
 includes :: [C.Definition]
 includes = [cunit|
 $esc:("#include \"ssm-platform.h\"")
+$esc:("#ifndef SSM_DEBUG_TRACE")
+$esc:("#define SSM_DEBUG_TRACE(...) do ; while (0)")
+$esc:("#endif")
+$esc:("#ifndef SSM_DEBUG_MICROTICK")
+$esc:("#define SSM_DEBUG_MICROTICK(...) do ; while (0)")
+$esc:("#endif")
 |]
 
 {- | Generate definitions for an SSM 'Procedure'.
