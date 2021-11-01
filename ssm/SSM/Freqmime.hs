@@ -146,6 +146,14 @@ testGlobal = do
 
 -}
 
+message :: Exp Word64 -> Exp Word64 -> Exp Word64 -> Exp Word64 -> Exp Word64
+message sender recipient payload ab = packMessage sender recipient $ attachAB payload ab
+
+unmessage :: Exp Word64 -> (Exp Word64, Exp Word64, Exp Word64, Exp Word64)
+unmessage msg = let (from, to, payload) = unpackMessage msg
+                    (msg', ab)          = splitMessage payload
+                in (from, to, msg', ab)
+
 {- | Pack a message and prepare it for transmission. Arguments are
 
   1. ID of sender
@@ -170,7 +178,7 @@ will make up the alternating bit. This function returns a tuple with
   1. Payload
   2. Alternating bit
 -}
-splitMessage :: (?ble::BBLE) => Exp Word64 -> (Exp Word64, Exp Word64)
+splitMessage :: Exp Word64 -> (Exp Word64, Exp Word64)
 splitMessage msg =
     ((msg .&. 0x0000ff00) >>. 8, msg .&. 0x000000ff)
 
@@ -199,22 +207,53 @@ sendMsg :: (?ble :: BBLE)
         -> Exp Word64
         -> SSM ()
 sendMsg = box "sendMsg" ["from", "to", "msg", "ab"] $ \source dest msg ab -> do
-    let sr = scanref ?ble
-
     -- start broadcasting
-    disableBroadcast ?ble
-    enableBroadcast ?ble $ packMessage source dest $ attachAB msg ab
+    disableBroadcast
+    enableBroadcast $ packMessage source dest $ attachAB msg ab
 
     -- start scanning for confirmation
-    enableScan ?ble
+    enableScan
     doWhile
-      (wait sr)
-      (let (from, to, payload) = unpackMessage (deref sr)
-           (msg, ab')          = splitMessage payload
-       in not' $ to ==. source &&. from ==. dest &&. ab ==. ab')
+      (wait scanref)
+      (msgIsForMe source dest ab)
 
     -- after received confirmation, stop scanning
-    disableScan ?ble
+    disableScan
+  where
+    msgIsForMe :: Exp Word64 -> Exp Word64 -> Exp Word64 -> Exp Bool
+    msgIsForMe source dest ab =
+       let (from, to, msg, ab') = unmessage $ deref scanref
+       in not' $ to ==. source &&. from ==. dest &&. ab ==. ab'
+
+{- | Send a message and wait for confirmation. Arguments are:
+
+  1. ID of sender
+  2. ID of recipient
+  3. Payload (max 4 bytes)
+  4. Alternating bit
+-}
+acknowledge :: (?ble :: BBLE)
+        => Exp Word64
+        -> Exp Word64
+        -> Exp Word64
+        -> Exp Word64
+        -> SSM ()
+acknowledge = box "acknowledge" ["from", "to", "msg", "ab"] $ \source dest msg ab -> do
+    -- start broadcasting
+    disableBroadcast
+    enableBroadcast $ packMessage source dest $ attachAB msg ab
+
+    -- start scanning for confirmation
+    -- we assume we are acknowledged when we get a message with another ab
+    enableScan
+    doWhile
+      (wait scanref)
+      (let (from, to, msg, ab') = unmessage $ deref scanref
+       in not' $ to ==. source &&. from ==. dest &&. ab /=. ab')
+
+    -- after received confirmation, stop scanning
+    disableScan
+
 
 {-****** Device 1 (the source) ******-}
 
@@ -231,11 +270,10 @@ source this next = do
 
     schedule sourceCommunication
     schedule broadcast
-    schedule $ scanning ""
+    schedule scanning
   where
       sourceCommunication :: (?ble :: BBLE) => SSM ()
       sourceCommunication = boxNullary "sourceCommunication" $ do
-          
           while true' $ do
               fork [sendMsg this next 0 ack0]
               fork [sendMsg this next 1 ack1]
@@ -259,28 +297,25 @@ relay this previous next = do
 
     schedule relayMessage
     schedule broadcast
-    schedule $ scanning ""
+    schedule scanning
   where
       relayMessage :: (?ble :: BBLE) => SSM ()
       relayMessage = boxNullary "relayMessage" $ do
-          let sr = scanref ?ble
-
+          enableScan
           while true' $ do
                -- wait for a message
               doWhile
-                (wait sr)
-                (let (from, to, payload) = unpackMessage (deref sr)
-                     (msg, ab)           = splitMessage payload
+                (wait scanref)
+                (let (from, to, msg, ab) = unmessage $ deref scanref
                  in not' $ from ==. previous &&. to ==. this)
 
               -- grab message contents
-              let (_, _, payload) = unpackMessage (deref sr)
-                  (msg, ab)       = splitMessage payload
+              let (_,_,msg, ab) = unmessage $ deref scanref
 
               -- retransmit and block until acknowledged
               fork [sendMsg this next msg ab]
               -- acknowledge receiving to previous node
-              fork [sendMsg this previous 0 ab]
+              fork [acknowledge this previous 0 ab]
 
 {-****** Devie 4 (the sink) ******-}
 
@@ -305,40 +340,38 @@ sink this = do
     schedule lh2
     schedule lh3
     schedule broadcast
-    schedule $ scanning "F2:54:57:99:5A:76"
+    schedule scanning
   where
-      theSink :: ( ?ble :: BBLE
+      theSink :: ( ?ble  :: BBLE
                  , ?led0 :: Ref LED
                  , ?led1 :: Ref LED
                  , ?led2 :: Ref LED
                  , ?led3 :: Ref LED
                  ) => SSM ()
       theSink = boxNullary "theSink" $ do
-          let sr = scanref ?ble
-          enableScan ?ble
-
           while true' $ do
+              enableScan
+
               -- wait to receive message
               doWhile
-                (wait sr)
-                (let (from, to, payload) = unpackMessage (deref sr)
-                     (msg, ab)           = splitMessage payload
+                (wait scanref)
+                (let (from, to, msg, ab) = unmessage $ deref scanref
                  in not' $ to ==. this)
+              disableScan
 
               -- unpack message info
-              let (from, to, payload) = unpackMessage (deref sr)
-                  (msg, ab)           = splitMessage payload
+              let (from, to, msg, ab) = unmessage $ deref scanref
 
               -- blink led and wait for 1 sec
               switchCase msg
-                [ (0, ledBlinker ?led0)
-                , (1, ledBlinker ?led1)
-                , (2, ledBlinker ?led2)
-                , (3, ledBlinker ?led3)
+                [ (0, fork [ledBlinker ?led0])
+                , (1, fork [ledBlinker ?led1])
+                , (2, fork [ledBlinker ?led2])
+                , (3, fork [ledBlinker ?led3])
                 ]
 
               -- acknowledge message
-              fork [sendMsg this from 0 ab]
+              fork [acknowledge this from 0 ab]
 
       ledBlinker :: Ref LED -> SSM ()
       ledBlinker = box "ledBlinker" ["led"] $ \led -> do
@@ -350,3 +383,57 @@ switchCase :: SSMType a => Exp a -> [(Exp a, SSM ())] -> SSM ()
 switchCase _ [] = return ()
 switchCase test ((cond, br) : bs) =
     ifThenElse (test ==. cond) br (switchCase test bs)
+
+switchCaseD :: SSMType a => Exp a -> [(Exp a, SSM ())] -> SSM () -> SSM ()
+switchCaseD _ [] _ = return ()
+switchCaseD test [(cond, br)] def =
+  ifThenElse (test ==. cond) br def
+switchCaseD test ((cond, br) : bs) def =
+  ifThenElse (test ==. cond) br (switchCaseD test bs def)
+
+-- add in paper draft for Stephen
+-- also include box version, and partially boxed
+delay :: SSMTime -> SSM ()
+delay x = do
+  wake <- var event'
+  after x wake event'
+  wait wake
+
+
+
+
+
+test1 :: Ref Word64 -> Ref Word64 -> SSM ()
+test1 = box "test1" ["x","y"] $ \x y -> do
+  assign x (deref y)
+  fork [test1 x y]
+
+test2 :: SSM ()
+test2 = boxNullary "test2" $ do
+  x <- var 0
+  y <- var 1
+  fork [test1 x y]
+
+
+
+
+
+
+buttonBlinky :: Compile ()
+buttonBlinky = do
+  button <- switch 0
+  (led, ledHandler) <- onoffLED 0
+
+  let ?led = led
+      ?button = button
+
+  schedule program
+  schedule ledHandler
+  where
+
+
+    program :: (?led :: Ref LED, ?button :: Ref SW) => SSM ()
+    program = boxNullary "program" $ do
+      while true' $ do
+        wait ?button
+        ?led <~ deref ?button

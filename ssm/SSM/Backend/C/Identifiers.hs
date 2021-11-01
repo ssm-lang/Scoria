@@ -117,7 +117,7 @@ resolveNameOfHandler (Output variant _) = case variant of
   BLE bh -> case bh of
     Broadcast        -> initialize_static_output_ble_broadcast_device
     BroadcastControl -> initialize_static_output_ble_broadcast_control_device
-    ScanControl s    -> initialize_static_output_ble_scan_control_device
+    ScanControl      -> initialize_static_output_ble_scan_control_device
 
 -- | Name of top level return step-function
 top_return :: CIdent

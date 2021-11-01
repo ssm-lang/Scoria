@@ -67,6 +67,7 @@ import qualified SSM.Core.Syntax               as S
 import           SSM.Core.Type
 import           SSM.Core.Peripheral
 
+import qualified Data.List                     as L
 import qualified Data.Map                      as Map
 import           SSM.Util.State
 
@@ -225,7 +226,6 @@ transpile program =
   state       = TranspileState Map.empty [] c
   comp        = transpileProcedure stmts
 
-
 transpileProcedure :: [SSMStm] -> Transpile [S.Stm]
 transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
   NewRef   n           e  -> return $ [S.NewRef n (S.expType e) e]
@@ -263,7 +263,7 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
     let (stmts, counter') = genStmts counter p
     modify $ \st -> st { namecounter = counter' }
     return stmts
-
+  
   {- | Converts a `SSM ()` computation to a description of the call, and if necessary,
   this function will also update the environment to contain a mapping from the argument
   procedure to it's body. -}

@@ -53,7 +53,7 @@ data StaticOutputVariant
 data BLEHandler
     = Broadcast
     | BroadcastControl
-    | ScanControl String
+    | ScanControl
   deriving (Show, Read, Eq)
 
 -- | Class of types that are peripherals

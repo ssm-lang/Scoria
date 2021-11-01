@@ -69,14 +69,10 @@ prettyQueueContent (Handler h           ) = case h of
                 ( Ident "broadcast_control_output_handler" Nothing
                 , [Right ref]
                 )
-            ScanControl s    -> prettyApp
+            ScanControl    -> prettyApp
                 ( Ident "scan_control_output_handler" Nothing
-                , [Right ref {-, s-}]
+                , [Right ref]
                 )
---    StaticOutputHandler ref id -> prettyApp
---        ( Ident "static_output_handler" Nothing
---        , [Right ref, Left $ Lit TUInt8 $ LUInt8 id]
---        )
 
 prettyReferenceDecls :: [Reference] -> PP ()
 prettyReferenceDecls xs = flip mapM_ xs $ \ref ->
@@ -206,17 +202,22 @@ prettyUnaryOpR op r = case op of
 
 prettyBinop :: BinOp -> String
 prettyBinop op = case op of
-    OPlus  -> "+"
-    OMinus -> "-"
-    OTimes -> "*"
-    ODiv   -> "/"
-    ORem   -> "%"
-    OMin   -> "`min`"
-    OMax   -> "`max`"
-    OLT    -> "<"
-    OEQ    -> "=="
-    OAnd   -> "&&"
-    OOr    -> "||"
+    OPlus   -> "+"
+    OMinus  -> "-"
+    OTimes  -> "*"
+    ODiv    -> "/"
+    ORem    -> "%"
+    OMin    -> "`min`"
+    OMax    -> "`max`"
+    OLT     -> "<"
+    OEQ     -> "=="
+    OAnd    -> "&&"
+    OOr     -> "||"
+    OLShift -> "<<"
+    ORShift -> ">>"
+    OBAnd   -> "&"
+    OBOr    -> "|"
+    OBXor   -> "xor"
 
 prettySSMTime :: SSMTime -> String
 prettySSMTime (SSMTime d) = prettySSMExp d

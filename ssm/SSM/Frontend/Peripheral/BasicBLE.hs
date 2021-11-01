@@ -1,3 +1,4 @@
+{-# LANGUAGE ImplicitParams #-}
 module SSM.Frontend.Peripheral.BasicBLE
     ( BBLE
     , enableBasicBLE
@@ -40,7 +41,7 @@ import           Control.Monad.State
   describes the remote devices MAC address as a string of hex octets, separated by colon.
   E.g "AB:CD:EF:01:23:54"
 -}
-enableBasicBLE :: Compile (BBLE, SSM (), String -> SSM ())
+enableBasicBLE :: Compile (BBLE, SSM (), SSM ())
 enableBasicBLE = do
     let basicble = enableBLE broadcast broadcastControl scan scanControl
     modify $ \s -> s { basicblePeripheral = Just basicble }
@@ -57,8 +58,8 @@ enableBasicBLE = do
         broadcastHandler = do
             emit $ Handler $ Output (BLE Broadcast) broadcastref
             emit $ Handler $ Output (BLE BroadcastControl) broadcastControlref
-        scanControlHandler remoteDevice =
-            emit $ Handler $ Output (BLE (ScanControl remoteDevice)) scanControlref
+        scanControlHandler =
+            emit $ Handler $ Output (BLE ScanControl) scanControlref
 
     return (bble, broadcastHandler, scanControlHandler)
   where
@@ -85,27 +86,27 @@ data BBLE = BBLE
     }
 
 -- | Enable the BLE scanning device
-enableScan :: BBLE -> SSM ()
-enableScan bble = toggleControl (scanControl bble) true'
+enableScan :: (?ble :: BBLE) => SSM ()
+enableScan = toggleControl (scanControl ?ble) true'
 
 -- | Disable the BLE scanning device
-disableScan :: BBLE -> SSM ()
-disableScan bble = toggleControl (scanControl bble) false'
+disableScan :: (?ble :: BBLE) => SSM ()
+disableScan = toggleControl (scanControl ?ble) false'
 
 -- | Enable the BLE broadcasting device, broadcasting the specified message
-enableBroadcast :: BBLE -> Exp Word64 -> SSM ()
-enableBroadcast bble value = do
-    after (nsecs 1) (broadcast bble) value
-    wait (broadcast bble)
-    toggleControl (broadcastControl bble) true'
+enableBroadcast :: (?ble :: BBLE) => Exp Word64 -> SSM ()
+enableBroadcast value = do
+    after (nsecs 1) (broadcast ?ble) value
+    wait (broadcast ?ble)
+    toggleControl (broadcastControl ?ble) true'
 
 -- | Disable the BLE broadcasting device
-disableBroadcast :: BBLE -> SSM ()
-disableBroadcast bble = toggleControl (broadcastControl bble) false'
+disableBroadcast :: (?ble :: BBLE) => SSM ()
+disableBroadcast = toggleControl (broadcastControl ?ble) false'
 
 -- | The reference that can be used to wait for scanned messages
-scanref :: BBLE -> Ref Word64
-scanref = scan
+scanref :: (?ble :: BBLE) => Ref Word64
+scanref = scan ?ble
 
 toggleControl :: Ref Bool -> Exp Bool -> SSM ()
 toggleControl ctrl command = do

@@ -164,9 +164,7 @@ genInitProgram p = [cunit|
         BLE bh -> case bh of
           Broadcast          -> [ [cexp| &$id:(refName ref).sv |] ]
           BroadcastControl   -> [ [cexp| &$id:(refName ref).sv |] ]
-          ScanControl device -> [ [cexp| &$id:(refName ref).sv |]
-                                , [cexp| $string:device |]
-                                ]
+          ScanControl        -> [ [cexp| &$id:(refName ref).sv |] ]
 
       cargs :: Either SSMExp Reference -> C.Exp
       cargs (Left e)  = genExp [] e
