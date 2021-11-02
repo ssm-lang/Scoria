@@ -106,6 +106,7 @@ delay t = (do
   wait [v]) \`annotateDef\` ("delay", ["t"], -source location-)
 @
 -}
+{-# LANGUAGE DeriveDataTypeable #-}
 module SSM.Frontend.Box
     ( -- * Box machinery
 
@@ -118,8 +119,10 @@ module SSM.Frontend.Box
 
       -- ** Results
     , Res(..)
+    , EMBED(EMBED)
     ) where
 
+import Data.Generics (Data)
 import SSM.Frontend.Syntax ( SSM, SSMStm(Procedure, Result), emit, Ident(..) )
 
 -- | The class of types that can appear as arguments to our procedures
@@ -182,3 +185,7 @@ instance Res b => Box (SSM b) where
         (x',_) <- arg name xs x
         y'     <- f x'
         result name y'
+
+-- | A tag constructor that can be used with annotation pragmas
+data EMBED = EMBED
+  deriving Data

@@ -24,6 +24,9 @@ Nits with EDSL noted inline.
 -}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE RebindableSyntax #-}
+
+{-# OPTIONS_GHC -fplugin=SSM.Plugin #-}
+
 module SSM.FreqGen where
 
 {- RebindableSyntax rebinds some things to identifiers that are in scope. It allows
@@ -53,8 +56,11 @@ buttonHandler = box "buttonHandler" ["period"] $ \period -> while true' $ do
      then period <~ deref period * 2
      else period <~ max' (deref period /. 2) 1
 
+
+{-# ANN freqGen EMBED #-}
 freqGen :: (?led0::Ref LED) => Ref Word64 -> SSM ()
-freqGen = box "freqGen" ["period"] $ \period -> while true' $ do
+-- freqGen = box "freqGen" ["period"] $ \period -> while true' $ do
+freqGen period = while true' $ do
   after (nsecs $ deref period) ?led0 (not' $ deref ?led0)
   wait ?led0
 

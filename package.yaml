@@ -35,6 +35,8 @@ dependencies:
 - time
 - bytestring
 - template-haskell
+- ghc
+- syb
 
 library:
   source-dirs: ssm
