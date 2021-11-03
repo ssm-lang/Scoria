@@ -1,16 +1,43 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ImplicitParams #-}
+{-# OPTIONS_GHC -fplugin=SSM.Plugin -fplugin-opt=SSM.Plugin:mode=routine #-}
 module SSM.Freqmime where
 
 import           SSM.Compile
 import           SSM.Language
 import           SSM.Pretty
+import qualified SSM.Core as C
 
 import           Data.Word
 
 import           SSM.Frontend.Peripheral.GPIO
 import           SSM.Frontend.Peripheral.LED
 import           SSM.Frontend.Peripheral.Identity
+
+testembed :: SSM ()
+testembed = routine $ do
+    x <- var event'
+    after (secs 2) x event'
+
+testembed2 :: Ref Word64 -> SSM ()
+testembed2 y = routine $ do
+    assign y 5
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 gate_period :: SSMTime
 gate_period = secs 1
@@ -124,3 +151,8 @@ testGlobal = do
       prog = boxNullary "prog" $ do
           ?x <~ 5
           ?y <~ 10
+
+switchCase :: (C.SSMType a, Eq a) => Exp a -> [(Exp a, SSM ())] -> SSM ()
+switchCase scrutinee [] = return ()
+switchCase scrutinee ((c,bdy):rest)
+  = ifThenElse (scrutinee ==. c) bdy (switchCase scrutinee rest)

@@ -119,7 +119,8 @@ module SSM.Frontend.Box
 
       -- ** Results
     , Res(..)
-    , EMBED(EMBED)
+    , ROUTINE(ROUTINE)
+    , routine
     ) where
 
 import Data.Generics (Data)
@@ -187,5 +188,13 @@ instance Res b => Box (SSM b) where
         result name y'
 
 -- | A tag constructor that can be used with annotation pragmas
-data EMBED = EMBED
+data ROUTINE = ROUTINE
   deriving Data
+
+routine :: a -> a
+routine _ = error $ unlines
+  [ "routine error ---"
+  , "  must enable SSM.Plugin with routine mode for routine to work"
+  , "  paste this at the top of your program"
+  , "{-# OPTIONS_GHC -fplugin=SSM.Plugin -fplugin-opt=SSM.Plugin:mode=routine #-}"
+  ]

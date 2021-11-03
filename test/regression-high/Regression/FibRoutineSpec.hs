@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -fplugin=SSM.Plugin #-}
-module Regression.FibSpec where
+{-# OPTIONS_GHC -fplugin=SSM.Plugin -fplugin-opt=SSM.Plugin:mode=routine #-}
+module Regression.FibRoutineSpec where
 
 import           Prelude hiding (sum)
 
@@ -11,20 +11,17 @@ import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 
-{-# ANN mywait ROUTINE #-}
 mywait :: Ref a -> SSM ()
-mywait r = wait r
+mywait r = routine $ wait r
 
-{-# ANN sum ROUTINE #-}
 sum :: Ref Word64 -> Ref Word64
     -> Ref Word64 -> SSM ()
-sum r1 r2 r = do
+sum r1 r2 r = routine $ do
   fork [ mywait r1, mywait r2 ]
   after (secs 1) r (deref r1 + deref r2)
 
-{-# ANN fib ROUTINE #-}
 fib :: Exp Word64 -> Ref Word64 -> SSM ()
-fib n r = do
+fib n r = routine $ do
   r1 <- var 0
   r2 <- var 0
   ifThenElse (n <. 2)
@@ -34,11 +31,10 @@ fib n r = do
           , sum r1 r2 r
           ])
 
-{-# ANN main ROUTINE #-}
 main :: SSM ()
-main = do
+main = routine $ do
   r <- var 0
   fork [ fib 13 r ]
 
 spec :: H.Spec
-spec = T.correctSpec "Fib" main
+spec = T.correctSpec "FibRoutine" main
