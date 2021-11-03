@@ -40,6 +40,23 @@ ssm_plugin cli parsed = do
 
 annotateBox :: DynFlags -> [RdrName] -> Match GhcPs (LHsExpr GhcPs) -> Hsc (Match GhcPs (LHsExpr GhcPs))
 annotateBox flags wanted = \case
+  {- somewhat dangerous pattern match on the body, but it should work for our
+     simple use cases for now. -}
+  match@(Match m_x m_ctx [] (GRHSs grhss_x [L _ (GRHS _ _ body)] lbs))
+    | isFunRhs m_ctx &&
+      unLoc (mc_fun m_ctx) `elem` wanted -> do
+        message $ "Transforming function:\n" ++ showPpr flags match
+
+        let L _ fname = mc_fun m_ctx
+
+        let body' = __boxNullary__
+                    (showPpr flags fname)
+                    body
+
+        let match' = Match m_x m_ctx [] (GRHSs grhss_x [noLoc (GRHS noExt [] body')] lbs)
+
+        message $ "Into:\n" ++ showPpr flags match'
+        return match'
   match@(Match m_x m_ctx m_ps (GRHSs grhss_x lgrhss lbs))
     | isFunRhs m_ctx &&
       all isVarPat m_ps &&
@@ -97,6 +114,11 @@ __box__ fname argnames body =
   & list (strLit <$> argnames)
   & paren body
 
+__boxNullary__ :: String -> LHsExpr GhcPs -> LHsExpr GhcPs
+__boxNullary__ fname body =
+  var (mkRdrName "boxNullary")
+  & strLit fname
+  & paren body
 ----------------------------------------
 -- Helpers
 

@@ -48,8 +48,9 @@ import           SSM.Frontend.Peripheral.Identity
 import           SSM.Frontend.Peripheral.LED
 
 
+{-# ANN buttonHandler EMBED #-}
 buttonHandler :: (?sw0::Ref SW, ?sw1::Ref SW) => Ref Word64 -> SSM ()
-buttonHandler = box "buttonHandler" ["period"] $ \period -> while true' $ do
+buttonHandler period = while true' $ do
   wait (?sw0, ?sw1)
   -- Nit: using parens for each branch is annoying
   if changed ?sw0
@@ -59,14 +60,14 @@ buttonHandler = box "buttonHandler" ["period"] $ \period -> while true' $ do
 
 {-# ANN freqGen EMBED #-}
 freqGen :: (?led0::Ref LED) => Ref Word64 -> SSM ()
--- freqGen = box "freqGen" ["period"] $ \period -> while true' $ do
 freqGen period = while true' $ do
   after (nsecs $ deref period) ?led0 (not' $ deref ?led0)
   wait ?led0
 
+{-# ANN entry EMBED #-}
 -- Nit: implicit params aren't transitive, must be declared by caller
 entry :: (?sw0::Ref SW, ?sw1::Ref SW, ?led0::Ref LED) => SSM ()
-entry = boxNullary "entry" $ do
+entry = do
   -- Nit: can't construct Ref SSMTime? Marshalling to/from ns is really annoying
   -- and seems error-prone.
   period <- var $ time2ns $ secs 1
