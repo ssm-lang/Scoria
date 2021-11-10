@@ -25,7 +25,7 @@ Nits with EDSL noted inline.
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE RebindableSyntax #-}
 
-{-# OPTIONS_GHC -fplugin=SSM.Plugin -fplugin-opt=SSM.Plugin:mode=routine #-}
+--{-# OPTIONS_GHC -fplugin=SSM.Plugin -fplugin-opt=SSM.Plugin:mode=routine #-}
 
 module SSM.FreqGen where
 

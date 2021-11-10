@@ -301,6 +301,9 @@ var (Exp e) = do
 -- | Generate waitable instances for different sized tuples
 $(return $ map makeWaitableInstance [1..62])
 
+instance Waitable (Ref a) where
+  wait (Ptr r) = emit $ Wait [r]
+
 -- | Wait for a reference to assume a specific value
 waitFor :: SSMType a => Ref a -> Exp a -> SSM ()
 waitFor r e = do

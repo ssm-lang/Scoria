@@ -7,11 +7,11 @@ module SSM.Plugin
 
 import Data.Generics (mkM, everywhereM, listify)
 
-import GhcPlugins as GHC
-import HsSyn      as GHC
-import GhcPlugins as GHC hiding (Auto)
-import FastString as FS
-import OccName    as Name
+import GHC.Plugins as GHC
+import GHC.Hs      as GHC
+import GHC.Plugins as GHC hiding (Auto)
+import GHC.Data.FastString as FS
+import GHC.Types.Name.Occurrence    as Name
 import Data.List
 import Data.Maybe
 import Debug.Trace
@@ -69,7 +69,7 @@ annotateBox flags wanted = \case
                    (showPpr flags <$> argnames)
                    (lam m_ps lgrhss)
 
-        let match' = Match m_x m_ctx [] (GRHSs grhss_x [noLoc (GRHS noExt [] body')] lbs)
+        let match' = Match m_x m_ctx [] (GRHSs grhss_x [noLoc (GRHS noExtField [] body')] lbs)
 
         message $ "Into:\n" ++ showPpr flags match'
         return match'
@@ -99,9 +99,9 @@ routineBox flags = \case
                   else __box__
                        (showPpr flags fname)
                        (showPpr flags <$> argnames)
-                       (lam m_ps [noLoc (GRHS noExt [] arg)])
+                       (lam m_ps [noLoc (GRHS noExtField [] arg)])
 
-            let match' = Match m_x m_ctx [] (GRHSs grhss_x [noLoc (GRHS noExt [] body')] lbs)
+            let match' = Match m_x m_ctx [] (GRHSs grhss_x [noLoc (GRHS noExtField [] body')] lbs)
 
             message $ "Into:\n" ++ showPpr flags match'
             return match'
@@ -119,7 +119,7 @@ isAppliedToRoutine (L _ (OpApp _ (L _ (HsVar _ (L _ id))) _ arg))
 isAppliedToRoutine (L _ (OpApp _ f op arg)) = do
   res <- isAppliedToRoutine f
   case res of
-    Just f' -> return $ Just $ noLoc $ OpApp noExt f' op arg
+    Just f' -> return $ Just $ noLoc $ OpApp noExtField f' op arg
     Nothing -> return Nothing
 isAppliedToRoutine _ = return Nothing
 
@@ -127,30 +127,30 @@ isAppliedToRoutine _ = return Nothing
 -- Wrappers
 
 app :: LHsExpr GhcPs -> LHsExpr GhcPs -> LHsExpr GhcPs
-app x y = noLoc (HsApp noExt x y)
+app x y = noLoc (HsApp noExtField x y)
 
 lam :: [LPat GhcPs] -> [LGRHS GhcPs (LHsExpr GhcPs)] -> LHsExpr GhcPs
-lam pats lgrhss = noLoc (HsLam noExt (MG noExt (noLoc [noLoc (Match noExt LambdaExpr pats (GRHSs noExt lgrhss (noLoc (EmptyLocalBinds noExt))))]) Generated))
+lam pats lgrhss = noLoc (HsLam noExtField (MG noExtField (noLoc [noLoc (Match noExtField LambdaExpr pats (GRHSs noExtField lgrhss (noLoc (EmptyLocalBinds noExtField))))]) Generated))
 
 list :: [LHsExpr GhcPs] -> LHsExpr GhcPs
-list exprs = noLoc (ExplicitList noExt Nothing exprs)
+list exprs = noLoc (ExplicitList noExtField Nothing exprs)
 
 (&) :: LHsExpr GhcPs -> LHsExpr GhcPs -> LHsExpr GhcPs
 (&) = app
 infixl 4 &
 
 paren :: LHsExpr GhcPs -> LHsExpr GhcPs
-paren x = noLoc (HsPar noExt x)
+paren x = noLoc (HsPar noExtField x)
 
 var :: RdrName -> LHsExpr GhcPs
-var x = noLoc (HsVar noExt (noLoc x))
+var x = noLoc (HsVar noExtField (noLoc x))
 
 varP :: RdrName -> LPat GhcPs
-varP x = noLoc (VarPat noExt (noLoc x))
+varP x = noLoc (VarPat noExtField (noLoc x))
 
 
 strLit :: String -> LHsExpr GhcPs
-strLit s = noLoc (HsLit noExt (HsString NoSourceText (fsLit s)))
+strLit s = noLoc (HsLit noExtField (HsString NoSourceText (fsLit s)))
 
 __box__ :: String -> [String] -> LHsExpr GhcPs -> LHsExpr GhcPs
 __box__ fname argnames body =

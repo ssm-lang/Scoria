@@ -17,7 +17,7 @@
 #
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
-resolver: lts-13.20
+resolver: nightly-2021-11-06 #lts-13.20
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -36,7 +36,7 @@ packages:
 #
 extra-deps:
  - git: https://github.com/OctopiChalmers/BinderAnn
-   commit: b3e696c3142b3ba731cd7f6f47286160261a2feb
+   commit: 8f082b23ebd4e79e86e934f41ddfcba59652fadd
  
  #- imperative-edsl-0.8@sha256:d8c18d72df90d172e661d1f385ec7db5ec04c2a68b10b1a3c03da52bc4d731c7,3377
  #- git: https://github.com/mainland/mainland-pretty

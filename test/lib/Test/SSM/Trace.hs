@@ -38,9 +38,7 @@ import           Test.SSM.Report                ( Slug(..)
                                                 , reportOnFail
                                                 )
 
-import           Data.Algorithm.Diff            ( Diff(..)
-                                                , getDiff
-                                                )
+import           Data.Algorithm.Diff
 
 -- | Time limit on how long the interpreter should evaluate a program, in
 -- microseconds.
