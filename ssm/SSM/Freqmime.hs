@@ -1,6 +1,8 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ImplicitParams #-}
-{-# OPTIONS_GHC -fplugin=SSM.Plugin -fplugin-opt=SSM.Plugin:mode=routine #-}
+{-# LANGUAGE LinearTypes #-}
+{-# LANGUAGE GADTs #-}
+--{-# OPTIONS_GHC -fplugin=SSM.Plugin -fplugin-opt=SSM.Plugin:mode=routine #-}
 module SSM.Freqmime where
 
 import           SSM.Compile
@@ -12,32 +14,16 @@ import           Data.Word
 
 import           SSM.Frontend.Peripheral.GPIO
 import           SSM.Frontend.Peripheral.LED
-import           SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Peripheral.Identity ( global )
 
-testembed :: SSM ()
-testembed = routine $ do
-    x <- var event'
-    after (secs 2) x event'
+schedule' :: SSM () %1 -> Compile ()
+schedule' = undefined
 
-testembed2 :: Ref Word64 -> SSM ()
-testembed2 y = routine $ do
-    assign y 5
+createbutton :: Int -> (Ref SW -> SSM () %1 -> Compile ()) -> Compile ()
+createbutton _ g = g undefined undefined
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+compileprogram :: Compile ()
+compileprogram = createbutton 5 $ \ button handler -> schedule' handler
 
 gate_period :: SSMTime
 gate_period = secs 1
