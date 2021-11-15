@@ -52,7 +52,6 @@ module SSM.Frontend.Syntax
   , SSM(..)
   , SSMSt(..)
   , runSSM
-  , pureSSM
   , emit
   , fresh
 
@@ -104,7 +103,7 @@ data SSMStm
     | Fork [SSM ()]                        -- ^ Fork a list of procedures
 
     -- | Procedure construction
-    | Procedure Ident  -- ^ Marks the start of a procedure
+    | Procedure Ident [(Ident, Either S.SSMExp Reference)] [SSMStm]
     {-| Records the name an argument has and what value the procedure was applied to -}
     | Argument Ident Ident (Either S.SSMExp Reference)
     | Result Ident  -- ^ Mark the end of a procedure
@@ -161,10 +160,6 @@ genStmts :: Int -> SSM a -> ([SSMStm], Int)
 genStmts i (SSM program) =
   let (_, st) = runState program (SSMSt i []) in (statements st, counter st)
 
--- | Take a list of statements and turn them into an SSM computation.
-pureSSM :: [SSMStm] -> SSM ()
-pureSSM stmts = modify $ \st -> st { statements = stmts }
-
 -- | Emit an SSM statement.
 emit :: SSMStm -> SSM ()
 emit stm = modify $ \st -> st { statements = statements st ++ [stm] }
@@ -178,8 +173,8 @@ instance IntState SSMSt where
 {- | Get the name of a procedure, where the procedure is represented by a list of
 statements that make up its body. -}
 getProcedureName :: [SSMStm] -> Ident
-getProcedureName (Procedure n : _) = n
-getProcedureName _                    = error "not a procedure"
+getProcedureName (Procedure n _ _ : _) = n
+getProcedureName _                     = error "not a procedure"
 
 {- | Instance of `SSM.Core.Syntax.SSMProgram`, so that the compiler knows how to turn
 the frontend representation into something that it can generate code for. Just compiling
@@ -211,20 +206,15 @@ data TranspileState = TranspileState
 in "SSM.Core.Syntax". -}
 transpile :: SSM () -> (Ident, Map.Map Ident SP.Procedure)
 transpile program =
-  let n     = getProcedureName stmts
-      procs = procedures st
-      {- A procedure is only inserted in the resulting map if it was reached
-      through a fork. If the entry point was not accessed by another procedure by a
-      fork, we need to manually insert it in the map. -}
-      funs  = if not $ n `elem` Map.keys procs
-        then Map.insert n (SP.Procedure n [] main) procs
+  let procs = procedures st
+      funs  = if not $ name `elem` Map.keys procs
+        then Map.insert name (SP.Procedure name [] main) procs
         else procs
-  in  (n, funs)
+  in  (name, funs)
  where
-  (main , st) = runState comp state
-  (stmts, c ) = genStmts 0 program
+  (stmts@[Procedure name [] body], c ) = genStmts 0 program
+  (main , st) = runState (transpileProcedure body) state
   state       = TranspileState Map.empty [] c
-  comp        = transpileProcedure stmts
 
 transpileProcedure :: [SSMStm] -> Transpile [S.Stm]
 transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
@@ -249,7 +239,7 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
     procs' <- mapM getCall procs
     return $ [S.Fork procs']
 
-  Procedure n    -> return []
+  Procedure n _ _   -> return []
   Argument n x a -> return []
   Result n       -> return []
   Handler h      -> return []
@@ -269,26 +259,18 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
   procedure to it's body. -}
   getCall :: SSM () -> Transpile (Ident, [Either S.SSMExp Reference])
   getCall ssm = do
-    let stmts           = runSSM ssm
-    let name            = getProcedureName stmts
-    let (arginfo, args) = unzip $ getArgs stmts
+    let [Procedure name nargs body] = runSSM ssm
+    let (arginfo,args) = unzip $ map (\(id,a) -> ((id, either S.expType refType a), a)) nargs
     st <- get
 
     if name `elem` generated st
       then return () -- we've seen it before, do nothing
       else do
         put $ st { generated = name : generated st }
-        nstmts <- transpileProcedure stmts
+        nstmts <- transpileProcedure body
         let fun = SP.Procedure name arginfo nstmts
         modify $ \st -> st { procedures = Map.insert name fun (procedures st) }
 
     return (name, args)
 
-  {-| Return a tuple where the first component contains information about name
-  and type about the arguments, and the second compoment is a list of the actual arguments. -}
-  getArgs :: [SSMStm] -> [((Ident, Type), Either S.SSMExp Reference)]
-  getArgs []                 = []
-  getArgs (Procedure _ : xs) = getArgs xs
-  getArgs (Argument _ x a : xs) =
-    ((x, either S.expType refType a), a) : getArgs xs
-  getArgs _ = []
+  

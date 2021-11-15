@@ -123,8 +123,9 @@ module SSM.Frontend.Box
     , routine
     ) where
 
+import Control.Monad.State
 import Data.Generics (Data)
-import SSM.Frontend.Syntax ( SSM, SSMStm(Procedure, Result), emit, Ident(..) )
+import SSM.Frontend.Syntax
 
 -- | The class of types that can appear as arguments to our procedures
 class Arg a where
@@ -182,10 +183,34 @@ the head of the list, and inserts a Result constructor at the end. This makes it
 unambiguous where a procedure begins and where it ends. -}
 instance Res b => Box (SSM b) where
     box name xs f = \x -> do
-        emit $ Procedure (Ident name Nothing)
-        (x',_) <- arg name xs x
-        y'     <- f x'
-        result name y'
+      let SSM argx    = arg name xs x
+          ((x',_),st) = runState argx $ SSMSt 0 []
+
+      let SSM argy = f x'
+          (y',st') = runState argy $ SSMSt (counter st) []
+
+      let SSM res = result name y'
+          (r,st'') = runState res $ SSMSt (counter st') []
+
+      emit $ Procedure
+               (Ident name Nothing)
+               (fetchArgs $ statements st) $
+               concat [statements st, statements st', statements st'']
+
+      return r
+
+fetchArgs :: [SSMStm] -> [(Ident, Either SSMExp Reference)]
+fetchArgs []                  = []
+fetchArgs (Argument _ x a:as) = (x, a) : fetchArgs as
+fetchArgs _ = error $ unlines [ "SSM.Frontend.Box error ---"
+                              , "found statement that was not an argument statement"
+                              ]
+
+    -- box name xs f = \x -> do
+    --     emit $ Procedure (Ident name Nothing)
+    --     (x',_) <- arg name xs x
+    --     y'     <- f x'
+    --     result name y'
 
 -- | A tag constructor that can be used with annotation pragmas
 data ROUTINE = ROUTINE
