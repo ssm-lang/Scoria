@@ -19,27 +19,30 @@ import qualified Language.C.Syntax             as C
 references. -}
 decls :: Peripheral -> [C.Definition]
 decls (Peripheral a) = map declSingle $ declaredReferences a
-  where
-    declSingle :: Reference -> C.Definition
-    declSingle r =
-      [cedecl| $ty:(svt_ $ dereference $ refType r) $id:(refName r);|]
+ where
+  declSingle :: Reference -> C.Definition
+  declSingle r =
+    [cedecl| $ty:(svt_ $ dereference $ refType r) $id:(refName r);|]
 
 {- | Get the statements that initializes this peripheral. These statements should be
 executed in the program initialization point, before the program actually runs. -}
 maininit :: Peripheral -> [C.BlockItem]
 maininit (Peripheral a) = concatMap compInitializer $ mainInitializers a
-    where
-      compInitializer :: Initializer -> [C.BlockItem]
-      compInitializer i = case i of
-        Normal ref ->
-          let bt = dereference $ refType ref
-              init = initialize_ bt [cexp|&$id:(refName ref)|]
-              assign = assign_ bt [cexp|&$id:(refName ref)|] [cexp|0|] [cexp|0|]
-          in [citems| $exp:init; $exp:assign; |]
-        StaticInput si ref -> case si of
-          Switch id ->
-            [ [citem| $id:initialize_static_input_device(&$id:(refName ref).sv, $int:id);|]
-            ]
+ where
+  compInitializer :: Initializer -> [C.BlockItem]
+  compInitializer i = case i of
+    Normal ref ->
+      let bt     = dereference $ refType ref
+          init   = initialize_ bt [cexp|&$id:(refName ref)|]
+          assign = assign_ bt [cexp|&$id:(refName ref)|] [cexp|0|] [cexp|0|]
+      in  [citems| $exp:init; $exp:assign; |]
+    StaticInput si ref -> case si of
+      Switch id ->
+        [ [citem| $id:initialize_static_input_device(&$id:(refName ref), $int:id);|]
+        ]
+      BLEScan ->
+        [ [citem| $id:initialize_static_input_ble_scan_device(&$id:(refName ref).sv);|]
+        ]
 
 -- | Return all the statements that initialize the peripherals statically
 initPeripherals :: Program -> [C.BlockItem]

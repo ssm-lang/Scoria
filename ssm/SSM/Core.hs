@@ -5,6 +5,7 @@ module SSM.Core
     , module SSM.Core.Peripheral.Identity
     , module SSM.Core.Peripheral.GPIO
     , module SSM.Core.Peripheral.LED
+    , module SSM.Core.Peripheral.BasicBLE
     , module SSM.Core.Program
     , module SSM.Core.Reference
     , module SSM.Core.Syntax
@@ -16,6 +17,7 @@ import           SSM.Core.Peripheral
 import           SSM.Core.Peripheral.GPIO
 import           SSM.Core.Peripheral.Identity
 import           SSM.Core.Peripheral.LED
+import           SSM.Core.Peripheral.BasicBLE
 import           SSM.Core.Program
 import           SSM.Core.Reference
 import           SSM.Core.Syntax

@@ -24,6 +24,7 @@ data CompileSt = CompileSt
     , generatedGlobals    :: IdentityPeripheral  -- ^ Names and types of global
     , gpioperipherals     :: GPIOPeripheral      -- ^ GPIO peripherals
     , ledperipherals      :: LEDPeripheral       -- ^ LED peripheral
+    , basicblePeripheral  :: Maybe BasicBLE      -- ^ Basic BLE peripheral
     }
 
 -- | Compile monad
@@ -52,14 +53,15 @@ instance SSMProgram (Compile ()) where
                            emptyIdentityPeripheral
                            emptyGPIOPeripheral
                            emptyLEDPeripheral
+                           Nothing
                 )
             (n, f) = transpile $ fromJust $ entryPoint s
-        in  Program (reverse $ SSM.Frontend.Compile.initialQueueContent s)
-                    f
-                $ [ Peripheral $ SSM.Frontend.Compile.gpioperipherals s
-                  , Peripheral $ SSM.Frontend.Compile.ledperipherals s
-                  , Peripheral $ generatedGlobals s
-                  ]
+        in  Program (reverse $ SSM.Frontend.Compile.initialQueueContent s) f
+                $  [ Peripheral $ SSM.Frontend.Compile.gpioperipherals s
+                   , Peripheral $ SSM.Frontend.Compile.ledperipherals s
+                   , Peripheral $ generatedGlobals s
+                   ]
+                ++ maybe [] (\p -> [Peripheral p]) (basicblePeripheral s)
 
 {- | Schedule an SSM procedure for execution upon program start-up. Procedures that are
 scheduled will be placed in the ready queue to be executed when the program starts.
@@ -78,9 +80,9 @@ so forth.
 schedule :: SSM () -> Compile ()
 schedule ssm = do
     case isHandler ssm of
-        Just handler -> modify $ \st -> st
-            { SSM.Frontend.Compile.initialQueueContent = SC.Handler handler
-                : SSM.Frontend.Compile.initialQueueContent st
+        Just handlers -> modify $ \st -> st
+            { SSM.Frontend.Compile.initialQueueContent = map SC.Handler handlers
+                ++ SSM.Frontend.Compile.initialQueueContent st
             }
         Nothing ->
             let id = getProcedureName $ runSSM ssm

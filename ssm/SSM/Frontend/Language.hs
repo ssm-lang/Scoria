@@ -37,6 +37,11 @@ module SSM.Frontend.Language
     , (<.)
     , (==.)
     , (/=.)
+    , (<<.)
+    , (>>.)
+    , (.&.)
+    , (.|.)
+    , xor
     , (&&.)
     , (||.)
     , not'
@@ -136,21 +141,45 @@ infixl 1 <~
 assign :: Ref a -> Exp a -> SSM ()
 assign (Ptr r) (Exp e) = emit $ SetRef r e
 
+infix 4 <.
 -- | Less-than on numerical expressions
-(<.) :: (Num a, SSMType a) => Exp a -> Exp a -> Exp Bool
 Exp e1 <. Exp e2  = Exp $ BOp TBool e1 e2 OLT
+(<.) :: (Num a, SSMType a) => Exp a -> Exp a -> Exp Bool
 
--- | Equality on expressions
+infix 4 ==.
+-- | Equality on expressions (level 4)
 (==.) :: SSMType a => Exp a -> Exp a -> Exp Bool
 Exp e1 ==. Exp e2 = Exp $ BOp TBool e1 e2 OEQ
 
+infix 4 /=.
 (/=.) :: SSMType a => Exp a -> Exp a -> Exp Bool
 e1 /=. e2 = not' $ e1 ==. e2
 
+infixl 8 <<.
+(<<.) :: (SSMType a, Eq a) => Exp a -> Exp a -> Exp a
+e@(Exp e1) <<. Exp e2 = Exp $ BOp (typeOf e) e1 e2 OLShift
+
+infixl 8 >>.
+(>>.) :: (SSMType a, Eq a) => Exp a -> Exp a -> Exp a
+e@(Exp e1) >>. Exp e2 = Exp $ BOp (typeOf e) e1 e2 ORShift
+
+infixl 7 .&.
+(.&.) :: (SSMType a, Eq a) => Exp a -> Exp a -> Exp a
+e@(Exp e1) .&. Exp e2 = Exp $ BOp (typeOf e) e1 e2 OBAnd
+
+infixl 5 .|.
+(.|.) :: (SSMType a, Eq a) => Exp a -> Exp a -> Exp a
+e@(Exp e1) .|. Exp e2 = Exp $ BOp (typeOf e) e1 e2 OBOr
+
+xor :: (SSMType a, Eq a) => Exp a -> Exp a -> Exp a
+xor e@(Exp e1) (Exp e2) = Exp $ BOp (typeOf e) e1 e2 OBXor
+
+infixr 3 &&.
 -- | Boolean conjunction
 (&&.) :: Exp Bool -> Exp Bool -> Exp Bool
 e@(Exp e1) &&. Exp e2 = Exp $ BOp (typeOf e) e1 e2 OAnd
 
+infixr 2 ||.
 -- | Boolean disjunction
 (||.) :: Exp Bool -> Exp Bool -> Exp Bool
 e@(Exp e1) ||. Exp e2 = Exp $ BOp (typeOf e) e1 e2 OOr

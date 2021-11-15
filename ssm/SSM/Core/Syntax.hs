@@ -89,6 +89,11 @@ data BinOp
     | OEQ     -- ^ eq
     | OAnd    -- ^ boolean conjunction
     | OOr     -- ^ boolean disjunction
+    | OLShift -- ^ left shift
+    | ORShift -- ^ right shift
+    | OBAnd   -- ^ bit conjunction
+    | OBOr    -- ^ bit disjunction
+    | OBXor   -- ^ bit xor
     deriving (Eq, Show, Read)
 
 -- | Return the type of an expression
