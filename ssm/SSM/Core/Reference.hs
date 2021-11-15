@@ -1,7 +1,17 @@
 {- | The Reference module exposes the `Reference` type that is used internally. This type
 is not exposed to the end user in any way. The only parts of the compiler that depends
 on this type is the backend-parts (C generation, pretty-printer, interpreter etc). -}
-module SSM.Core.Reference where
+module SSM.Core.Reference
+    ( Reference(..)
+    , refType
+    , refName
+    , refIdent
+    , makeDynamicRef
+    , makeStaticRef
+    , renameRef
+    , isStatic
+    , isDynamic
+    ) where
 
 import           SSM.Core.Ident                 ( Ident(identName) )
 import           SSM.Core.Type                  ( Type )

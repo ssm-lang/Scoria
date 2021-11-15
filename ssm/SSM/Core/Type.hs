@@ -1,5 +1,11 @@
 {- | This module talks about the types that are supported by SSM. -}
-module SSM.Core.Type where
+module SSM.Core.Type
+    ( Type(..)
+    , dereference
+    , mkReference
+    , isReference
+    , SSMType(..)
+    )where
 
 import           Data.Int                       ( Int32
                                                 , Int64

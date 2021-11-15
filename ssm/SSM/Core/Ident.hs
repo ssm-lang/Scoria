@@ -1,5 +1,5 @@
 {- | Module that implements the identifiers used in the SSM compiler. -}
-module SSM.Core.Ident where
+module SSM.Core.Ident (Ident(..)) where
 
 -- * Identifiers
 

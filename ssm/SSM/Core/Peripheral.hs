@@ -7,7 +7,15 @@ core representation. An alternative would be to have the core representation use
 \"C-compileable\" constraint instead, but then we would tie the core representation to
 the fact that there exists a C backend. -}
 {-# LANGUAGE GADTs #-}
-module SSM.Core.Peripheral where
+module SSM.Core.Peripheral
+    ( Peripheral(..)
+    , Initializer(..)
+    , StaticInputVariant(..)
+    , Handler(..)
+    , StaticOutputVariant(..)
+    , BLEHandler(..)
+    , IsPeripheral(..)
+    ) where
 
 import           Data.Word                      ( Word8 )
 import           SSM.Core.Reference             ( Reference )

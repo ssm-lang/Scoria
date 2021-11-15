@@ -1,38 +1,17 @@
-{-| This module exposes the core syntax elements that make up our SSM expressions,
-statements and time management. -}
-{-# LANGUAGE GADTs #-}
 module SSM.Core.Syntax
-  ( -- ** Expressions
-      {- | Expressions in the language are quite few at the moment. Adding support for
-      new expressions here (especially more numerical operators) should be very simple.
-      -}
-    SSMExp(..)
+  ( SSMExp(..)
   , SSMLit(..)
   , UnaryOpE(..)
   , UnaryOpR(..)
   , BinOp(..)
   , expType
-
-      -- ** Time
-      {- Exposes units of time to wrap Word64 expressions. -}
   , SSMTime(..)
-
-      -- ** Statements
-      {- | Statements that make up an SSM program take any of these forms. A program
-      is made up of a list of these statements.-}
   , Stm(..)
   ) where
 
-import           Control.Monad.State.Lazy       ( MonadState(get, put)
-                                                , State
-                                                , forM
-                                                , modify
-                                                , runState
-                                                )
 import           Data.Int                       ( Int32
                                                 , Int64
                                                 )
-import qualified Data.Map                      as Map
 import           Data.Word                      ( Word32
                                                 , Word64
                                                 , Word8

@@ -1,7 +1,14 @@
 {- | This module implements the `Procedure` type and the `Program` type, which represents
 the kind of procedures we can have in an SSM program and how an entire SSM program is
 represented. -}
-module SSM.Core.Program where
+module SSM.Core.Program
+    ( Procedure(..)
+    , QueueContent(..)
+    , entry
+    , Program(..)
+    , SSMProgram(..)
+
+    ) where
 
 import           SSM.Core.Ident                 ( Ident )
 import           SSM.Core.Peripheral            ( Peripheral, Handler )
