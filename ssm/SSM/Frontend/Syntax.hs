@@ -202,6 +202,10 @@ data TranspileState = TranspileState
   , namecounter :: Int
   }
 
+instance IntState TranspileState where
+  getInt = namecounter
+  setInt i st = st { namecounter = i }
+
 {- | Transpile a program of the high level syntax to the low level syntax as defined
 in "SSM.Core.Syntax". -}
 transpile :: SSM () -> (Ident, Map.Map Ident SP.Procedure)
@@ -258,19 +262,84 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
   this function will also update the environment to contain a mapping from the argument
   procedure to it's body. -}
   getCall :: SSM () -> Transpile (Ident, [Either S.SSMExp Reference])
-  getCall ssm = do
-    let [Procedure name nargs body] = runSSM ssm
-    let (arginfo,args) = unzip $ map (\(id,a) -> ((id, either S.expType refType a), a)) nargs
-    st <- get
+  getCall ssm = case runSSM ssm of
+    [Procedure name nargs body] -> do
+      let [Procedure name nargs body] = runSSM ssm
+      let (arginfo,args) = unzip $ map (\(id,a) -> ((id, either S.expType refType a), a)) nargs
+      st <- get
 
-    if name `elem` generated st
-      then return () -- we've seen it before, do nothing
-      else do
-        put $ st { generated = name : generated st }
-        nstmts <- transpileProcedure body
-        let fun = SP.Procedure name arginfo nstmts
-        modify $ \st -> st { procedures = Map.insert name fun (procedures st) }
+      if name `elem` generated st
+        then return () -- we've seen it before, do nothing
+        else do
+          put $ st { generated = name : generated st }
+          nstmts <- transpileProcedure body
+          let fun = SP.Procedure name arginfo nstmts
+          modify $ \st -> st { procedures = Map.insert name fun (procedures st) }
 
-    return (name, args)
+      return (name, args)
 
-  
+    stmts -> synthesizeProcedure stmts
+
+---------- Synthesize procedure ----------
+
+synthesizeProcedure :: [SSMStm] -> Transpile (Ident, [Either S.SSMExp Reference])
+synthesizeProcedure body = do
+  name  <- (makeIdent . (<>) "generated") <$> fresh
+  stmts <- transpileProcedure body
+  let toapply   = L.nub $ freeInStm [] stmts
+      procedure = SP.Procedure name (map (either expInfo refInfo) toapply) stmts
+  modify $ \st -> st { procedures = Map.insert name procedure (procedures st)}
+  return (name, toapply)
+  where
+    expInfo :: S.SSMExp -> (Ident, Type)
+    expInfo (S.Var t id) = (id, t)
+    expInfo _ = error $ unlines [ "SSM.Frontend.Syntax.expInfo error ---"
+                                , "expInfo applied to expression that is not a variable"
+                                ]
+
+    refInfo :: Reference -> (Ident, Type)
+    refInfo r = (refIdent r, refType r)
+
+freeInStm :: [Reference] -> [S.Stm] -> [Either S.SSMExp Reference]
+freeInStm _ [] = []
+freeInStm bound (x:xs) = case x of
+  S.NewRef id t e ->
+    freeInExp bound e <> freeInStm (makeDynamicRef id (mkReference t):bound) xs
+  S.SetRef r e ->
+    if r `elem` bound
+      then freeInExp bound e <> freeInStm bound xs
+      else Right r : freeInExp bound e <> freeInStm bound xs
+  S.SetLocal id t e ->
+    Left (S.Var t id) : freeInExp bound e <> freeInStm bound xs
+  S.If c thn els ->
+    let inc = freeInExp bound c
+        inthn = freeInStm bound thn
+        inels = freeInStm bound els
+    in inc <> inthn <> inels <> freeInStm bound xs
+  S.While c bdy ->
+    let inc = freeInExp bound c
+        inbdy = freeInStm bound bdy
+    in inc <> inbdy <> freeInStm bound xs
+  S.Skip -> freeInStm bound xs
+  S.After (S.SSMTime e) r v ->
+    let ine = freeInExp bound e
+        inv = freeInExp bound v
+    in if r `elem` bound
+      then ine <> inv <> freeInStm bound xs
+      else Right r : ine <> inv <> freeInStm bound xs
+  S.Wait refs ->
+    let inrefs = filter (not . flip elem bound) refs
+    in map Right inrefs <> freeInStm bound xs
+  S.Fork cs ->
+    let args = concatMap snd cs
+        keepExp e = if S.isVar e then [Left e] else []
+        keepRef r = if r `elem` bound then [] else [Right r]
+    in concatMap (either keepExp keepRef) args
+
+freeInExp :: [Reference] -> S.SSMExp -> [Either S.SSMExp Reference]
+freeInExp bound e = case e of
+  S.Var _ id      -> [Left e]
+  S.Lit _ _       -> []
+  S.UOpE _ e _    -> freeInExp bound e
+  S.UOpR _ r _    -> if r `elem` bound then [] else [Right r]
+  S.BOp _ e1 e2 _ -> freeInExp bound e1 <> freeInExp bound e2

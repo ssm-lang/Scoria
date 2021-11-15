@@ -1,5 +1,9 @@
 {- | Module that implements the identifiers used in the SSM compiler. -}
-module SSM.Core.Ident (Ident(..)) where
+module SSM.Core.Ident
+    ( Ident(..)
+    , makeIdent
+    , appendIdent
+    ) where
 
 -- * Identifiers
 
@@ -9,6 +13,12 @@ data Ident = Ident
   , identSrcInfo :: Maybe SrcInformation  -- ^ And possibly some source information
   }
   deriving (Show, Read)
+
+makeIdent :: String -> Ident
+makeIdent str = Ident str Nothing
+
+appendIdent :: Ident -> Ident -> Ident
+appendIdent (Ident str1 _) (Ident str2 _) = Ident (str1 <> str2) Nothing
 
 {- | Equality of identifiers is done by comparing the `identName` component of
 an identifier. The source information is not checked. -}

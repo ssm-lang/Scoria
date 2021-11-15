@@ -5,6 +5,7 @@ module SSM.Core.Syntax
   , UnaryOpR(..)
   , BinOp(..)
   , expType
+  , isVar
   , SSMTime(..)
   , Stm(..)
   ) where
@@ -82,6 +83,11 @@ expType (Lit t _    ) = t
 expType (UOpE t _ _ ) = t
 expType (UOpR t _ _ ) = t
 expType (BOp t _ _ _) = t
+
+-- | Is the expression a variable?
+isVar :: SSMExp -> Bool
+isVar (Var _ _) = True
+isVar _         = False
 
 -- Time
 

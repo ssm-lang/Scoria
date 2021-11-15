@@ -65,6 +65,7 @@ library
       SSM.Plugin
       SSM.Pretty
       SSM.Pretty.Syntax
+      SSM.Test
       SSM.Util.Default
       SSM.Util.HughesList
       SSM.Util.Operators
@@ -156,6 +157,9 @@ test-suite 1-regression-syntax
       Regression.NewEventSpec
       Regression.RecurseExhaustiveSpec
       Regression.RecurseForeverSpec
+      Regression.SynthesizeAdditionSpec
+      Regression.SynthesizeDelaySpec
+      Regression.SynthesizeForeverRecurseSpec
       Paths_ssm
   hs-source-dirs:
       test/lib
