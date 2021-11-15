@@ -2,6 +2,7 @@ module Test.SSM.Prop
   ( propCompiles
   , propValgrind
   , propCorrect
+  , propSyntacticEquality
   , TestName(..)
   , correctSpec
   , semanticIncorrectSpec
@@ -118,3 +119,7 @@ semanticIncorrectSpec name p = do
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name
+
+propSyntacticEquality :: (SSMProgram p1, SSMProgram p2) => String -> p1 -> p2 -> H.Spec
+propSyntacticEquality name p1 p2 = do
+  H.prop "produces correct syntax" $ toProgram p1 == toProgram p2

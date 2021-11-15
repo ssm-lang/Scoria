@@ -123,7 +123,7 @@ test-suite 0-trace-parser
     , time
   default-language: Haskell2010
 
-test-suite 1-regression-high
+test-suite 1-regression-syntax
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -142,6 +142,70 @@ test-suite 1-regression-high
       Test.SSM.QuickCheck.Util
       Test.SSM.Report
       Test.SSM.Trace
+      Regression.CancelBothSpec
+      Regression.CancelLaterSpec
+      Regression.EmptyFunSpec
+      Regression.FlipFlopLoopSpec
+      Regression.GlobalEventSpec
+      Regression.Int32ArithSpec
+      Regression.LaterAssignOverflowSpec
+      Regression.LaterWaitSpec
+      Regression.ManyContsSpec
+      Regression.MultOverflowIndirectSpec
+      Regression.MultOverflowSpec
+      Regression.NewEventSpec
+      Regression.RecurseExhaustiveSpec
+      Regression.RecurseForeverSpec
+      Paths_ssm
+  hs-source-dirs:
+      test/lib
+      test/regression-syntax
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      BinderAnn
+    , Diff
+    , QuickCheck
+    , base >=4.7 && <5
+    , bytestring
+    , containers
+    , directory
+    , extra
+    , ghc
+    , hspec
+    , language-c-quote
+    , mainland-pretty
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , prettyprinter
+    , process
+    , ssm
+    , syb
+    , template-haskell
+    , text
+    , time
+  default-language: Haskell2010
+
+test-suite 2-regression-high
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Test.SSM.Build
+      Test.SSM.Prop
+      Test.SSM.QuickCheck.Generator
+      Test.SSM.QuickCheck.Shrink
+      Test.SSM.QuickCheck.Shrink.Expressions
+      Test.SSM.QuickCheck.Shrink.Fork
+      Test.SSM.QuickCheck.Shrink.If
+      Test.SSM.QuickCheck.Shrink.ProcedureArity
+      Test.SSM.QuickCheck.Shrink.Procedures
+      Test.SSM.QuickCheck.Shrink.References
+      Test.SSM.QuickCheck.Shrink.Statements
+      Test.SSM.QuickCheck.Shrink.Wait
+      Test.SSM.QuickCheck.Util
+      Test.SSM.Report
+      Test.SSM.Trace
+      Regression.CancelBothSpec
       Regression.FibRoutineSpec
       Regression.FibSpec
       Regression.RecurseForeverSpec
@@ -176,7 +240,7 @@ test-suite 1-regression-high
     , time
   default-language: Haskell2010
 
-test-suite 2-regression-low
+test-suite 3-regression-low
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -240,7 +304,7 @@ test-suite 2-regression-low
     , time
   default-language: Haskell2010
 
-test-suite 3-arbitrary
+test-suite 4-arbitrary
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:

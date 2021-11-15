@@ -64,7 +64,11 @@ data Program = Program
       -- | Any peripherals used by the program
     , peripherals         :: [Peripheral]
     }
-    deriving (Show, Read, Eq)
+    deriving (Show, Read)
+
+instance Eq Program where
+  p1 == p2 = initialQueueContent p1 == initialQueueContent p2 &&
+             funs p1 == funs p2
 
 -- | Class of types that can be converted to a `Program`.
 class SSMProgram a where
