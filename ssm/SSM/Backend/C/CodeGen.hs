@@ -569,8 +569,8 @@ genExp ls (BOp ty e1 e2 op) = gen op
       lhs = [cexp| $exp:s1 |]
       rhs = [cexp| $exp:s2 |]
 
-genTimeDelay :: [Reference] -> SSMTime -> C.Exp
-genTimeDelay ls (SSMTime d) = [cexp|$exp:(genExp ls d)|]
+genTimeDelay :: [Reference] -> SSMExp -> C.Exp
+genTimeDelay ls d = [cexp|$exp:(genExp ls d)|]
 
 -- | Promote a C expression to a C statement.
 expToStm :: C.Exp -> C.Stm

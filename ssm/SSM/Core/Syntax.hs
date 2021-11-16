@@ -6,7 +6,6 @@ module SSM.Core.Syntax
   , BinOp(..)
   , expType
   , isVar
-  , SSMTime(..)
   , Stm(..)
   ) where
 
@@ -20,7 +19,7 @@ import           Data.Word                      ( Word32
 
 import           SSM.Core.Ident                 ( Ident )
 import           SSM.Core.Reference             ( Reference )
-import           SSM.Core.Type                  ( Type )
+import           SSM.Core.Type                  ( Type(..), SSMType(..) )
 
 -- Expressions
 
@@ -89,12 +88,6 @@ isVar :: SSMExp -> Bool
 isVar (Var _ _) = True
 isVar _         = False
 
--- Time
-
--- | Time values with units to be resolved by CodeGen. Used in `after` stmts.
-newtype SSMTime = SSMTime SSMExp  -- in nanoseconds
-    deriving (Eq, Show, Read)
-
 {- | A lower level representation of the statements that make up the body of
 an SSM program. -}
 data Stm
@@ -112,7 +105,7 @@ data Stm
 
     {- | @After d r v@ - After @d@ units of time the reference @r@ should get the new
     value @v@. -}
-    | After SSMTime Reference SSMExp
+    | After SSMExp Reference SSMExp
     | Wait [Reference]  -- ^ Wait for any of the references to be written to
     {-| Fork procedures. The procedures are now identified by their name, and the fork
     site contains only that name and the arguments to apply the function to. -}
