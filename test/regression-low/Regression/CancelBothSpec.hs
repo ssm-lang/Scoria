@@ -21,13 +21,13 @@ p = Program
         , arguments = []
         , body      =
           [ NewRef (Ident "v0" Nothing) TBool (Lit TBool (LBool False))
-          , After (SSMTime (Lit TUInt64 (LUInt64 1)))
+          , After (Lit TUInt64 (LUInt64 1))
                   (Dynamic (Ident "v0" Nothing, Ref TBool))
                   (Lit TBool (LBool True))
           , NewRef (Ident "v1" Nothing)
                    TBool
                    (UOpR TBool (Dynamic (Ident "v0" Nothing, Ref TBool)) Changed)
-          , After (SSMTime (Lit TUInt64 (LUInt64 3872)))
+          , After (Lit TUInt64 (LUInt64 3872))
                   (Dynamic (Ident "v1" Nothing, Ref TBool))
                   (Lit TBool (LBool False))
           ]

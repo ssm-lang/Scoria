@@ -282,7 +282,7 @@ p = Program
                    OLT
               )
               [ After
-                (SSMTime (Lit TUInt64 (LUInt64 1112)))
+                (Lit TUInt64 (LUInt64 1112))
                 (Dynamic (Ident "ref1" Nothing, Ref TInt32))
                 (BOp
                   TInt32
@@ -671,13 +671,13 @@ p = Program
             ]
           , Wait [Dynamic (Ident "ref2" Nothing, Ref TUInt64)]
           , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32)]
-          , After (SSMTime (Lit TUInt64 (LUInt64 3525)))
+          , After (Lit TUInt64 (LUInt64 3525))
                   (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
                   (Lit TUInt64 (LUInt64 167))
           , Wait [Dynamic (Ident "ref1" Nothing, Ref TInt32)]
           , Wait [Dynamic (Ident "ref4" Nothing, Ref TUInt64)]
           , After
-            (SSMTime (Lit TUInt64 (LUInt64 4696)))
+            (Lit TUInt64 (LUInt64 4696))
             (Dynamic (Ident "ref2" Nothing, Ref TUInt64))
             (BOp
               TUInt64

@@ -28,7 +28,7 @@ p = Program
                        , Procedure { name = Ident "generatedfresh0" Nothing
                                    , arguments = []
                                    , body = [ NewRef (Ident "fresh0" Nothing) TEvent (Lit TEvent LEvent)
-                                            , After (SSMTime (BOp TUInt64 (Lit TUInt64 (LUInt64 1)) (Lit TUInt64 (LUInt64 1000000000)) OTimes)) (Dynamic (Ident "fresh0" Nothing,Ref TEvent)) (Lit TEvent LEvent)
+                                            , After (BOp TUInt64 (Lit TUInt64 (LUInt64 1)) (Lit TUInt64 (LUInt64 1000000000)) OTimes) (Dynamic (Ident "fresh0" Nothing,Ref TEvent)) (Lit TEvent LEvent)
                                             , Wait [Dynamic (Ident "fresh0" Nothing,Ref TEvent)]]})
                        ,( Ident "fun0" Nothing
                         , Procedure (Ident "fun0" Nothing) [] [Fork [(Ident "generatedfresh0" Nothing,[])]]

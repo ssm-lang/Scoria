@@ -14,7 +14,7 @@ import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 import Data.Int
 
-delay :: SSMTime -> SSM ()
+delay :: Exp Time -> SSM ()
 delay time = do
     wake <- var event'
     after time wake event'
@@ -31,7 +31,7 @@ p = Program
                        , Procedure { name = Ident "generatedfresh0" Nothing
                                    , arguments = []
                                    , body = [ NewRef (Ident "fresh0" Nothing) TEvent (Lit TEvent LEvent)
-                                            , After (SSMTime (Lit TUInt64 (LUInt64 2))) (Dynamic (Ident "fresh0" Nothing,Ref TEvent)) (Lit TEvent LEvent)
+                                            , After (Lit TUInt64 (LUInt64 2)) (Dynamic (Ident "fresh0" Nothing,Ref TEvent)) (Lit TEvent LEvent)
                                             , Wait [Dynamic (Ident "fresh0" Nothing,Ref TEvent)]]})
                        ,( Ident "fun0" Nothing
                         , Procedure (Ident "fun0" Nothing) [] [Fork [(Ident "generatedfresh0" Nothing,[])]]
