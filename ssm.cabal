@@ -160,6 +160,7 @@ test-suite 1-regression-syntax
       Regression.SynthesizeAdditionSpec
       Regression.SynthesizeDelaySpec
       Regression.SynthesizeForeverRecurseSpec
+      Regression.SynthesizeRecursiveSpec
       Paths_ssm
   hs-source-dirs:
       test/lib

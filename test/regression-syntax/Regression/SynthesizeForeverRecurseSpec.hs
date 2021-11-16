@@ -13,7 +13,7 @@ import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 import Data.Int
-import SSM.Pretty
+
 fun0 :: SSM ()
 fun0 = routine $ do
     x <- var (0 :: Exp Int64)
