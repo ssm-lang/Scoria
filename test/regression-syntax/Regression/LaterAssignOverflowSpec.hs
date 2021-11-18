@@ -48,10 +48,10 @@ p = Program
                 , Procedure
                   { name = Ident "fun1" Nothing
                   , arguments = [(Ident "ref1" Nothing, Ref TBool), (Ident "ref3" Nothing, Ref TInt32)]
-                  , body = [ After (SSMTime (Lit TUInt64 (LUInt64 2)))
+                  , body = [ After (Lit TUInt64 (LUInt64 2))
                                    (Dynamic (Ident "ref1" Nothing, Ref TBool))
                                    (Lit TBool (LBool True))
-                           , After (SSMTime (Lit TUInt64 (LUInt64 1)))
+                           , After (Lit TUInt64 (LUInt64 1))
                                    (Dynamic (Ident "ref3" Nothing, Ref TInt32))
                                    (Lit TInt32 (LInt32 3))
                            , SetRef (Dynamic (Ident "ref3" Nothing, Ref TInt32)) (Lit TInt32 (LInt32 4))

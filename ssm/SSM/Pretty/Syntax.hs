@@ -122,7 +122,7 @@ prettyStm stm = case stm of
     Skip           -> return ()
 
     After d r v    -> emit $ concat [ "after "
-                                    , prettySSMTime d
+                                    , prettySSMExp d
                                     , " then "
                                     , refName r
                                     , " = "
@@ -218,6 +218,3 @@ prettyBinop op = case op of
     OBAnd   -> "&"
     OBOr    -> "|"
     OBXor   -> "xor"
-
-prettySSMTime :: SSMTime -> String
-prettySSMTime (SSMTime d) = prettySSMExp d

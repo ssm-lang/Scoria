@@ -30,11 +30,11 @@ p = Program
                   , arguments = [(Ident "ref2" Nothing, Ref TBool)]
                   , body      = [ While
                                     (Lit TBool (LBool True))
-                                    [ After (SSMTime (Lit TUInt64 (LUInt64 2)))
+                                    [ After (Lit TUInt64 (LUInt64 2))
                                             (Dynamic (Ident "ref2" Nothing, Ref TBool))
                                             (Lit TBool (LBool False))
                                     , Wait [Dynamic (Ident "ref2" Nothing, Ref TBool)]
-                                    , After (SSMTime (Lit TUInt64 (LUInt64 2)))
+                                    , After (Lit TUInt64 (LUInt64 2))
                                             (Dynamic (Ident "ref2" Nothing, Ref TBool))
                                             (Lit TBool (LBool True))
                                     , Wait [Dynamic (Ident "ref2" Nothing, Ref TBool)]

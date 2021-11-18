@@ -829,8 +829,8 @@ getBool (Lit _ (LBool b)) = b
 getBool e                 = expTypeError "Bool" e
 
 -- | Recursively evaluate an @SSMTime@ value.
-genTimeDelay :: SSMTime -> Interp s Word64
-genTimeDelay (SSMTime d) = getUInt64 <$> eval d
+genTimeDelay :: SSMExp -> Interp s Word64
+genTimeDelay d = getUInt64 <$> eval d
 
 -- | Obtain type and concrete representation of an expression; only works for
 -- literals.

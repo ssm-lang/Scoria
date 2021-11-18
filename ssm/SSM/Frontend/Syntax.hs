@@ -36,9 +36,6 @@ module SSM.Frontend.Syntax
   , S.BinOp(..)
   , S.expType
 
-      -- * Time
-  , S.SSMTime(..)
-
       -- * Identifiers
   , Ident(..)
 
@@ -98,7 +95,7 @@ data SSMStm
     | While S.SSMExp (SSM ())                -- ^ Loop construct
 
     -- | SSM specific operations
-    | After S.SSMTime Reference S.SSMExp  -- ^ Scheduled assignment
+    | After S.SSMExp Reference S.SSMExp  -- ^ Scheduled assignment
     | Wait [Reference]                   -- ^ Wait for any of the references to be written to
     | Fork [SSM ()]                        -- ^ Fork a list of procedures
 
@@ -321,7 +318,7 @@ freeInStm bound (x:xs) = case x of
         inbdy = freeInStm bound bdy
     in inc <> inbdy <> freeInStm bound xs
   S.Skip -> freeInStm bound xs
-  S.After (S.SSMTime e) r v ->
+  S.After e r v ->
     let ine = freeInExp bound e
         inv = freeInExp bound v
     in if r `elem` bound

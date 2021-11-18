@@ -12,6 +12,7 @@ issue on GitHub where we are discussing monomorphisation strategies.
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE DerivingVia #-}
 module SSM.Frontend.Language
     ( -- * The SSM Embedded language
 
@@ -66,17 +67,14 @@ module SSM.Frontend.Language
     , event'
 
     --- *** Time wrappers
-    , SSMTime
+    , Time
     , nsecs
     , usecs
     , msecs
     , secs
     , mins
     , hrs
-    , (//)
     , time2ns
-    , liftT
-    , lift2T
 
       -- ** Primitive statements
       {- | These are the primitive statements of the SSM language. Your procedure
@@ -243,76 +241,82 @@ event' = Exp $ Lit TEvent LEvent
 
 -- Time wrappers for use in stmts/expressions that expect time values.
 
+{- | Abstract type that's used to talk about times. The implementation details should
+not be relied upon, and the strict API exposed here should be used.
+
+@Exp Time@ can be created with:
+
+  1. Numeric literals (which denote time in milliseconds)
+  2. nsecs
+  3. usecs
+  4. msecs
+  5. secs
+  6. mins
+  7. hrs
+
+-}
+newtype Time = Time Word64 -- ^ We only use @Time@ as a Phantom type though
+  deriving Num      via Word64 -- but we derive these goodies to get type information
+  deriving Ord      via Word64
+  deriving Eq       via Word64
+  deriving Real     via Word64
+  deriving Enum     via Word64
+  deriving Integral via Word64
+
+instance SSMType Time where
+  typeOf _ = TUInt64
+
+instance {-# OVERLAPPING #-} Num (Exp Time) where
+  Exp e1 + Exp e2 = Exp $ BOp TUInt64 e1 e2 OPlus
+  Exp e1 - Exp e2 = Exp $ BOp TUInt64 e1 e2 OMinus
+  Exp e1 * Exp e2 = Exp $ BOp TUInt64 e1 e2 OTimes
+  fromInteger i = msecs $ fromInteger i
+  abs e = e
+  signum _ = Exp $ Lit TUInt64 $ LUInt64 1
+
 -- | Specify @e@ has units of nanoseconds. 
-nsecs :: Exp Word64 -> SSMTime
-nsecs (Exp e) = SSMTime e
+nsecs :: Exp Word64 -> Exp Time
+nsecs (Exp e) = Exp e
 
 -- | Specify @e@ has units of microseconds. 
-usecs :: Exp Word64 -> SSMTime
-usecs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes
+usecs :: Exp Word64 -> Exp Time
+usecs (Exp e) = Exp $ BOp TUInt64 e factor OTimes
   where
     factor :: SSMExp
     factor = Lit TUInt64 $ LUInt64 1000
 
 -- | Specify @e@ has units of milliseconds. 
-msecs :: Exp Word64 -> SSMTime
-msecs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes
+msecs :: Exp Word64 -> Exp Time
+msecs (Exp e) = Exp $ BOp TUInt64 e factor OTimes
   where
     factor :: SSMExp
     factor = Lit TUInt64 $ LUInt64 1000000
 
 -- | Specify @e@ has units of seconds. 
-secs :: Exp Word64 -> SSMTime
-secs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes
+secs :: Exp Word64 -> Exp Time
+secs (Exp e) = Exp $ BOp TUInt64 e factor OTimes
   where
     factor :: SSMExp
     factor = Lit TUInt64 $ LUInt64 1000000000
 
 -- | Specify @e@ has units of minutes. 
-mins :: Exp Word64 -> SSMTime
-mins (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes
+mins :: Exp Word64 -> Exp Time
+mins (Exp e) = Exp $ BOp TUInt64 e factor OTimes
   where
     factor :: SSMExp
     factor = Lit TUInt64 $ LUInt64 60000000000
 
 -- | Specify @e@ has units of hours.
-hrs :: Exp Word64 -> SSMTime
-hrs (Exp e) = SSMTime $ BOp TUInt64 e factor OTimes 
+hrs :: Exp Word64 -> Exp Time
+hrs (Exp e) = Exp $ BOp TUInt64 e factor OTimes 
   where
     factor :: SSMExp
     factor = Lit TUInt64 $ LUInt64 3600000000000
 
 {- | Turn a `SSMTime` into a `Exp Word64`, where the @Word64@ denotes the time in
 nanoseconds. -}
-time2ns :: SSMTime -> Exp Word64
-time2ns (SSMTime e) = Exp e
-
-{- | More direct division of time. E.g @t // 5@ divides a time into one fifth of the
-original time. This function can be convenient when you need to calculate delays etc. -}
-(//) :: SSMTime -> Exp Word64 -> SSMTime
-t // e = lift2T (/.) t (nsecs e)
-
-instance Num SSMTime where
-    t1 + t2       = lift2T (+) t1 t2
-    t1 - t2       = lift2T (-) t1 t2
-    t1 * t2       = undefined
-    fromInteger _ = undefined
-    abs _         = undefined
-    signum _      = undefined
-
-{- | Lift an expression operator to operate on `SSMTime` instead.
-
-Note: The time value is implicitly converted to an expression denoting the time in
-nanoseconds and then converted back to a time. -}
-liftT :: (Exp Word64 -> Exp Word64) -> SSMTime -> SSMTime
-liftT f op = nsecs $ f $ time2ns op
-
-{- | Lift a binary expression operator to operate on `SSMTime` instead.
-
-Note: The time value is implicitly converted to an expression denoting the time in
-nanoseconds and then converted back to a time. -}
-lift2T :: (Exp Word64 -> Exp Word64 -> Exp Word64) -> SSMTime -> SSMTime -> SSMTime
-lift2T f op1 op2 = nsecs $ f (time2ns op1) (time2ns op2)
+time2ns :: Exp Time -> Exp Word64
+time2ns (Exp e) = Exp e
 
 -- | Dereference a reference and get an expression holding the result
 deref :: forall a . SSMType a => Ref a -> Exp a
@@ -340,8 +344,8 @@ waitFor r e = do
 
 {- | Scheduled assignment. @after d r v@ means that after @d@ units of time, the
 reference @r@ should receive the value @v@. -}
-after :: SSMTime -> Ref a -> Exp a -> SSM ()
-after d (Ptr r) (Exp v) = emit $ After d r v
+after :: Exp Time -> Ref a -> Exp a -> SSM ()
+after (Exp d) (Ptr r) (Exp v) = emit $ After d r v
 
 -- | Fork one or more procedures.
 fork :: [SSM ()] -> SSM ()

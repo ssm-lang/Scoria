@@ -32,7 +32,7 @@ p = Program
                         , Procedure (Ident "fun0" Nothing) []
                             [ NewRef (Ident "fresh0" Nothing) TInt64 (Lit TInt64 (LInt64 0))
                             , NewRef (Ident "fresh1" Nothing) TInt64 (Lit TInt64 (LInt64 1))
-                            ,    Fork [(Ident "generatedfresh0" Nothing,[Right $ Dynamic (Ident "fresh0" Nothing, Ref TInt64), Right $ Dynamic (Ident "fresh1" Nothing, Ref TInt64)])]]
+                            , Fork [(Ident "generatedfresh0" Nothing,[Right $ Dynamic (Ident "fresh0" Nothing, Ref TInt64), Right $ Dynamic (Ident "fresh1" Nothing, Ref TInt64)])]]
                         )
                        ]
     , peripherals = []}
