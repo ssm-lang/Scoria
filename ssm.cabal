@@ -44,6 +44,7 @@ library
       SSM.Core.Type
       SSM.FreqGen
       SSM.Freqmime
+      SSM.FrequencyMime
       SSM.Frontend.Box
       SSM.Frontend.Compile
       SSM.Frontend.Exp
@@ -65,7 +66,6 @@ library
       SSM.Plugin
       SSM.Pretty
       SSM.Pretty.Syntax
-      SSM.Test
       SSM.Util.Default
       SSM.Util.HughesList
       SSM.Util.Operators
