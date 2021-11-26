@@ -15,6 +15,7 @@ module SSM.Core.Peripheral
     , StaticOutputVariant(..)
     , BLEHandler(..)
     , IsPeripheral(..)
+    , IndependentInit(..)
     ) where
 
 import           Data.Word                      ( Word8 )
@@ -42,6 +43,9 @@ data Initializer
     reference, and that it needs to be initialized as the kind of static input described
     by the `StaticInputVariant` type. -}
     | StaticInput StaticInputVariant Reference
+    | Independent IndependentInit
+
+data IndependentInit = BLEEnable
 
 -- | Static input variants.
 data StaticInputVariant = Switch Word8 -- ^ Switch GPIO

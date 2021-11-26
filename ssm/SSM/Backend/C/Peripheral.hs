@@ -31,6 +31,8 @@ maininit (Peripheral a) = concatMap compInitializer $ mainInitializers a
  where
   compInitializer :: Initializer -> [C.BlockItem]
   compInitializer i = case i of
+    Independent ind -> case ind of
+      BLEEnable -> [[citem| enable_ble_stack(); |]]
     Normal ref ->
       let bt     = dereference $ refType ref
           init   = initialize_ bt [cexp|&$id:(refName ref)|]

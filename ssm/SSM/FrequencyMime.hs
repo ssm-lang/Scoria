@@ -57,8 +57,8 @@ generator = do
   let ?led0 = led
       ?ble  = ble
 
-  schedule entry
   schedule handler
+  schedule entry
   schedule broadcast
   schedule scanning
 

@@ -31,10 +31,12 @@ data BasicBLE = BasicBLE
 instance IsPeripheral BasicBLE where
     declaredReferences = basicBLERefs
 
-    mainInitializers ble = concat [normalInits, specials]
+    mainInitializers ble = concat [enable, normalInits, specials]
       where
         (broadcast : broadcastControl : scan : scanControl : _) =
             basicBLERefs ble
+
+        enable = [ Independent BLEEnable ]
 
         -- initialize the references like you normally initialize them
         normalInits =
