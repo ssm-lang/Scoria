@@ -108,7 +108,7 @@ data Proc s = Proc
 -- | Create the initial process.
 mkProc
   :: InterpretConfig          -- ^ Configuration
-  -> Program                  -- ^ Program
+  -> Program backend          -- ^ Program
   -> Procedure                -- ^ Entry point
   -> Proc s
 mkProc conf p fun = Proc { procName        = identName $ entry p
@@ -176,7 +176,7 @@ data St s = St
 -- | Create initial state for interpreter.
 initState
   :: InterpretConfig       -- ^ Configuration
-  -> Program               -- ^ Program
+  -> Program backend       -- ^ Program
   -> Word64                -- ^ Start time
   -> Map.Map Ident (Var s) -- ^ Global references
   -> Proc s                -- ^ Entry point
@@ -201,7 +201,7 @@ initState conf p startTime glob entryPoint = St
 @(name, variable)@ pairs that make up the references in the variable storage
 that appear as input parameters to the program.
 -}
-getReferences :: Program -> Map.Map Ident (Var s) -> [(Ident, Var s)]
+getReferences :: Program backend -> Map.Map Ident (Var s) -> [(Ident, Var s)]
 getReferences p m = case Map.lookup (entry p) (funs p) of
   Just pr ->
     let refparams  = filter (isReference . snd) $ arguments pr

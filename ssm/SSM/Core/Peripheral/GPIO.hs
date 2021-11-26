@@ -12,6 +12,9 @@ code is being generated and the interpreter is ran, this is the datatype that wi
 describe which pins are being used, what type of pin they are and what names they were
 assigned. Regardless of how the frontend language lets the programmer interact with GPIO,
 this describes how the core syntax interacts with GPIO. -}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
 module SSM.Core.Peripheral.GPIO
   ( GPIOPeripheral
   , switchpins
@@ -30,6 +33,7 @@ import           SSM.Core.Reference             ( makeStaticRef )
 import           SSM.Core.Type                  ( Type(TBool)
                                                 , mkReference
                                                 )
+import           SSM.Core.Backend
 
 -- | Datatype that describes which GPIO pins are used.
 data GPIOPeripheral = GPIOPeripheral
@@ -39,17 +43,21 @@ data GPIOPeripheral = GPIOPeripheral
   }
   deriving (Show, Read, Eq)
 
--- | IsPeripheral instance for `GPIOPeripheral`, so that we can compile peripherals.
-instance IsPeripheral GPIOPeripheral where
-  declaredReferences gpio =
-    map (flip makeStaticRef (mkReference TBool) . snd) $ switchpins gpio
+instance IsPeripheral C GPIOPeripheral where
+  type Definition C = ()
+  type Initialization C = ()
 
-  mainInitializers gpio = concatMap initializeSingle $ switchpins gpio
-   where
-    initializeSingle :: (Word8, Ident) -> [Initializer]
-    initializeSingle (i, id) =
-      let ref = makeStaticRef id $ mkReference TBool
-      in  [Normal ref, StaticInput (Switch i) ref]
+-- -- | IsPeripheral instance for `GPIOPeripheral`, so that we can compile peripherals.
+-- instance IsPeripheral GPIOPeripheral where
+--   declaredReferences gpio =
+--     map (flip makeStaticRef (mkReference TBool) . snd) $ switchpins gpio
+
+--   mainInitializers gpio = concatMap initializeSingle $ switchpins gpio
+--    where
+--     initializeSingle :: (Word8, Ident) -> [Initializer]
+--     initializeSingle (i, id) =
+--       let ref = makeStaticRef id $ mkReference TBool
+--       in  [Normal ref, StaticInput (Switch i) ref]
 
 {- | Create an initial GPIO Peripheral description. In the initial description, no GPIO
 pins are used. -}

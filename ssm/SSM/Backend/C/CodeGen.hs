@@ -8,7 +8,7 @@
 
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE QuasiQuotes #-}
-
+{-# LANGUAGE DataKinds #-}
 module SSM.Backend.C.CodeGen
   ( compile_
   ) where
@@ -36,7 +36,7 @@ import qualified SSM.Interpret.Trace           as T
 
 -- | Given a 'Program', returns a tuple containing the compiled program and
 -- a list of all `include` statements.
-compile_ :: Program -> ([C.Definition], [C.Definition])
+compile_ :: Program C -> ([C.Definition], [C.Definition])
 compile_ program = (compUnit, includes)
  where
   -- | The file to generate, minus include statements
@@ -116,7 +116,7 @@ actm :: CIdent
 actm = "act"
 
 -- | Generate the entry point of a program - the first thing to be ran.
-genInitProgram :: Program -> [C.Definition]
+genInitProgram :: Program C -> [C.Definition]
 genInitProgram p = [cunit|
   int $id:initialize_program(void) {
     $items:(initPeripherals p)

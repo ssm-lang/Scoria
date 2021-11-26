@@ -11,11 +11,15 @@ This module is intended to act as a simple example of what we can do. Our ambiti
 add support for the entire BLE stack.
 
 -}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
 module SSM.Core.Peripheral.BasicBLE where
 
 import           SSM.Core.Ident
 import           SSM.Core.Reference
 import           SSM.Core.Type
+import           SSM.Core.Backend
 
 import           SSM.Core.Peripheral
 
@@ -28,27 +32,31 @@ data BasicBLE = BasicBLE
     }
   deriving (Show, Read, Eq)
 
-instance IsPeripheral BasicBLE where
-    declaredReferences = basicBLERefs
+instance IsPeripheral C BasicBLE where
+  type Definition C = ()
+  type Initialization C = ()
 
-    mainInitializers ble = concat [enable, normalInits, specials]
-      where
-        (broadcast : broadcastControl : scan : scanControl : _) =
-            basicBLERefs ble
+-- instance IsPeripheral BasicBLE where
+--     declaredReferences = basicBLERefs
 
-        enable = [ Independent BLEEnable ]
+--     mainInitializers ble = concat [enable, normalInits, specials]
+--       where
+--         (broadcast : broadcastControl : scan : scanControl : _) =
+--             basicBLERefs ble
 
-        -- initialize the references like you normally initialize them
-        normalInits =
-            [ Normal broadcast
-            , Normal broadcastControl
-            , Normal scan
-            , Normal scanControl
-            ]
+--         enable = [ Independent BLEEnable ]
 
-        -- perform the BLE input-specific initializations
-        specials =
-            [ StaticInput BLEScan scan ]
+--         -- initialize the references like you normally initialize them
+--         normalInits =
+--             [ Normal broadcast
+--             , Normal broadcastControl
+--             , Normal scan
+--             , Normal scanControl
+--             ]
+
+--         -- perform the BLE input-specific initializations
+--         specials =
+--             [ StaticInput BLEScan scan ]
 
 basicBLERefs :: BasicBLE -> [Reference]
 basicBLERefs ble = map

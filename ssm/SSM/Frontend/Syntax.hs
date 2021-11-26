@@ -12,6 +12,7 @@ procedure definition (as a monadic computation).
 -}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module SSM.Frontend.Syntax
   ( -- * Types
     Type(..)
@@ -176,7 +177,7 @@ getProcedureName _                     = error "not a procedure"
 {- | Instance of `SSM.Core.Syntax.SSMProgram`, so that the compiler knows how to turn
 the frontend representation into something that it can generate code for. Just compiling
 a program does not introduce any global variables. -}
-instance SP.SSMProgram (SSM ()) where
+instance SP.SSMProgram backend (SSM ()) where
   toProgram p =
     let (n, f) = transpile p in SP.Program [SP.SSMProcedure n []] f []
 

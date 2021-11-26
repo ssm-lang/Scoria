@@ -7,6 +7,9 @@ core representation. An alternative would be to have the core representation use
 \"C-compileable\" constraint instead, but then we would tie the core representation to
 the fact that there exists a C backend. -}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DataKinds #-}
 module SSM.Core.Peripheral
     ( Peripheral(..)
     , Initializer(..)
@@ -22,17 +25,17 @@ import           Data.Word                      ( Word8 )
 import           SSM.Core.Reference             ( Reference )
 
 -- | Type of peripherals
-data Peripheral where
+data Peripheral backend where
     -- | A `Peripheral` holds an object that has an instance of `IsPeripheral`
-    Peripheral ::(IsPeripheral a, Show a, Read a, Eq a) => a -> Peripheral
+    Peripheral ::(IsPeripheral backend a, Show a, Read a, Eq a) => a -> Peripheral backend
 
-instance Show Peripheral where
+instance Show (Peripheral backend) where
     show (Peripheral p) = show p
 
-instance Read Peripheral where
+instance Read (Peripheral backend) where
     readsPrec = undefined
 
-instance Eq Peripheral where
+instance Eq (Peripheral backend) where
     (==) = undefined
 
 {- | Different types of peripherals might require different kinds of initialization.
@@ -68,8 +71,16 @@ data BLEHandler
     | ScanControl
   deriving (Show, Read, Eq)
 
--- | Class of types that are peripherals
-class IsPeripheral a where
-    declaredReferences :: a -> [Reference]  -- ^ Globally declared references
-    -- | Initialization to perform before program startup
-    mainInitializers :: a -> [Initializer]
+-- -- | Class of types that are peripherals
+-- class IsPeripheral a where
+--     declaredReferences :: a -> [Reference]  -- ^ Globally declared references
+--     -- | Initialization to perform before program startup
+--     mainInitializers :: a -> [Initializer]
+
+class IsPeripheral backend a where
+    type Definition backend
+    type Initialization backend
+
+    declaredReferences   :: proxy backend -> a -> [Reference]
+    globalDeclarations   :: proxy backend -> a -> [Definition backend]
+    staticInitialization :: proxy backend -> a -> [Initialization backend]

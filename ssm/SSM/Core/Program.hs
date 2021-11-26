@@ -1,6 +1,10 @@
 {- | This module implements the `Procedure` type and the `Program` type, which represents
 the kind of procedures we can have in an SSM program and how an entire SSM program is
 represented. -}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE KindSignatures #-}
 module SSM.Core.Program
     ( Procedure(..)
     , QueueContent(..)
@@ -42,7 +46,7 @@ data QueueContent
 
 {- | Get the identifier of the SSM procedure that is scheduled at the start of a SSM
 program -}
-entry :: Program -> Ident
+entry :: Program backend -> Ident
 entry p = getInitialProcedure' $ initialQueueContent p
   where
     getInitialProcedure' :: [QueueContent] -> Ident
@@ -55,26 +59,26 @@ entry p = getInitialProcedure' $ initialQueueContent p
     getInitialProcedure' (_                 : xs) = getInitialProcedure' xs
 
 -- | Program definition
-data Program = Program
+data Program backend = Program
     { -- | The things that should be scheduled when the program starts
       initialQueueContent :: [QueueContent]
       -- | Map that associates procedure names with their definitions.
     , funs                :: Map.Map Ident Procedure
       -- | Name and type of references that exist in the global scope.
       -- | Any peripherals used by the program
-    , peripherals         :: [Peripheral]
+    , peripherals         :: [Peripheral backend]
     }
     deriving (Show, Read)
 
-instance Eq Program where
+instance Eq (Program backend) where
   p1 == p2 = initialQueueContent p1 == initialQueueContent p2 &&
              funs p1 == funs p2
 
 -- | Class of types that can be converted to a `Program`.
-class SSMProgram a where
+class SSMProgram backend a where
   -- | This function takes an @a@ and converts it to a `Program`
-  toProgram :: a -> Program
+  toProgram :: a -> Program backend
 
 -- | Dummy instance for `Program`. Does nothing -- defined to be the identity function.
-instance SSMProgram Program where
+instance SSMProgram backend (Program backend) where
     toProgram = id

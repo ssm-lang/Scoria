@@ -1,8 +1,11 @@
 {-| This module exposes a pretty printer of programs. -}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module SSM.Pretty.Syntax ( prettyProgram ) where
 
 import qualified Data.Map as Map
 import Data.List
+import Data.Proxy
 
 import Control.Monad.Reader
     ( ReaderT(runReaderT), MonadReader(local, ask) )
@@ -36,12 +39,12 @@ intercalateM ma (x:y:xs) = do
 {- | Pretty print a program. There is no control of line width currently.
 If your program contains many nested if's or something, they will be turned
 into quite wide statements. -}
-prettyProgram :: Program -> String
+prettyProgram :: Program backend -> String
 prettyProgram ssm = let wr = runReaderT (prettyProgram' ssm) 0
                         h  = execWriter wr
                     in unlines $ fromHughes h
 
-prettyProgram' :: Program -> PP ()
+prettyProgram' :: Program backend -> PP ()
 prettyProgram' p = do
     emit "initial ready-queue content:"
     mapM_ (indent . emit . prettyQueueContent) (initialQueueContent p) 
@@ -78,9 +81,9 @@ prettyReferenceDecls :: [Reference] -> PP ()
 prettyReferenceDecls xs = flip mapM_ xs $ \ref ->
     indent $ emit $ concat [prettyType (refType ref), " ", refName ref]
 
-prettyPeripheralDeclarations :: Peripheral -> PP ()
+prettyPeripheralDeclarations :: forall backend . Peripheral backend -> PP ()
 prettyPeripheralDeclarations (Peripheral p) =
-    prettyReferenceDecls $ declaredReferences p
+    prettyReferenceDecls $ declaredReferences (Proxy @backend) p
 
 prettyProcedure :: Procedure -> PP ()
 prettyProcedure p = do

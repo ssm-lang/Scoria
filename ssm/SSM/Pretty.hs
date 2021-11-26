@@ -56,6 +56,13 @@ fun1(*uint64 ref2, *int ref4, *bool ref5, *int64 ref8, *int64 ref9) {
 @
 
 which is at least slightly more readable.-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 module SSM.Pretty
     ( -- * Prettyprint SSM programs
       prettySSM
@@ -66,6 +73,7 @@ module SSM.Pretty
 --import SSM.Core.Syntax ( SSM )
 import SSM.Core.Program
 import SSM.Pretty.Syntax ( prettyProgram )
+import SSM.Core.Backend
 
-prettySSM :: SSMProgram a => a -> String
-prettySSM = prettyProgram . toProgram
+prettySSM :: forall backend a . SSMProgram backend a => a -> String
+prettySSM = prettyProgram . toProgram @backend

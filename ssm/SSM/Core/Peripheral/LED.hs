@@ -1,4 +1,7 @@
 {- | Core representation of LED peripherals. -}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
 module SSM.Core.Peripheral.LED where
 
 import           SSM.Core.Ident                 ( Ident )
@@ -9,6 +12,7 @@ import           SSM.Core.Reference             ( makeStaticRef )
 import           SSM.Core.Type                  ( Type(TBool)
                                                 , mkReference
                                                 )
+import           SSM.Core.Backend
 
 import qualified Data.Map                      as Map
 import           Data.Word                      ( Word8 )
@@ -20,16 +24,20 @@ data LEDPeripheral = LEDPeripheral
     }
     deriving (Eq, Show, Read)
 
--- | `IsPeripheral` instance for `LEDPeripheral`, so that we can compile `LEDPeripheral`s.
-instance IsPeripheral LEDPeripheral where
-    declaredReferences lp =
-        map (flip makeStaticRef (mkReference TBool) . snd) $ onoffLEDs lp
+instance IsPeripheral C LEDPeripheral where
+    type Definition C = ()
+    type Initialization C = ()
 
-    mainInitializers lp = concatMap initializeSingle $ onoffLEDs lp
-      where
-        initializeSingle :: (Word8, Ident) -> [Initializer]
-        initializeSingle (_, id) =
-            let ref = makeStaticRef id $ mkReference TBool in [Normal ref]
+-- -- | `IsPeripheral` instance for `LEDPeripheral`, so that we can compile `LEDPeripheral`s.
+-- instance IsPeripheral LEDPeripheral where
+--     declaredReferences lp =
+--         map (flip makeStaticRef (mkReference TBool) . snd) $ onoffLEDs lp
+
+--     mainInitializers lp = concatMap initializeSingle $ onoffLEDs lp
+--       where
+--         initializeSingle :: (Word8, Ident) -> [Initializer]
+--         initializeSingle (_, id) =
+--             let ref = makeStaticRef id $ mkReference TBool in [Normal ref]
 
 -- | Create an initial LED peripheral
 emptyLEDPeripheral :: LEDPeripheral

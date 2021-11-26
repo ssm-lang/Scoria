@@ -4,6 +4,8 @@ should be visible in the entire program, or it could be IO peripherals.
 -}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
 module SSM.Frontend.Compile where
 
 import           SSM.Core                      as SC
@@ -43,7 +45,10 @@ instance IntState CompileSt where
 {- | If you have a @Compile (SSM ())@ you have probably set up some global variables
 using the @Compile@ monad. This instance makes sure that you can compile and interpret
 something that is a program with such global variables. -}
-instance SSMProgram (Compile ()) where
+instance ( IsPeripheral backend GPIOPeripheral
+         , IsPeripheral backend LEDPeripheral
+         , IsPeripheral backend IdentityPeripheral
+         , IsPeripheral backend BasicBLE) => SSMProgram backend (Compile ()) where
     toProgram (Compile p) =
         let (a, s) = runState
                 p

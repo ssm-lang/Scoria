@@ -1,12 +1,16 @@
 {- | This module implements an identity peripheral. This is a peripheral that has no side
 effects. It is suitable for declaring references that should exist in the global scope
 rather than in the context of an activation record. -}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
 module SSM.Core.Peripheral.Identity where
 
 import           SSM.Core.Ident
 import           SSM.Core.Peripheral
 import           SSM.Core.Reference
 import           SSM.Core.Type
+import           SSM.Core.Backend
 
 import qualified Data.Map                      as Map
 
@@ -18,11 +22,15 @@ data IdentityPeripheral = IdentityPeripheral
     }
   deriving (Show, Read, Eq)
 
-instance IsPeripheral IdentityPeripheral where
-    declaredReferences ip =
-        map (uncurry makeStaticRef) $ Map.toList $ identitySVs ip
-    mainInitializers ip =
-        map (Normal . uncurry makeStaticRef) $ Map.toList $ identitySVs ip
+instance IsPeripheral C IdentityPeripheral where
+    type Definition C = ()
+    type Initialization C = ()
+
+-- instance IsPeripheral IdentityPeripheral where
+--     declaredReferences ip =
+--         map (uncurry makeStaticRef) $ Map.toList $ identitySVs ip
+--     mainInitializers ip =
+--         map (Normal . uncurry makeStaticRef) $ Map.toList $ identitySVs ip
 
 emptyIdentityPeripheral :: IdentityPeripheral
 emptyIdentityPeripheral = IdentityPeripheral Map.empty
