@@ -116,7 +116,7 @@ mmmain = do
   where
     mmain :: (?led::Ref LED) => SSM ()
     mmain = boxNullary "mmain" $ do
-        while true' $ do
+        while true $ do
             after (secs 1) ?led on
             wait ?led
             after (secs 1) ?led off
@@ -274,7 +274,7 @@ source this next = do
   where
       sourceCommunication :: (?ble :: BBLE) => SSM ()
       sourceCommunication = boxNullary "sourceCommunication" $ do
-          while true' $ do
+          while true $ do
               fork [sendMsg this next 0 ack0]
               fork [sendMsg this next 1 ack1]
               fork [sendMsg this next 2 ack0]
@@ -302,7 +302,7 @@ relay this previous next = do
       relayMessage :: (?ble :: BBLE) => SSM ()
       relayMessage = boxNullary "relayMessage" $ do
           enableScan
-          while true' $ do
+          while true $ do
                -- wait for a message
               doWhile
                 (wait scanref)
@@ -349,7 +349,7 @@ sink this = do
                  , ?led3 :: Ref LED
                  ) => SSM ()
       theSink = boxNullary "theSink" $ do
-          while true' $ do
+          while true $ do
               enableScan
 
               -- wait to receive message
@@ -395,8 +395,8 @@ switchCaseD test ((cond, br) : bs) def =
 -- also include box version, and partially boxed
 delay :: Exp Time -> SSM ()
 delay x = do
-  wake <- var event'
-  after x wake event'
+  wake <- var event
+  after x wake event
   wait wake
 
 
@@ -434,6 +434,6 @@ buttonBlinky = do
 
     program :: (?led :: Ref LED, ?button :: Ref SW) => SSM ()
     program = boxNullary "program" $ do
-      while true' $ do
+      while true $ do
         wait ?button
         ?led <~ deref ?button

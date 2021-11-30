@@ -23,8 +23,8 @@ delay time = fork [ delayP time ]
 
 delayP :: Exp Time -> SSM ()
 delayP time = routine $ do
-    wake <- var event'
-    after time wake event'
+    wake <- var event
+    after time wake event
     wait wake
 
 -- frequency generator
@@ -33,14 +33,14 @@ delayP time = routine $ do
 bleHandler :: (?ble :: BBLE) => Ref Time -> SSM ()
 bleHandler period = routine $ do
     enableScan
-    while true' $ do
+    while true $ do
       wait scanref
       period <~ nsecs (deref scanref)
       delay (secs 5)
 
 -- generate the frequency 
 freqGen :: (?led0::Ref LED) => Ref Time -> SSM ()
-freqGen period = routine $ while true' $ do
+freqGen period = routine $ while true $ do
   after (deref period) ?led0 (not' $ deref ?led0)
   wait ?led0
 
@@ -68,11 +68,11 @@ generator = do
 the reference @period@. -}
 freqCount :: Ref SW -> Ref Time -> SSM ()
 freqCount sw period = routine $ do
-    gate  <- var event'
+    gate  <- var event
     count <- var $ u64 0
 
-    after (secs 1) gate event'
-    while true' $ do
+    after (secs 1) gate event
+    while true $ do
         if changed gate
             then do
                 period <~ secs 1 /. nsecs (deref count)
@@ -80,14 +80,14 @@ freqCount sw period = routine $ do
                 if changed sw
                     then count <~ 1
                     else count <~ 0
-                after (secs 1) gate event'
+                after (secs 1) gate event
                 wait gate -- sleep for 1 sec
-                after (secs 1) gate event'
+                after (secs 1) gate event
             else count <~ deref count + 1
         wait (gate, sw)
 
 freqCount2 :: Ref SW -> Ref Time -> SSM ()
-freqCount2 sw period = routine $ while true' $ do
+freqCount2 sw period = routine $ while true $ do
     period <~ (msecs 200)
     delay (secs 5)
     period <~ (msecs 500)
@@ -95,7 +95,7 @@ freqCount2 sw period = routine $ while true' $ do
 
 {- | Every 5 seconds, broadcast the period on the @period@ reference over BLE. -}
 broadcastCount :: (?ble :: BBLE) => Ref Time -> SSM ()
-broadcastCount count = routine $ while true' $ do
+broadcastCount count = routine $ while true $ do
     enableBroadcast $ time2ns $ deref count
     delay (secs 5) -- wait for 5 seconds and pray to god that the remote device picks it up
     disableBroadcast

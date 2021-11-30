@@ -62,9 +62,9 @@ module SSM.Frontend.Language
     , u64
     , min'
     , max'
-    , true'
-    , false'
-    , event'
+    , true
+    , false
+    , event
 
     --- *** Time wrappers
     , Time
@@ -228,16 +228,16 @@ max' :: forall a . (SSMType a, Num a) => Exp a -> Exp a -> Exp a
 max' (Exp e1) (Exp e2) = Exp $ BOp (typeOf (Proxy @a)) e1 e2 OMax
 
 -- | Boolean literal @True@
-true' :: Exp Bool
-true' = Exp $ Lit TBool $ LBool True
+true :: Exp Bool
+true = Exp $ Lit TBool $ LBool True
 
 -- | Boolean literal @False@
-false' :: Exp Bool
-false' = Exp $ Lit TBool $ LBool False
+false :: Exp Bool
+false = Exp $ Lit TBool $ LBool False
 
 -- | Event literal @()@
-event' :: Exp ()
-event' = Exp $ Lit TEvent LEvent
+event :: Exp ()
+event = Exp $ Lit TEvent LEvent
 
 -- Time wrappers for use in stmts/expressions that expect time values.
 

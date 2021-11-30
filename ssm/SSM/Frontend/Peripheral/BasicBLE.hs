@@ -87,22 +87,22 @@ data BBLE = BBLE
 
 -- | Enable the BLE scanning device
 enableScan :: (?ble :: BBLE) => SSM ()
-enableScan = toggleControl (scanControl ?ble) true'
+enableScan = toggleControl (scanControl ?ble) true
 
 -- | Disable the BLE scanning device
 disableScan :: (?ble :: BBLE) => SSM ()
-disableScan = toggleControl (scanControl ?ble) false'
+disableScan = toggleControl (scanControl ?ble) false
 
 -- | Enable the BLE broadcasting device, broadcasting the specified message
 enableBroadcast :: (?ble :: BBLE) => Exp Word64 -> SSM ()
 enableBroadcast value = do
     after (nsecs 1) (broadcast ?ble) value
     wait (broadcast ?ble)
-    toggleControl (broadcastControl ?ble) true'
+    toggleControl (broadcastControl ?ble) true
 
 -- | Disable the BLE broadcasting device
 disableBroadcast :: (?ble :: BBLE) => SSM ()
-disableBroadcast = toggleControl (broadcastControl ?ble) false'
+disableBroadcast = toggleControl (broadcastControl ?ble) false
 
 -- | The reference that can be used to wait for scanned messages
 scanref :: (?ble :: BBLE) => Ref Word64

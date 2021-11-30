@@ -49,7 +49,7 @@ import           SSM.Frontend.Peripheral.LED
 
 
 buttonHandler :: (?sw0::Ref SW, ?sw1::Ref SW) => Ref Word64 -> SSM ()
-buttonHandler period = routine $ while true' $ do
+buttonHandler period = routine $ while true $ do
   wait (?sw0, ?sw1)
   -- Nit: using parens for each branch is annoying
   if changed ?sw0
@@ -57,7 +57,7 @@ buttonHandler period = routine $ while true' $ do
      else period <~ max' (deref period /. 2) 1
 
 freqGen :: (?led0::Ref LED) => Ref Word64 -> SSM ()
-freqGen period = routine $ while true' $ do
+freqGen period = routine $ while true $ do
   after (nsecs $ deref period) ?led0 (not' $ deref ?led0)
   wait ?led0
 

@@ -33,9 +33,9 @@ import           SSM.Frontend.Exp               ( Exp )
 import           SSM.Frontend.Language          ( (==.)
                                                 , Ref
                                                 , deref
-                                                , false'
+                                                , false
                                                 , not'
-                                                , true'
+                                                , true
                                                 )
 import           SSM.Frontend.Ref               ( Ref(Ptr) )
 import           SSM.Frontend.Syntax            ( SSM
@@ -54,11 +54,11 @@ type LED = Bool
 
 -- | A value representing the LED-state on
 on :: Exp LED
-on = true'
+on = true
 
 -- | A value representing the LED-state off
 off :: Exp LED
-off = false'
+off = false
 
 -- | Is a LED on?
 isON :: Ref LED -> Exp Bool
