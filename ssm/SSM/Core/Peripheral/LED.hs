@@ -17,6 +17,9 @@ import           SSM.Core.Backend
 import qualified Data.Map                      as Map
 import           Data.Word                      ( Word8 )
 
+import           Language.C.Quote.GCC
+import qualified Language.C.Syntax             as C
+
 -- | LED peripherals
 data LEDPeripheral = LEDPeripheral
     { -- | Associate LED IDs with reference identifiers
@@ -25,8 +28,16 @@ data LEDPeripheral = LEDPeripheral
     deriving (Eq, Show, Read)
 
 instance IsPeripheral C LEDPeripheral where
-    type Definition C = ()
-    type Initialization C = ()
+    type Definition C     = [C.InitGroup]
+    type Initialization C = [C.BlockItem]
+
+    declaredReferences _ lp =
+        map (flip makeStaticRef (mkReference TBool) . snd) $ onoffLEDs lp
+    
+    globalDeclarations _ _ = []
+
+    staticInitialization _ lp = flip map (onoffLEDs lp) $ \(_, id) ->
+        undefined
 
 -- -- | `IsPeripheral` instance for `LEDPeripheral`, so that we can compile `LEDPeripheral`s.
 -- instance IsPeripheral LEDPeripheral where
