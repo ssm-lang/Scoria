@@ -127,18 +127,18 @@ genInitProgram p = [cunit|
   |]
  where
   -- | Create statements for scheduling the initial ready-queue content
-  initialForks :: [QueueContent] -> [C.BlockItem]
+  initialForks :: [QueueContent C] -> [C.BlockItem]
   initialForks ips =
     zipWith
       initialFork
         (pdeps
           (length ips)
-          [cexp|SSM_ROOT_PRIORITY|]
-          [cexp|SSM_ROOT_DEPTH|])
+          priority_at_root
+          depth_at_root)
         ips
     where
       -- | Create the schedule statement for a single schedulable thing
-      initialFork :: (C.Exp, C.Exp) -> QueueContent -> C.BlockItem
+      initialFork :: (C.Exp, C.Exp) -> QueueContent C -> C.BlockItem
       initialFork (priority, depth) (SSMProcedure id args) =
         [citem| $id:fork($id:(enter_ (identName id))( &$id:top_parent
                                                     , $exp:priority
@@ -146,14 +146,15 @@ genInitProgram p = [cunit|
                                                     , $args:(map cargs args)
                                                     )
                         ); |]
-      initialFork (priority, depth) (Handler h) =
-        [citem|$id:fork($id:(resolveNameOfHandler h)
-                                          ( &$id:top_parent
-                                          , $exp:priority
-                                          , $exp:depth
-                                          , $args:(argsOfHandler h)
-                                          )
-                       );|]
+      -- initialFork (priority, depth) (Handler h) =
+      --   [citem|$id:fork($id:(resolveNameOfHandler h)
+      --                                     ( &$id:top_parent
+      --                                     , $exp:priority
+      --                                     , $exp:depth
+      --                                     , $args:(argsOfHandler h)
+      --                                     )
+      --                  );|]
+      initialFork (priority, depth) (Handler f) = error "fixme"
 
       -- | Take a handler and return a list of arguments to it
       argsOfHandler :: Handler -> [C.Exp]
@@ -171,23 +172,6 @@ genInitProgram p = [cunit|
       cargs (Right r@(Static _)) = [cexp| &$id:(refName r).sv|]
       cargs (Right r@(Dynamic _)) = error "Why does StaticOutputHandler refer to a non-static var?"
       x = refName
-
-{- | Create C expressions that represent the new priorities and depths of the
-initially scheduled processes. -}
-pdeps :: Int -> C.Exp -> C.Exp -> [(C.Exp, C.Exp)]
-pdeps cs currentPrio currentDepth =
-      [ let prio  = [cexp|$exp:currentPrio + ($int:(i-1) * (1 << $exp:depth))|]
-            depth = [cexp|$exp:currentDepth - $exp:(depthSub cs)|]
-        in (prio, depth)
-      | i <- [1..cs]
-      ]
-
-{- | Calculate the subexpression that should be subtracted from the current depth
-in order to achieve the new depth of the processes to fork.
-
-The argument is the number of new processes that are being forked. -}
-depthSub :: Int -> C.Exp
-depthSub k = [cexp|$int:(ceiling $ logBase (2 :: Double) $ fromIntegral $ k :: Int) |]
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]

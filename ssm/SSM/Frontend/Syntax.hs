@@ -44,7 +44,6 @@ module SSM.Frontend.Syntax
   , SSMStm(..)
   , getProcedureName
   , renameStmt
-  , isHandler
 
       -- * SSM Monad
   , SSM(..)
@@ -105,7 +104,7 @@ data SSMStm
     {-| Records the name an argument has and what value the procedure was applied to -}
     | Argument Ident Ident (Either S.SSMExp Reference)
     | Result Ident  -- ^ Mark the end of a procedure
-    | Handler Handler
+--    | Handler Handler
 
 renameStmt :: SSMStm -> (Maybe String, Maybe (String, Int, Int)) -> SSMStm
 renameStmt s (Nothing, _      ) = s
@@ -115,24 +114,6 @@ renameStmt s (Just n, info) =
   in  case s of
         NewRef n e -> NewRef srcinfo e
         _          -> s
-
-{- | Check if an `SSM` computation represents a call to a single handler. In that case,
-return the handler. Otherwise, return Nothing. -}
-isHandler :: SSM () -> Maybe [Handler]
-isHandler ssm = case fetchHandlers $ runSSM ssm of
-  [] -> Nothing
-  handlers -> Just handlers
-  where
-    fetchHandlers :: [SSMStm] -> [Handler]
-    fetchHandlers stmts = map unwrapHandler $ filter isHandler' stmts
-
-    isHandler' :: SSMStm -> Bool
-    isHandler' (Handler _) = True
-    isHandler' _           = False
-
-    unwrapHandler :: SSMStm -> Handler
-    unwrapHandler (Handler h) = h
-    unwrapHandler _           = error "not a handler, robert did a mistake somewhere"
 
 {- | The state maintained by the SSM monad. A counter for generating fresh names and
 a list of statements that make up the program. -}
@@ -244,7 +225,6 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
   Procedure n _ _   -> return []
   Argument n x a -> return []
   Result n       -> return []
-  Handler h      -> return []
  where
   {- | Run a recursive SSM computation by using the last known name generating state.
   The last known name-generating state is updated to reflect if any new names were

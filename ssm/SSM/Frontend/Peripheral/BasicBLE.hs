@@ -41,10 +41,10 @@ import           Control.Monad.State
   describes the remote devices MAC address as a string of hex octets, separated by colon.
   E.g "AB:CD:EF:01:23:54"
 -}
-enableBasicBLE :: Compile (BBLE, SSM (), SSM ())
+enableBasicBLE :: Compile backend (BBLE, SSM (), SSM ())
 enableBasicBLE = do
     let basicble = enableBLE broadcast broadcastControl scan scanControl
-    modify $ \s -> s { basicblePeripheral = Just basicble }
+    --modify $ \s -> s { basicblePeripheral = Just basicble }
 
     let scanref             = makeStaticRef' scan
         broadcastref        = makeStaticRef' broadcast
@@ -55,11 +55,12 @@ enableBasicBLE = do
                     , scanControl      = Ptr $ scanControlref
                     , broadcastControl = Ptr $ broadcastControlref
                     }
-        broadcastHandler = do
-            emit $ Handler $ Output (BLE Broadcast) broadcastref
-            emit $ Handler $ Output (BLE BroadcastControl) broadcastControlref
-        scanControlHandler =
-            emit $ Handler $ Output (BLE ScanControl) scanControlref
+        broadcastHandler = undefined
+        -- do
+        --     emit $ Handler $ Output (BLE Broadcast) broadcastref
+        --     emit $ Handler $ Output (BLE BroadcastControl) broadcastControlref
+        scanControlHandler = undefined
+            -- emit $ Handler $ Output (BLE ScanControl) scanControlref
 
     return (bble, broadcastHandler, scanControlHandler)
   where

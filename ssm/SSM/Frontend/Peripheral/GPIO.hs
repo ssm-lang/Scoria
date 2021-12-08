@@ -27,10 +27,10 @@ isLow :: Ref SW -> Exp Bool
 isLow = not' . isHigh
 
 -- | Create a @Ref SW@ by identifying a GPIO pin with a unique ID. E.g GPIO 1.
-switch :: Word8 -> Compile (Ref SW)
+switch :: Word8 -> Compile backend (Ref SW)
 switch i = do
     n <- fresh
     let id = Ident n Nothing
-    modify $ \st ->
-        st { gpioperipherals = addSwitchGPIO i id (gpioperipherals st) }
+    -- modify $ \st ->
+    --     st { gpioperipherals = addSwitchGPIO i id (gpioperipherals st) }
     return $ Ptr $ makeStaticRef id (Ref TBool)

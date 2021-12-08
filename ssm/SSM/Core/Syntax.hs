@@ -30,7 +30,7 @@ data SSMExp
     | UOpE Type SSMExp UnaryOpE     -- ^ Unary operators on expressions
     | UOpR Type Reference UnaryOpR  -- ^ Unary operators on references
     | BOp Type SSMExp SSMExp BinOp  -- ^ Binary operators
-    deriving (Eq, Show, Read)
+    deriving (Eq, Show)
 
 -- | Literals take any of these forms
 data SSMLit
@@ -41,19 +41,19 @@ data SSMLit
     | LInt64 Int64    -- ^ 64bit integer literals
     | LBool Bool      -- ^ Boolean literals
     | LEvent          -- ^ Event literal
-    deriving (Eq, Show, Read)
+    deriving (Eq, Show)
 
 -- | Expressions of unary operators on expressions
 data UnaryOpE
     = Neg  -- ^ Numerical negation
     | Not  -- ^ Boolean negation
-    deriving (Show, Eq, Read)
+    deriving (Show, Eq)
 
 -- | Expressions of unary operators on references
 data UnaryOpR
     = Changed  -- ^ Expression represents if the reference has been written to
     | Deref    -- ^ Dereference/sample the value of a reference
-    deriving (Show, Eq, Read)
+    deriving (Show, Eq)
 
 -- | Expressions of binary operators.
 data BinOp
@@ -73,7 +73,7 @@ data BinOp
     | OBAnd   -- ^ bit conjunction
     | OBOr    -- ^ bit disjunction
     | OBXor   -- ^ bit xor
-    deriving (Eq, Show, Read)
+    deriving (Eq, Show)
 
 -- | Return the type of an expression
 expType :: SSMExp -> Type
@@ -110,4 +110,4 @@ data Stm
     {-| Fork procedures. The procedures are now identified by their name, and the fork
     site contains only that name and the arguments to apply the function to. -}
     | Fork [(Ident, [Either SSMExp Reference])]
-    deriving (Show, Eq, Read)
+    deriving (Show, Eq)

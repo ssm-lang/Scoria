@@ -69,7 +69,7 @@ entry = routine $ do
   period <- var $ time2ns $ secs 1
   fork [freqGen period, buttonHandler period]
 
-compiler :: Compile ()
+compiler :: Compile backend ()
 compiler = do
   switch0        <- switch 0
   switch1        <- switch 1

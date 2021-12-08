@@ -10,6 +10,8 @@ the fact that there exists a C backend. -}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RankNTypes #-}
 module SSM.Core.Peripheral
     ( Peripheral(..)
     , Initializer(..)
@@ -23,17 +25,17 @@ module SSM.Core.Peripheral
 
 import           Data.Word                      ( Word8 )
 import           SSM.Core.Reference             ( Reference )
+import           SSM.Core.Type                  ( Type )
+import           SSM.Core.Ident                 ( Ident )
+import           SSM.Core.Backend
 
 -- | Type of peripherals
 data Peripheral backend where
     -- | A `Peripheral` holds an object that has an instance of `IsPeripheral`
-    Peripheral ::(IsPeripheral backend a, Show a, Read a, Eq a) => a -> Peripheral backend
+    Peripheral :: forall backend a . (IsPeripheral backend a, Show a, Eq a) => a -> Peripheral backend
 
 instance Show (Peripheral backend) where
     show (Peripheral p) = show p
-
-instance Read (Peripheral backend) where
-    readsPrec = undefined
 
 instance Eq (Peripheral backend) where
     (==) = undefined
@@ -58,18 +60,18 @@ data StaticInputVariant = Switch Word8 -- ^ Switch GPIO
 data Handler
 --    = StaticOutputHandler Reference Word8  -- ^ Static output handlers (LED? only?)
     = Output StaticOutputVariant Reference
-    deriving (Show, Read, Eq)
+    deriving (Show, Eq)
 
 data StaticOutputVariant
     = LED Word8
     | BLE BLEHandler
-  deriving (Show, Read, Eq)
+  deriving (Show, Eq)
 
 data BLEHandler
     = Broadcast
     | BroadcastControl
     | ScanControl
-  deriving (Show, Read, Eq)
+  deriving (Show, Eq)
 
 -- -- | Class of types that are peripherals
 -- class IsPeripheral a where
@@ -78,9 +80,14 @@ data BLEHandler
 --     mainInitializers :: a -> [Initializer]
 
 class IsPeripheral backend a where
-    type Definition backend
-    type Initialization backend
-
+    declareReference     :: proxy backend -> Type -> Ident -> Word8 -> a -> a
     declaredReferences   :: proxy backend -> a -> [Reference]
     globalDeclarations   :: proxy backend -> a -> [Definition backend]
     staticInitialization :: proxy backend -> a -> [Initialization backend]
+
+instance IsPeripheral backend (Peripheral backend) where
+    declareReference proxy t id i (Peripheral p) =
+        Peripheral $ declareReference proxy t id i p
+    declaredReferences proxy (Peripheral p)      = declaredReferences proxy p
+    globalDeclarations proxy (Peripheral p)      = globalDeclarations proxy p
+    staticInitialization proxy (Peripheral p)    = staticInitialization proxy p

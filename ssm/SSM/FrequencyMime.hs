@@ -49,7 +49,7 @@ entry = routine $ do
   period <- var $ secs 1
   fork [freqGen period, bleHandler period]
 
-generator :: Compile ()
+generator :: Compile backend ()
 generator = do
   (led, handler) <- onoffLED 0
   (ble, broadcast, scanning) <- enableBasicBLE
@@ -106,7 +106,7 @@ counterEntry = routine $ do
     count <- var $ secs 1
     fork [ freqCount2 ?sw count, broadcastCount count ]
 
-counter :: Compile ()
+counter :: Compile backend ()
 counter = do
     sw <- switch 0
     (ble, broadcast, scanning) <- enableBasicBLE

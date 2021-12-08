@@ -35,17 +35,20 @@ import           SSM.Core.Type                  ( Type(TBool)
                                                 )
 import           SSM.Core.Backend
 
+import           Language.C.Quote.GCC
+import qualified Language.C.Syntax             as C
+
 -- | Datatype that describes which GPIO pins are used.
 data GPIOPeripheral = GPIOPeripheral
   { {- | This map associates a pin number with the name the reference is given in the
       source code. -}
     switchpins' :: Map.Map Word8 Ident
   }
-  deriving (Show, Read, Eq)
+  deriving (Show, Eq)
 
 instance IsPeripheral C GPIOPeripheral where
-  type Definition C = ()
-  type Initialization C = ()
+--  type Definition C = [C.Definition]
+--  type Initialization C = [C.BlockItem]
 
 -- -- | IsPeripheral instance for `GPIOPeripheral`, so that we can compile peripherals.
 -- instance IsPeripheral GPIOPeripheral where

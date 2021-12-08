@@ -12,7 +12,7 @@ data Ident = Ident
   { identName    :: String                -- ^ Identifiers has a name
   , identSrcInfo :: Maybe SrcInformation  -- ^ And possibly some source information
   }
-  deriving (Show, Read)
+  deriving (Show)
 
 makeIdent :: String -> Ident
 makeIdent str = Ident str Nothing

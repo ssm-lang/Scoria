@@ -2,6 +2,8 @@
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LinearTypes #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 --{-# OPTIONS_GHC -fplugin=SSM.Plugin -fplugin-opt=SSM.Plugin:mode=routine #-}
 module SSM.Freqmime where
 
@@ -105,7 +107,7 @@ import           SSM.Frontend.Peripheral.LED
 
 
 
-mmmain :: Compile ()
+mmmain :: Compile backend ()
 mmmain = do
     (x, handler) <- onoffLED 0
 
@@ -122,10 +124,10 @@ mmmain = do
             after (secs 1) ?led off
             wait ?led
 
-testGlobal :: Compile ()
+testGlobal :: forall backend . Compile backend ()
 testGlobal = do
-    x <- global @Word8
-    y <- global @Word64
+    x <- global @backend @Word8
+    y <- global @backend @Word64
 
     let ?x = x
         ?y = y
@@ -263,7 +265,7 @@ Arguments are
   1. ID of this source device
   2. ID of the next device
 -}
-source :: Exp Word64 -> Exp Word64 -> Compile ()
+source :: Exp Word64 -> Exp Word64 -> Compile backend ()
 source this next = do
     (ble, broadcast, scanning) <- enableBasicBLE
     let ?ble = ble
@@ -290,7 +292,7 @@ Arguments are:
   2. ID of previous device
   3. ID of next device
 -}
-relay :: Exp Word64 -> Exp Word64 -> Exp Word64 -> Compile ()
+relay :: Exp Word64 -> Exp Word64 -> Exp Word64 -> Compile backend ()
 relay this previous next = do
     (ble, broadcast, scanning) <- enableBasicBLE
     let ?ble = ble
@@ -319,7 +321,7 @@ relay this previous next = do
 
 {-****** Devie 4 (the sink) ******-}
 
-sink :: Exp Word64 -> Compile ()
+sink :: Exp Word64 -> Compile backend ()
 sink this = do
     (ble, broadcast, scanning) <- enableBasicBLE
 
@@ -419,7 +421,7 @@ test2 = boxNullary "test2" $ do
 
 
 
-buttonBlinky :: Compile ()
+buttonBlinky :: Compile backend ()
 buttonBlinky = do
   button <- switch 0
   (led, ledHandler) <- onoffLED 0

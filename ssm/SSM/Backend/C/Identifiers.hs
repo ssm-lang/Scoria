@@ -29,6 +29,11 @@ module SSM.Backend.C.Identifiers
   , exhausted_priority
   , now
   , never
+  , pdep
+  , pdeps
+  , depthSub
+  , depth_at_root
+  , priority_at_root
 
       -- * Type names recognized by the the C runtime system.
   , time_t
@@ -174,6 +179,39 @@ throw = "SSM_THROW"
 -- | Exhausted priority
 exhausted_priority :: C.Exp
 exhausted_priority = [cexp|SSM_EXHAUSTED_PRIORITY|]
+
+{- | Create C expressions that represent the new priorities and depths of the
+initially scheduled processes. -}
+-- pdeps :: Int -> C.Exp -> C.Exp -> [(C.Exp, C.Exp)]
+-- pdeps cs currentPrio currentDepth =
+--       [ let prio  = [cexp|$exp:currentPrio + ($int:(i-1) * (1 << $exp:depth))|]
+--             depth = [cexp|$exp:currentDepth - $exp:(depthSub cs)|]
+--         in (prio, depth)
+--       | i <- [1..cs]
+--       ]
+
+pdeps :: Int -> C.Exp -> C.Exp -> [(C.Exp, C.Exp)]
+pdeps cs currentPrio currentDepth =
+  map (\k -> pdep k cs currentPrio currentDepth) [1..cs]
+
+pdep :: Int -> Int -> C.Exp -> C.Exp -> (C.Exp, C.Exp)
+pdep k cs currentPrio currentDepth =
+  let prio = [cexp|$exp:currentPrio + ($int:(k-1) * (1 << $exp:depth))|]
+      depth  = [cexp|$exp:currentDepth - $exp:(depthSub cs)|]
+  in (prio, depth)
+
+{- | Calculate the subexpression that should be subtracted from the current depth
+in order to achieve the new depth of the processes to fork.
+
+The argument is the number of new processes that are being forked. -}
+depthSub :: Int -> C.Exp
+depthSub k = [cexp|$int:(ceiling $ logBase (2 :: Double) $ fromIntegral $ k :: Int) |]
+
+depth_at_root :: C.Exp
+depth_at_root = [cexp|SSM_ROOT_DEPTH|]
+
+priority_at_root :: C.Exp
+priority_at_root = [cexp|SSM_ROOT_PRIORITY|]
 
 -- | C type that represents model time
 time_t :: C.Type

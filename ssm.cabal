@@ -50,6 +50,7 @@ library
       SSM.Frontend.Compile
       SSM.Frontend.Exp
       SSM.Frontend.Language
+      SSM.Frontend.NewPeripheral.GPIO
       SSM.Frontend.Peripheral.BasicBLE
       SSM.Frontend.Peripheral.GPIO
       SSM.Frontend.Peripheral.Identity

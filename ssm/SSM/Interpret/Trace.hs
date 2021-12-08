@@ -71,7 +71,7 @@ data Event =
   | CrashArithmeticError
   -- | Interpreter crashed for an unforeseen reason (should be unreachable).
   | CrashUnforeseen String
-  deriving (Show, Eq, Read)
+  deriving (Show, Eq)
 
 isTerminal :: Event -> Bool
 isTerminal TerminatedOk         = True
@@ -100,7 +100,7 @@ type ActIdent = String
 -- Even if the variable is a reference, VarVal should contain its base type
 -- (i.e., without the reference) and base value (i.e., dereferenced).
 data VarVal = VarVal VarIdent Type ConcreteValue
-  deriving (Show, Eq, Read)
+  deriving (Show, Eq)
 
 -- | An untyped, concrete value.
 --

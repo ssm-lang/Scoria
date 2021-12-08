@@ -19,11 +19,11 @@ import           Data.Proxy
 import           Control.Monad.State
 
 -- | Generate a global SV
-global :: forall a . SSMType a => Compile (Ref a)
+global :: forall backend a . SSMType a => Compile backend (Ref a)
 global = do
     n <- fresh
     let id = Ident n Nothing
     let t  = mkReference $ typeOf $ Proxy @a
-    modify $ \st ->
-        st { generatedGlobals = addIdentitySV id t $ generatedGlobals st }
+    -- modify $ \st ->
+    --     st { generatedGlobals = addIdentitySV id t $ generatedGlobals st }
     return $ Ptr $ makeStaticRef id t

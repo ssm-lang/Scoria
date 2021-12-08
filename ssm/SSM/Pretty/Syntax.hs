@@ -55,27 +55,28 @@ prettyProgram' p = do
     intercalateM (emit "") $ map prettyProcedure (Map.elems (funs p))
     return ()
 
-prettyQueueContent :: QueueContent -> String
+prettyQueueContent :: QueueContent backend -> String
 prettyQueueContent (SSMProcedure id args) = prettyApp (id, args)
-prettyQueueContent (Handler h           ) = case h of
-    Output variant ref -> case variant of
-        LED id -> prettyApp
-            ( Ident "led_output_handler" Nothing
-            , [Right ref, Left $ Lit TUInt8 $ LUInt8 id]
-            )
-        BLE bh -> case bh of
-            Broadcast        -> prettyApp
-                ( Ident "broadcast_output_handler" Nothing
-                , [Right ref]
-                )
-            BroadcastControl -> prettyApp
-                ( Ident "broadcast_control_output_handler" Nothing
-                , [Right ref]
-                )
-            ScanControl    -> prettyApp
-                ( Ident "scan_control_output_handler" Nothing
-                , [Right ref]
-                )
+prettyQueueContent (Handler h           ) = "output-handler"
+-- case h of
+--     Output variant ref -> case variant of
+--         LED id -> prettyApp
+--             ( Ident "led_output_handler" Nothing
+--             , [Right ref, Left $ Lit TUInt8 $ LUInt8 id]
+--             )
+--         BLE bh -> case bh of
+--             Broadcast        -> prettyApp
+--                 ( Ident "broadcast_output_handler" Nothing
+--                 , [Right ref]
+--                 )
+--             BroadcastControl -> prettyApp
+--                 ( Ident "broadcast_control_output_handler" Nothing
+--                 , [Right ref]
+--                 )
+--             ScanControl    -> prettyApp
+--                 ( Ident "scan_control_output_handler" Nothing
+--                 , [Right ref]
+--                 )
 
 prettyReferenceDecls :: [Reference] -> PP ()
 prettyReferenceDecls xs = flip mapM_ xs $ \ref ->

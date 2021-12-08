@@ -23,6 +23,9 @@ import           SSM.Core.Backend
 
 import           SSM.Core.Peripheral
 
+import           Language.C.Quote.GCC
+import qualified Language.C.Syntax             as C
+
 -- | Basic BLE data type
 data BasicBLE = BasicBLE
     { broadcast        :: (Ident, Type)  -- ^ Name and type of broadcast reference
@@ -30,11 +33,11 @@ data BasicBLE = BasicBLE
     , scan             :: (Ident, Type)  -- ^ Name and type of scan reference
     , scanControl      :: (Ident, Type)  -- ^ Name and type of scan control reference
     }
-  deriving (Show, Read, Eq)
+  deriving (Show, Eq)
 
 instance IsPeripheral C BasicBLE where
-  type Definition C = ()
-  type Initialization C = ()
+--  type Definition C = [C.Definition]
+--  type Initialization C = [C.BlockItem]
 
 -- instance IsPeripheral BasicBLE where
 --     declaredReferences = basicBLERefs

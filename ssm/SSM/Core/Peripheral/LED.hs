@@ -25,19 +25,24 @@ data LEDPeripheral = LEDPeripheral
     { -- | Associate LED IDs with reference identifiers
       onoffLEDs' :: Map.Map Word8 Ident
     }
-    deriving (Eq, Show, Read)
+    deriving (Eq, Show)
+
+
+-- instance IsPeripheral C LEDPeripheral where
+--     type Definition C     = ()
+--     type Initialization C = ()
 
 instance IsPeripheral C LEDPeripheral where
-    type Definition C     = [C.InitGroup]
-    type Initialization C = [C.BlockItem]
+--    type Definition C     = [C.Definition]
+--    type Initialization C = [C.BlockItem]
 
-    declaredReferences _ lp =
-        map (flip makeStaticRef (mkReference TBool) . snd) $ onoffLEDs lp
+--     declaredReferences _ lp =
+--         map (flip makeStaticRef (mkReference TBool) . snd) $ onoffLEDs lp
     
-    globalDeclarations _ _ = []
+--     globalDeclarations _ _ = []
 
-    staticInitialization _ lp = flip map (onoffLEDs lp) $ \(_, id) ->
-        undefined
+--     staticInitialization _ lp = flip map (onoffLEDs lp) $ \(_, id) ->
+--         undefined
 
 -- -- | `IsPeripheral` instance for `LEDPeripheral`, so that we can compile `LEDPeripheral`s.
 -- instance IsPeripheral LEDPeripheral where

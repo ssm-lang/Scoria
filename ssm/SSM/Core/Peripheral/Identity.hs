@@ -14,17 +14,20 @@ import           SSM.Core.Backend
 
 import qualified Data.Map                      as Map
 
+import           Language.C.Quote.GCC
+import qualified Language.C.Syntax             as C
+
 modulename :: String
 modulename = "SSM.Core.Peripheral.Identity"
 
 data IdentityPeripheral = IdentityPeripheral
     { identitySVs :: (Map.Map Ident Type)
     }
-  deriving (Show, Read, Eq)
+  deriving (Show, Eq)
 
 instance IsPeripheral C IdentityPeripheral where
-    type Definition C = ()
-    type Initialization C = ()
+--    type Definition C = [C.Definition]
+--    type Initialization C = [C.BlockItem]
 
 -- instance IsPeripheral IdentityPeripheral where
 --     declaredReferences ip =

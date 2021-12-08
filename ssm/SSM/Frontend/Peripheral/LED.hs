@@ -27,7 +27,7 @@ import           SSM.Core.Type                  ( Type(TBool)
                                                 )
 
 import           SSM.Frontend.Compile           ( Compile
-                                                , CompileSt(ledperipherals)
+--                                                , CompileSt(ledperipherals)
                                                 )
 import           SSM.Frontend.Exp               ( Exp )
 import           SSM.Frontend.Language          ( (==.)
@@ -40,7 +40,7 @@ import           SSM.Frontend.Language          ( (==.)
 import           SSM.Frontend.Ref               ( Ref(Ptr) )
 import           SSM.Frontend.Syntax            ( SSM
                                                 , emit
-                                                , SSMStm(Handler)
+                                --                , SSMStm(Handler)
                                                 )
 
 import           SSM.Util.State                 ( fresh )
@@ -73,20 +73,20 @@ integer. The meaning of this integer is not well defined yet, and it is assumed 
 meaning exists in the runtime. This function also returns a handler that will actually
 perform the IO side-effects. This must be scheduled to run, or else it will not
 perform any side effects. -}
-onoffLED :: Word8 -> Compile (Ref LED, SSM ())
+onoffLED :: Word8 -> Compile backend (Ref LED, SSM ())
 onoffLED i = do
     -- generate fresh name for reference
     n <- fresh
     let id = Ident n Nothing
 
     -- modify internal LED object to know about this reference
-    modify $ \st -> st { ledperipherals = addOnOffLED i id $ ledperipherals st }
+--    modify $ \st -> st { ledperipherals = addOnOffLED i id $ ledperipherals st }
 
     -- create the reference to return to the developer
     let ref     = makeStaticRef id (mkReference TBool)
 
     -- create the SSM handler to return to the developer
-    let handler = emit $ Handler $ Output (LED i) ref
+    let handler = undefined --emit $ Handler $ Output (LED i) ref
 
     -- return the reference and the SSM () that performs the actual IO
     return $ (Ptr ref, handler)
