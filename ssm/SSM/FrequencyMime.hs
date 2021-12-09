@@ -1,5 +1,6 @@
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE RebindableSyntax #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_GHC -fplugin=SSM.Plugin -fplugin-opt=SSM.Plugin:mode=routine #-}
 module SSM.FrequencyMime where
 
@@ -49,7 +50,7 @@ entry = routine $ do
   period <- var $ secs 1
   fork [freqGen period, bleHandler period]
 
-generator :: Compile C ()
+generator :: (SupportGPIO backend, SupportBBLE backend) => Compile backend ()
 generator = do
   (led, handler) <- output 0
   (ble, broadcast, broadcastControl, scanning) <- enableBLE
@@ -107,7 +108,7 @@ counterEntry = routine $ do
     count <- var $ secs 1
     fork [ freqCount2 ?sw count, broadcastCount count ]
 
-counter :: Compile C ()
+counter :: (SupportGPIO backend, SupportBBLE backend) => Compile backend ()
 counter = do
     sw <- input 0
     (ble, broadcast, broadcastControl, scanning) <- enableBLE

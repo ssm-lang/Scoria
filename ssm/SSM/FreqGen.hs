@@ -24,7 +24,7 @@ Nits with EDSL noted inline.
 -}
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE RebindableSyntax #-}
-
+{-# LANGUAGE FlexibleContexts #-}
 --{-# OPTIONS_GHC -fplugin=SSM.Plugin -fplugin-opt=SSM.Plugin:mode=routine #-}
 
 module SSM.FreqGen where
@@ -69,7 +69,7 @@ entry = routine $ do
   period <- var $ time2ns $ secs 1
   fork [freqGen period, buttonHandler period]
 
-compiler :: Compile C ()
+compiler :: SupportGPIO backend => Compile backend ()
 compiler = do
   switch0        <- input 0
   switch1        <- input 1

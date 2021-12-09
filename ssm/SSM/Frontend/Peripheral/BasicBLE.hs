@@ -5,6 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ConstraintKinds #-}
 module SSM.Frontend.Peripheral.BasicBLE
   ( BBLE
   , enableBLE
@@ -13,6 +14,7 @@ module SSM.Frontend.Peripheral.BasicBLE
   , enableScan
   , disableScan
   , scanref
+  , SupportBBLE
   )
   where
 
@@ -161,3 +163,7 @@ enableBLE = do
         bble              = createBBLE initBasicBLE
 
     return (bble, broadcastH, broadcastControlH, scanControlH)
+
+type SupportBBLE backend = ( IsPeripheral backend BasicBLE
+                           , BLEHandlers backend
+                           )

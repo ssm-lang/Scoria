@@ -4,6 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ConstraintKinds #-}
 module SSM.Frontend.Peripheral.GPIO
   ( output
   , input
@@ -11,7 +12,7 @@ module SSM.Frontend.Peripheral.GPIO
   , Switch
   , high
   , low
-  , GPIOHandler
+  , SupportGPIO
   )
   where
 
@@ -217,3 +218,8 @@ high = true
 
 low :: Exp Bool
 low = false
+
+type SupportGPIO backend = ( IsPeripheral backend GPIOutput
+                           , IsPeripheral backend GPInputO
+                           , GPIOHandler backend
+                           )
