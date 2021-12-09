@@ -14,7 +14,7 @@ module SSM.Backend.C.Identifiers
   , initialize_static_output_ble_scan_control_device
   , initialize_static_output_ble_broadcast_control_device
   , initialize_static_output_ble_broadcast_device
-  , resolveNameOfHandler
+  , enable_ble_stack
   , top_return
   , top_parent
   , fork
@@ -116,13 +116,8 @@ initialize_static_output_ble_broadcast_device :: CIdent
 initialize_static_output_ble_broadcast_device =
   "bind_static_ble_broadcast_device"
 
-resolveNameOfHandler :: Handler -> CIdent
-resolveNameOfHandler (Output variant _) = case variant of
-  LED _  -> initialize_static_output_device
-  BLE bh -> case bh of
-    Broadcast        -> initialize_static_output_ble_broadcast_device
-    BroadcastControl -> initialize_static_output_ble_broadcast_control_device
-    ScanControl      -> initialize_static_output_ble_scan_control_device
+enable_ble_stack :: CIdent
+enable_ble_stack = "enable_ble_stack"
 
 -- | Name of top level return step-function
 top_return :: CIdent

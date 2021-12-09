@@ -56,27 +56,8 @@ prettyProgram' p = do
     return ()
 
 prettyQueueContent :: QueueContent backend -> String
-prettyQueueContent (SSMProcedure id args) = prettyApp (id, args)
-prettyQueueContent (Handler h           ) = "output-handler"
--- case h of
---     Output variant ref -> case variant of
---         LED id -> prettyApp
---             ( Ident "led_output_handler" Nothing
---             , [Right ref, Left $ Lit TUInt8 $ LUInt8 id]
---             )
---         BLE bh -> case bh of
---             Broadcast        -> prettyApp
---                 ( Ident "broadcast_output_handler" Nothing
---                 , [Right ref]
---                 )
---             BroadcastControl -> prettyApp
---                 ( Ident "broadcast_control_output_handler" Nothing
---                 , [Right ref]
---                 )
---             ScanControl    -> prettyApp
---                 ( Ident "scan_control_output_handler" Nothing
---                 , [Right ref]
---                 )
+prettyQueueContent (SSMProcedure id args)        = prettyApp (id, args)
+prettyQueueContent (OutputHandler (Handler _ p)) = p
 
 prettyReferenceDecls :: [Reference] -> PP ()
 prettyReferenceDecls xs = flip mapM_ xs $ \ref ->

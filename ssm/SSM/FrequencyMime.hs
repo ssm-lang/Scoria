@@ -5,11 +5,11 @@ module SSM.FrequencyMime where
 
 import Prelude
 
+import SSM.Core.Backend
 import SSM.Language
 
 import SSM.Frontend.Peripheral.GPIO
 import SSM.Frontend.Peripheral.Identity
-import SSM.Frontend.Peripheral.LED
 import SSM.Frontend.Peripheral.BasicBLE
 
 import Data.Word
@@ -39,20 +39,20 @@ bleHandler period = routine $ do
       delay (secs 5)
 
 -- generate the frequency 
-freqGen :: (?led0::Ref LED) => Ref Time -> SSM ()
+freqGen :: (?led0::Ref GPIO) => Ref Time -> SSM ()
 freqGen period = routine $ while true $ do
   after (deref period) ?led0 (not' $ deref ?led0)
   wait ?led0
 
-entry :: (?ble :: BBLE, ?led0::Ref LED) => SSM ()
+entry :: (?ble :: BBLE, ?led0::Ref GPIO) => SSM ()
 entry = routine $ do
   period <- var $ secs 1
   fork [freqGen period, bleHandler period]
 
-generator :: Compile backend ()
+generator :: Compile C ()
 generator = do
-  (led, handler) <- onoffLED 0
-  (ble, broadcast, scanning) <- enableBasicBLE
+  (led, handler) <- output 0
+  (ble, broadcast, broadcastControl, scanning) <- enableBLE
 
   let ?led0 = led
       ?ble  = ble
@@ -60,13 +60,14 @@ generator = do
   schedule handler
   schedule entry
   schedule broadcast
+  schedule broadcastControl
   schedule scanning
 
 -- frequency counter
 
 {- | Count the frequency on the specified gpio and write the measured period to
 the reference @period@. -}
-freqCount :: Ref SW -> Ref Time -> SSM ()
+freqCount :: Ref Switch -> Ref Time -> SSM ()
 freqCount sw period = routine $ do
     gate  <- var event
     count <- var $ u64 0
@@ -86,7 +87,7 @@ freqCount sw period = routine $ do
             else count <~ deref count + 1
         wait (gate, sw)
 
-freqCount2 :: Ref SW -> Ref Time -> SSM ()
+freqCount2 :: Ref Switch -> Ref Time -> SSM ()
 freqCount2 sw period = routine $ while true $ do
     period <~ (msecs 200)
     delay (secs 5)
@@ -101,19 +102,20 @@ broadcastCount count = routine $ while true $ do
     disableBroadcast
 
 -- | Entry-point for the frequency counter
-counterEntry :: (?ble :: BBLE, ?sw :: Ref SW) => SSM ()
+counterEntry :: (?ble :: BBLE, ?sw :: Ref Switch) => SSM ()
 counterEntry = routine $ do
     count <- var $ secs 1
     fork [ freqCount2 ?sw count, broadcastCount count ]
 
-counter :: Compile backend ()
+counter :: Compile C ()
 counter = do
-    sw <- switch 0
-    (ble, broadcast, scanning) <- enableBasicBLE
+    sw <- input 0
+    (ble, broadcast, broadcastControl, scanning) <- enableBLE
 
     let ?sw  = sw
         ?ble = ble
     
     schedule counterEntry
     schedule broadcast
+    schedule broadcastControl
     schedule scanning

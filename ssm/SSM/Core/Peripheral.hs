@@ -14,13 +14,7 @@ the fact that there exists a C backend. -}
 {-# LANGUAGE RankNTypes #-}
 module SSM.Core.Peripheral
     ( Peripheral(..)
-    , Initializer(..)
-    , StaticInputVariant(..)
-    , Handler(..)
-    , StaticOutputVariant(..)
-    , BLEHandler(..)
     , IsPeripheral(..)
-    , IndependentInit(..)
     ) where
 
 import           Data.Word                      ( Word8 )
@@ -40,38 +34,38 @@ instance Show (Peripheral backend) where
 instance Eq (Peripheral backend) where
     (==) = undefined
 
-{- | Different types of peripherals might require different kinds of initialization.
-This type is meant to enumerate the different types of initialization. -}
-data Initializer
-    = Normal Reference  -- ^ Perform regular initialization of the reference
-    {- | The @StaticInput@ initialization tells us that the reference is an input
-    reference, and that it needs to be initialized as the kind of static input described
-    by the `StaticInputVariant` type. -}
-    | StaticInput StaticInputVariant Reference
-    | Independent IndependentInit
+-- {- | Different types of peripherals might require different kinds of initialization.
+-- This type is meant to enumerate the different types of initialization. -}
+-- data Initializer
+--     = Normal Reference  -- ^ Perform regular initialization of the reference
+--     {- | The @StaticInput@ initialization tells us that the reference is an input
+--     reference, and that it needs to be initialized as the kind of static input described
+--     by the `StaticInputVariant` type. -}
+--     | StaticInput StaticInputVariant Reference
+--     | Independent IndependentInit
 
-data IndependentInit = BLEEnable
+-- data IndependentInit = BLEEnable
 
--- | Static input variants.
-data StaticInputVariant = Switch Word8 -- ^ Switch GPIO
-                        | BLEScan
+-- -- | Static input variants.
+-- data StaticInputVariant = Switch Word8 -- ^ Switch GPIO
+--                         | BLEScan
 
--- | Different variants of handlers that can be scheduled at the beginning of a program
-data Handler
---    = StaticOutputHandler Reference Word8  -- ^ Static output handlers (LED? only?)
-    = Output StaticOutputVariant Reference
-    deriving (Show, Eq)
+-- -- | Different variants of handlers that can be scheduled at the beginning of a program
+-- data Handler
+-- --    = StaticOutputHandler Reference Word8  -- ^ Static output handlers (LED? only?)
+--     = Output StaticOutputVariant Reference
+--     deriving (Show, Eq)
 
-data StaticOutputVariant
-    = LED Word8
-    | BLE BLEHandler
-  deriving (Show, Eq)
+-- data StaticOutputVariant
+--     = LED Word8
+--     | BLE BLEHandler
+--   deriving (Show, Eq)
 
-data BLEHandler
-    = Broadcast
-    | BroadcastControl
-    | ScanControl
-  deriving (Show, Eq)
+-- data BLEHandler
+--     = Broadcast
+--     | BroadcastControl
+--     | ScanControl
+--   deriving (Show, Eq)
 
 -- -- | Class of types that are peripherals
 -- class IsPeripheral a where

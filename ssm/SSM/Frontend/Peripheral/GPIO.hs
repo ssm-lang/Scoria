@@ -1,36 +1,219 @@
-module SSM.Frontend.Peripheral.GPIO where
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleContexts #-}
+module SSM.Frontend.Peripheral.GPIO
+  ( output
+  , input
+  , GPIO
+  , Switch
+  , high
+  , low
+  , GPIOHandler
+  )
+  where
 
-import           SSM.Core.Peripheral.GPIO
-import           SSM.Core.Syntax         hiding ( gpioperipherals )
+import           SSM.Core             ( C
+                                      , Ident
+                                      , dereference
+                                      , Type
+                                      , makeStaticRef
+                                      , refName
+                                      , refType
+                                      , IsPeripheral(..)
+                                      , Peripheral(..)
+                                      , makeIdent
+                                      , Handler(..)
+                                      )
+import           SSM.Core.Backend
+
+import           SSM.Backend.C.Identifiers
+import           SSM.Backend.C.Types  ( svt_
+                                      , initialize_
+                                      , assign_
+                                      )
+
+import           SSM.Frontend.Ref     ( Ref(..) )
 import           SSM.Frontend.Compile
-import           SSM.Frontend.Exp
-import           SSM.Frontend.Language
-import           SSM.Frontend.Ref
 import           SSM.Frontend.Syntax
+import           SSM.Frontend.Language
 
-import           Control.Monad.State
+import           Data.Proxy           ( Proxy(Proxy) )
+import           Data.Word            ( Word8 )
+import qualified Data.Map as Map
 
-import           Data.Word
+import           Control.Monad.State ( MonadState(put, get) )
 
-{- | A switch can provide input that is either high or low, so we use a @Bool@ to model
-this binary state. It would perhaps improve readabilty to change this to a dedicated
-datatype with states @HIGH@ and @LOW@ later on down the road when we have support for
-user defined ADTs. -}
-type SW = Bool
+import           Language.C.Quote.GCC ( cedecl, cexp, citem, citems )
+import qualified Language.C.Syntax as C
 
--- | Is a @Ref SW@ high?
-isHigh :: Ref SW -> Exp Bool
-isHigh = deref
+---------- GPIO Output ----------
 
--- | Is a @Ref SW@ low?
-isLow :: Ref SW -> Exp Bool
-isLow = not' . isHigh
+-- | The GPIO datatype represents the GPIO pins we have requested from the environment
+data GPIOutput = GPIOutput { output_ :: Map.Map Word8 (Ident, Type)}
+  deriving (Show, Eq)
 
--- | Create a @Ref SW@ by identifying a GPIO pin with a unique ID. E.g GPIO 1.
-switch :: Word8 -> Compile backend (Ref SW)
-switch i = do
+-- | Create an empty GPIO peripheral
+emptyGPIOutput :: GPIOutput
+emptyGPIOutput = GPIOutput { output_ = Map.empty }
+
+instance IsPeripheral C GPIOutput where
+    declareReference _ t id i gpio = gpio { output_ = Map.insert i (id,t) (output_ gpio) }
+
+    declaredReferences _ gpio =
+        map (uncurry makeStaticRef) $ Map.elems $ output_ gpio
+    
+    globalDeclarations p gpio =
+        flip map (declaredReferences p gpio) $ \ref ->
+            [cedecl| $ty:(svt_ $ dereference $ refType ref) $id:(refName ref); |]
+
+    staticInitialization p gpio = flip concatMap (declaredReferences p gpio) $ \ref ->
+        let bt     = dereference $ refType ref
+            init   = initialize_ bt [cexp| &$id:(refName ref)|]
+            assign = assign_ bt [cexp| &$id:(refName ref)|] [cexp|0|] [cexp|0|]
+        in [citems| $exp:init; $exp:assign; |]
+
+gpioutputkey :: String
+gpioutputkey = "gpioutput"
+
+type GPIO = Bool
+
+{- | Populates the GPIO pripheral with a new reference.
+
+Parameters:
+
+  1. @Word8@ that identifies the GPIO pin on the board
+  2. The name of the reference
+
+Returns: The @Ref LED@ that represents the newly created reference. -}
+insertGPIOutput :: forall backend
+           .  IsPeripheral backend GPIOutput
+           => Word8 -> Ident -> Compile backend (Ref GPIO)
+insertGPIOutput i id = do
+    st <- get
+
+    -- fetch the GPIO peripheral and populate it with the new reference
+    let maybegpio = Map.lookup gpioutputkey (peripherals st)
+        emptyperi = Peripheral @backend emptyGPIOutput
+        m         = maybe emptyperi (\x -> x) maybegpio
+        m'        = declareReference (Proxy @backend) typ id i m
+
+    -- modify the @CompileSt@ to contain the updated GPIO peripheral
+    put $ st { peripherals = Map.insert gpioutputkey m' (peripherals st)}
+
+    -- create the reference and return it
+    let ref = makeStaticRef id typ
+    return $ Ptr ref
+  where
+      -- | GPIO pins have a binary state, so treating them like @Bool@s seems reasonable
+      typ :: Type
+      typ = Ref TBool
+
+class GPIOHandler backend where
+    make_handler :: proxy backend -> Ref GPIO -> Word8 -> OutputHandler backend
+
+instance GPIOHandler C where
+    make_handler _ (Ptr r) i =
+        let sched k cs = let (prio, dep) = pdep k cs priority_at_root depth_at_root
+                         in [[citem| $id:initialize_static_output_device(
+                                                     $id:top_parent,
+                                                     $exp:prio,
+                                                     $exp:dep,
+                                                     &$id:(refName r).sv,
+                                                     $uint:i);|]]
+            pretty = concat ["initialize_static_output_device(", refName r, ", ", show i, ")"]
+        in Handler sched pretty
+        
+{- | Ask the GPIO peripheral for a GPIO pin identified by the @Word8@, and
+get the reference and handler back. The reference is what is used to interact
+with the GPIO, and the handler must be `schedule`d in order to actually
+perform the IO output actions. -}
+output :: forall backend .
+       (IsPeripheral backend GPIOutput, GPIOHandler backend)
+       => Word8 -> Compile backend (Ref GPIO, OutputHandler backend)
+output i = do
     n <- fresh
-    let id = Ident n Nothing
-    -- modify $ \st ->
-    --     st { gpioperipherals = addSwitchGPIO i id (gpioperipherals st) }
-    return $ Ptr $ makeStaticRef id (Ref TBool)
+    let id = makeIdent n
+
+    ref <- insertGPIOutput i id
+
+    let handler = make_handler (Proxy @backend) ref i
+
+    return (ref, handler)
+
+----------- GPIO Input ----------
+
+data GPInputO = GPInputO { input_ :: Map.Map Word8 (Ident, Type) }
+  deriving (Show, Eq)
+
+emptyGPInputO :: GPInputO
+emptyGPInputO = GPInputO { input_ = Map.empty }
+
+instance IsPeripheral C GPInputO where
+    declareReference _ t id i gpio = gpio { input_ = Map.insert i (id,t) (input_ gpio) }
+
+    declaredReferences _ gpio =
+        map (uncurry makeStaticRef) $ Map.elems $ input_ gpio
+    
+    globalDeclarations p gpio =
+        flip map (declaredReferences p gpio) $ \ref ->
+            [cedecl| $ty:(svt_ $ dereference $ refType ref) $id:(refName ref); |]
+
+    staticInitialization p gpio = flip concatMap (Map.toList (input_ gpio)) $
+      \(i,(id,t)) ->
+        let 
+            bt     = dereference t
+            ref    = makeStaticRef id t
+            init   = initialize_ bt [cexp| &$id:(refName ref)|]
+            assign = assign_ bt [cexp| &$id:(refName ref)|] [cexp|0|] [cexp|0|]
+            bind   = [cexp| $id:initialize_static_input_device(
+                  (typename ssm_sv_t *) &$id:(refName ref).sv,
+                  $uint:i) |]
+        in [citems| $exp:init; $exp:assign; $exp:bind; |]
+
+type Switch = Bool
+
+gpinputokey :: String
+gpinputokey = "gpinputo"
+
+insertGPInputO :: forall backend
+           .  IsPeripheral backend GPInputO
+           => Word8 -> Ident -> Compile backend (Ref Switch)
+insertGPInputO i id = do
+    st <- get
+
+    -- fetch the GPIO peripheral and populate it with the new reference
+    let maybegpio = Map.lookup gpinputokey (peripherals st)
+        emptyperi = Peripheral @backend emptyGPInputO
+        m         = maybe emptyperi (\x -> x) maybegpio
+        m'        = declareReference (Proxy @backend) typ id i m
+
+    -- modify the @CompileSt@ to contain the updated GPIO peripheral
+    put $ st { peripherals = Map.insert gpinputokey m' (peripherals st)}
+
+    -- create the reference and return it
+    let ref = makeStaticRef id typ
+    return $ Ptr ref
+  where
+      -- | GPIO pins have a binary state, so treating them like @Bool@s seems reasonable
+      typ :: Type
+      typ = Ref TBool
+
+input :: forall backend .
+      (IsPeripheral backend GPInputO, GPIOHandler backend)
+      => Word8 -> Compile backend (Ref Switch)
+input i = do
+    n <- fresh
+    let id = makeIdent n
+
+    ref <- insertGPInputO i id
+
+    return ref
+
+high :: Exp Bool
+high = true
+
+low :: Exp Bool
+low = false

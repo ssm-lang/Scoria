@@ -12,12 +12,13 @@ module SSM.Core.Program
     , entry
     , Program(..)
     , SSMProgram(..)
+    , Handler(..)
 
     ) where
 
 import           SSM.Core.Backend               ( Schedule )
 import           SSM.Core.Ident                 ( Ident )
-import           SSM.Core.Peripheral            ( Peripheral, Handler )
+import           SSM.Core.Peripheral            ( Peripheral )
 import           SSM.Core.Reference             ( Reference )
 import           SSM.Core.Syntax                ( SSMExp
                                                 , Stm
@@ -43,16 +44,20 @@ data QueueContent backend
     arguments. The constructor looks like this, however, in preparation for any future
     changes we might want to make. I might remove this second argument... -}
     = SSMProcedure Ident [Either SSMExp Reference]
---    | Handler Handler  -- ^ Handlers can be scheduled
-    | Handler (Int -> Int -> Schedule backend)
+    | OutputHandler (Handler backend)
+
+data Handler backend =
+  Handler { gen_handler    :: Int -> Int -> [Schedule backend]
+          , pretty_handler :: String
+          }
 
 instance Show (QueueContent backend) where
   show (SSMProcedure id args) = "SSMProcedure " <> show id <> " " <> show args
-  show (Handler _) = "<output-handler>"
+  show (OutputHandler _) = "<output-handler>"
 
 instance Eq (QueueContent backend) where
   SSMProcedure id1 args1 == SSMProcedure id2 args2 = id1 == id2 && args1 == args2
-  Handler _ == Handler _ = undefined -- TODO
+  OutputHandler _ == OutputHandler _ = undefined -- TODO
 
 {- | Get the identifier of the SSM procedure that is scheduled at the start of a SSM
 program -}

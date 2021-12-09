@@ -52,7 +52,7 @@ instance SSMProgram backend (Compile backend ()) where
         in  Program (reverse $ SSM.Frontend.Compile.initialQueueContent s) f
                 $ Map.elems (SSM.Frontend.Compile.peripherals s)
                 
-data OutputHandler backend = OutputHandler (Int -> Int -> Schedule backend)
+type OutputHandler backend = Handler backend
 
 class Schedulable backend a where
     schedule :: a -> Compile backend ()
@@ -61,10 +61,10 @@ instance Schedulable backend (SSM ()) where
     schedule = scheduleSSM
 
 instance Schedulable backend (OutputHandler backend) where
-    schedule (OutputHandler f) = do
+    schedule h{-(Handler f)-} = do
         st <- get
         let queuecontents = SSM.Frontend.Compile.initialQueueContent st
-            newcontent    = Handler f
+            newcontent    = OutputHandler h
             combined      = newcontent : queuecontents
         put $ st { SSM.Frontend.Compile.initialQueueContent = combined }
 

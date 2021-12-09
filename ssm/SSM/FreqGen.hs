@@ -37,6 +37,7 @@ for details.
 -}
 import           Prelude
 
+import           SSM.Core.Backend
 import           SSM.Compile
 import           SSM.Language
 import           SSM.Pretty
@@ -45,10 +46,9 @@ import           Data.Word
 
 import           SSM.Frontend.Peripheral.GPIO
 import           SSM.Frontend.Peripheral.Identity
-import           SSM.Frontend.Peripheral.LED
 
 
-buttonHandler :: (?sw0::Ref SW, ?sw1::Ref SW) => Ref Word64 -> SSM ()
+buttonHandler :: (?sw0::Ref Switch, ?sw1::Ref Switch) => Ref Word64 -> SSM ()
 buttonHandler period = routine $ while true $ do
   wait (?sw0, ?sw1)
   -- Nit: using parens for each branch is annoying
@@ -56,24 +56,24 @@ buttonHandler period = routine $ while true $ do
      then period <~ deref period * 2
      else period <~ max' (deref period /. 2) 1
 
-freqGen :: (?led0::Ref LED) => Ref Word64 -> SSM ()
+freqGen :: (?led0::Ref GPIO) => Ref Word64 -> SSM ()
 freqGen period = routine $ while true $ do
   after (nsecs $ deref period) ?led0 (not' $ deref ?led0)
   wait ?led0
 
 -- Nit: implicit params aren't transitive, must be declared by caller
-entry :: (?sw0::Ref SW, ?sw1::Ref SW, ?led0::Ref LED) => SSM ()
+entry :: (?sw0::Ref Switch, ?sw1::Ref Switch, ?led0::Ref GPIO) => SSM ()
 entry = routine $ do
   -- Nit: can't construct Ref SSMTime? Marshalling to/from ns is really annoying
   -- and seems error-prone.
   period <- var $ time2ns $ secs 1
   fork [freqGen period, buttonHandler period]
 
-compiler :: Compile backend ()
+compiler :: Compile C ()
 compiler = do
-  switch0        <- switch 0
-  switch1        <- switch 1
-  (led, handler) <- onoffLED 0
+  switch0        <- input 0
+  switch1        <- input 1
+  (led, handler) <- output 0
 
   let ?led0 = led
       ?sw0  = switch0

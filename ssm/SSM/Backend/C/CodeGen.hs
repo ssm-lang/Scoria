@@ -154,18 +154,18 @@ genInitProgram p = [cunit|
       --                                     , $args:(argsOfHandler h)
       --                                     )
       --                  );|]
-      initialFork (priority, depth) (Handler f) = error "fixme"
+      initialFork (priority, depth) (OutputHandler (Handler f _)) = error "fixme"
 
-      -- | Take a handler and return a list of arguments to it
-      argsOfHandler :: Handler -> [C.Exp]
-      argsOfHandler (Output variant ref) = case variant of
-        LED id -> [ [cexp| &$id:(refName ref).sv |]
-                  , [cexp| $uint:id |]
-                  ]
-        BLE bh -> case bh of
-          Broadcast          -> [ [cexp| &$id:(refName ref).sv |] ]
-          BroadcastControl   -> [ [cexp| &$id:(refName ref).sv |] ]
-          ScanControl        -> [ [cexp| &$id:(refName ref).sv |] ]
+      -- -- | Take a handler and return a list of arguments to it
+      -- argsOfHandler :: Handler -> [C.Exp]
+      -- argsOfHandler (Output variant ref) = case variant of
+      --   LED id -> [ [cexp| &$id:(refName ref).sv |]
+      --             , [cexp| $uint:id |]
+      --             ]
+      --   BLE bh -> case bh of
+      --     Broadcast          -> [ [cexp| &$id:(refName ref).sv |] ]
+      --     BroadcastControl   -> [ [cexp| &$id:(refName ref).sv |] ]
+      --     ScanControl        -> [ [cexp| &$id:(refName ref).sv |] ]
 
       cargs :: Either SSMExp Reference -> C.Exp
       cargs (Left e)  = genExp [] e

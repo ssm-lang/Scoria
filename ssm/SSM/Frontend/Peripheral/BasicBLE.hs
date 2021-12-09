@@ -1,90 +1,122 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RankNTypes #-}
 module SSM.Frontend.Peripheral.BasicBLE
-    ( BBLE
-    , enableBasicBLE
-    , enableBroadcast
-    , disableBroadcast
-    , enableScan
-    , disableScan
-    , scanref
-    ) where
-
-import           SSM.Core.Ident
-import           SSM.Core.Peripheral
-import           SSM.Core.Peripheral.BasicBLE
-                                         hiding ( broadcast
-                                                , broadcastControl
-                                                , scan
-                                                , scanControl
-                                                )
-import           SSM.Core.Reference      hiding ( Ref )
-import           SSM.Core.Type
-
-import           SSM.Frontend.Compile
-import           SSM.Frontend.Language
-import           SSM.Frontend.Ref
-import           SSM.Frontend.Syntax
-
-import           Data.Word
-
-import           Control.Monad.State
-
-{- | Enable the basic BLE device. The returned components are
-
-  1. An object that can be used together with `enableScan`, `disableScan`,
-  `enableBroadcast`, `disableBroadcast` and `scanref` to interact with the underlying
-  BLE device.
-  2. A hander that has to be scheduled for the `enableBroadcast` & `disableBroadcast`
-  calls to function.
-  3. A handler that must be scheduled for the `enableScan` and `disableScan` calls to
-  function. The handler can only be acquired by applying this component to a string that
-  describes the remote devices MAC address as a string of hex octets, separated by colon.
-  E.g "AB:CD:EF:01:23:54"
--}
-enableBasicBLE :: Compile backend (BBLE, SSM (), SSM ())
-enableBasicBLE = do
-    let basicble = enableBLE broadcast broadcastControl scan scanControl
-    --modify $ \s -> s { basicblePeripheral = Just basicble }
-
-    let scanref             = makeStaticRef' scan
-        broadcastref        = makeStaticRef' broadcast
-        scanControlref      = makeStaticRef' scanControl
-        broadcastControlref = makeStaticRef' broadcastControl
-        bble = BBLE { scan             = Ptr $ scanref
-                    , broadcast        = Ptr $ broadcastref
-                    , scanControl      = Ptr $ scanControlref
-                    , broadcastControl = Ptr $ broadcastControlref
-                    }
-        broadcastHandler = undefined
-        -- do
-        --     emit $ Handler $ Output (BLE Broadcast) broadcastref
-        --     emit $ Handler $ Output (BLE BroadcastControl) broadcastControlref
-        scanControlHandler = undefined
-            -- emit $ Handler $ Output (BLE ScanControl) scanControlref
-
-    return (bble, broadcastHandler, scanControlHandler)
+  ( BBLE
+  , enableBLE
+  , enableBroadcast
+  , disableBroadcast
+  , enableScan
+  , disableScan
+  , scanref
+  )
   where
-    scan :: (Ident, Type)
-    scan = (Ident "scan" Nothing, Ref TUInt64)
 
-    broadcast :: (Ident, Type)
-    broadcast = (Ident "broadcast" Nothing, Ref TUInt64)
+import SSM.Core hiding (BasicBLE(..), peripherals, enableBLE)
 
-    scanControl :: (Ident, Type)
-    scanControl = (Ident "scanControl" Nothing, Ref TBool)
+import SSM.Backend.C.Identifiers
+import SSM.Backend.C.Types
 
-    broadcastControl :: (Ident, Type)
-    broadcastControl = (Ident "broadcastControl" Nothing, Ref TBool)
+import SSM.Frontend.Compile
+import SSM.Frontend.Ref
+import SSM.Language
 
-    makeStaticRef' :: (Ident, Type) -> Reference
-    makeStaticRef' = uncurry makeStaticRef
+import Data.Proxy
+import Data.Word
+import qualified Data.Map as Map
+
+import Control.Monad.State
+
+import           Language.C.Quote.GCC ( cedecl, cexp, citem, citems )
+import qualified Language.C.Syntax as C
+
+data BasicBLE = BasicBLE
+  { broadcast_        :: (Ident, Type)
+  , broadcastControl_ :: (Ident, Type)
+  , scan_             :: (Ident, Type)
+  , scanControl_      :: (Ident, Type)
+  }
+  deriving (Show, Eq)
+
+initBasicBLE :: BasicBLE
+initBasicBLE = BasicBLE
+  { broadcast_        = (makeIdent "broadcast",        Ref TUInt64)
+  , broadcastControl_ = (makeIdent "broadcastControl", Ref TBool)
+  , scan_             = (makeIdent "scan",             Ref TUInt64)
+  , scanControl_      = (makeIdent "scanControl",      Ref TBool)
+  }
+
+instance IsPeripheral C BasicBLE where
+    declareReference _ _ id _ _ = error "error --- declareReference BasicBLE called"
+    declaredReferences _ bble = map
+        (\f -> uncurry makeStaticRef $ f bble)
+        [broadcast_, broadcastControl_, scan_, scanControl_]
+
+    globalDeclarations p bble = flip map (declaredReferences p bble) $ \ref -> do
+        [cedecl| $ty:(svt_ $ dereference $ refType ref) $id:(refName ref); |]
+
+    staticInitialization p bble =
+        let enable   = [cexp| $id:enable_ble_stack() |]
+            scanref  = uncurry makeStaticRef (scan_ bble)
+            scaninit =  [cexp| $id:initialize_static_input_ble_scan_device(&$id:(refName scanref).sv) |]
+        in [citems| $exp:enable; $exp:scaninit; |]
+
+class BLEHandlers backend where
+    broadcastHandler        :: proxy backend -> BasicBLE -> Handler backend
+    broadcastControlHandler :: proxy backend -> BasicBLE -> Handler backend
+    scanControlHandler      :: proxy backend -> BasicBLE -> Handler backend
+
+instance BLEHandlers C where
+    broadcastHandler _ bble = Handler
+        (\k cs ->
+            let (prio,dep) = pdep k cs priority_at_root depth_at_root
+                proto      = initialize_static_output_ble_broadcast_device
+                refname    = identName $ fst $ broadcast_ bble
+            in [[citem| $id:proto(&$id:(refname).sv); |]])
+        (concat [ "bind_static_ble_broadcast_handler_device("
+                , identName $ fst $ broadcast_ bble
+                , ")"])
+
+    broadcastControlHandler _ bble = Handler
+        (\k cs ->
+            let (prio,dep) = pdep k cs priority_at_root depth_at_root
+                proto      = initialize_static_output_ble_broadcast_control_device
+                refname    = identName $ fst $ broadcastControl_ bble
+            in [[citem| $id:proto(&$id:(refname).sv); |]])
+        (concat [ "bind_static_ble_broadcast_control_handler_device("
+                , identName $ fst $ broadcastControl_ bble
+                , ")"])
+
+    scanControlHandler _ bble = Handler
+        (\k cs ->
+            let (prio,dep) = pdep k cs priority_at_root depth_at_root
+                proto      = initialize_static_output_ble_scan_control_device
+                refname    = identName $ fst $ scanControl_ bble
+            in [[citem| $id:proto(&$id:(refname).sv); |]])
+        (concat [ "bind_static_ble_scan_control_handler_device("
+                , identName $ fst $ scanControl_ bble
+                , ")"])
+
+-- frontend api of BBLE
 
 data BBLE = BBLE
-    { scan             :: Ref Word64
-    , broadcast        :: Ref Word64
-    , scanControl      :: Ref Bool
-    , broadcastControl :: Ref Bool
-    }
+  { broadcast        :: Ref Word64
+  , broadcastControl :: Ref Bool
+  , scan             :: Ref Word64
+  , scanControl      :: Ref Bool
+  }
+
+createBBLE :: BasicBLE -> BBLE
+createBBLE bble = BBLE
+  { broadcast        = Ptr $ uncurry makeStaticRef $ broadcast_ bble
+  , broadcastControl = Ptr $ uncurry makeStaticRef $ broadcastControl_ bble
+  , scan             = Ptr $ uncurry makeStaticRef $ scan_ bble
+  , scanControl      = Ptr $ uncurry makeStaticRef $ scanControl_ bble
+  }
 
 -- | Enable the BLE scanning device
 enableScan :: (?ble :: BBLE) => SSM ()
@@ -113,3 +145,19 @@ toggleControl :: Ref Bool -> Exp Bool -> SSM ()
 toggleControl ctrl command = do
     after (nsecs 1) ctrl command
     wait ctrl
+
+bblekey :: String
+bblekey = "bblekey"
+
+enableBLE :: forall backend . (IsPeripheral backend BasicBLE, BLEHandlers backend) => Compile backend (BBLE, OutputHandler backend, OutputHandler backend, OutputHandler backend)
+enableBLE = do
+    modify $ \st -> st {
+        peripherals = Map.insert bblekey (Peripheral initBasicBLE) (peripherals st) }
+
+    let ble               = initBasicBLE
+        broadcastH        = broadcastHandler (Proxy @backend) ble
+        broadcastControlH = broadcastControlHandler (Proxy @backend) ble
+        scanControlH      = scanControlHandler (Proxy @backend) ble 
+        bble              = createBBLE initBasicBLE
+
+    return (bble, broadcastH, broadcastControlH, scanControlH)
