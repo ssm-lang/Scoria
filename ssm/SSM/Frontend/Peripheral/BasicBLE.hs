@@ -46,10 +46,10 @@ data BasicBLE = BasicBLE
 
 initBasicBLE :: BasicBLE
 initBasicBLE = BasicBLE
-  { broadcast_        = (makeIdent "broadcast",        Ref TUInt64)
-  , broadcastControl_ = (makeIdent "broadcastControl", Ref TBool)
-  , scan_             = (makeIdent "scan",             Ref TUInt64)
-  , scanControl_      = (makeIdent "scanControl",      Ref TBool)
+  { broadcast_        = (makeIdent "broadcast",        mkReference $ typeOf $ Proxy @Word64)
+  , broadcastControl_ = (makeIdent "broadcastControl", mkReference $ typeOf $ Proxy @Bool)
+  , scan_             = (makeIdent "scan",             mkReference $ typeOf $ Proxy @Word64)
+  , scanControl_      = (makeIdent "scanControl",      mkReference $ typeOf $ Proxy @Bool)
   }
 
 instance IsPeripheral C BasicBLE where

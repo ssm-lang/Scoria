@@ -39,17 +39,13 @@ data Procedure = Procedure
 
 -- | A @QueueContent@ is something that can be scheduled when a program begins executing.
 data QueueContent backend
-    {- | SSM procedures can be scheduled initially. Right now it is assumed that only
-    one SSM procedure will ever be scheduled initiailly, and that it will have no
-    arguments. The constructor looks like this, however, in preparation for any future
-    changes we might want to make. I might remove this second argument... -}
     = SSMProcedure Ident [Either SSMExp Reference]
     | OutputHandler (Handler backend)
 
-data Handler backend =
-  Handler { gen_handler    :: Int -> Int -> [Schedule backend]
-          , pretty_handler :: String
-          }
+data Handler backend = Handler
+  { gen_handler    :: Int -> Int -> [Schedule backend]
+  , pretty_handler :: String
+  }
 
 instance Show (QueueContent backend) where
   show (SSMProcedure id args) = "SSMProcedure " <> show id <> " " <> show args
@@ -79,8 +75,7 @@ data Program backend = Program
       initialQueueContent :: [QueueContent backend]
       -- | Map that associates procedure names with their definitions.
     , funs                :: Map.Map Ident Procedure
-      -- | Name and type of references that exist in the global scope.
-      -- | Any peripherals used by the program
+      -- | Peripherals
     , peripherals         :: [Peripheral backend]
     }
     deriving (Show)

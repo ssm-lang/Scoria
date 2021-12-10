@@ -62,8 +62,8 @@ instance IntState Int where
     setInt i _ = i
 
 -- | Generate fresh names from any monad whose state has an `IntState` instance
-fresh :: (IntState s, MonadState s m) => m String
+fresh :: (IntState s, MonadState s m) => m Int
 fresh = do
     s <- gets getInt
     modify $ \st -> setInt (s + 1) st
-    return $ "fresh" ++ show s
+    return s

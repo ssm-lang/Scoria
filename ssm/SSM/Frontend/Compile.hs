@@ -20,11 +20,11 @@ import qualified Data.Map as Map
 
 -- | State maintained by the `Compile` monad
 data CompileSt backend = CompileSt
-    { compileCounter      :: Int                 -- ^ Counter to generate fresh named
+    { compileCounter      :: Int                    -- ^ Counter to generate fresh names
     , initialQueueContent :: [QueueContent backend] -- ^ Initial ready-queue content
-    , entryPoint          :: Maybe (SSM ())      -- ^ SSM program to run
+    , entryPoint          :: Maybe (SSM ())         -- ^ SSM program to run
 
-    , peripherals :: Map.Map String (Peripheral backend)
+    , peripherals :: Map.Map String (Peripheral backend) -- ^ Peripherals
     }
 
 -- | Compile monad
@@ -61,7 +61,7 @@ instance Schedulable backend (SSM ()) where
     schedule = scheduleSSM
 
 instance Schedulable backend (OutputHandler backend) where
-    schedule h{-(Handler f)-} = do
+    schedule h = do
         st <- get
         let queuecontents = SSM.Frontend.Compile.initialQueueContent st
             newcontent    = OutputHandler h

@@ -51,7 +51,7 @@ instance IsPeripheral C Globals where
 global :: forall backend a . (IsPeripheral backend Globals, SSMType a) => Compile backend (Ref a)
 global = do
     n <- fresh
-    let id = Ident n Nothing
+    let id = Ident ("global" <> show n) Nothing
     let t = mkReference $ typeOf $ Proxy @a
 
     st <- get

@@ -262,7 +262,7 @@ transpileProcedure xs = fmap concat $ forM xs $ \x -> case x of
 
 synthesizeProcedure :: [SSMStm] -> Transpile (Ident, [Either S.SSMExp Reference])
 synthesizeProcedure body = do
-  name  <- (makeIdent . (<>) "generated") <$> fresh
+  name  <- (makeIdent . (<>) "generated" . show) <$> fresh
   stmts <- transpileProcedure body
   let toapply   = L.nub $ freeInStm [] stmts
       procedure = SP.Procedure name (map (either expInfo refInfo) toapply) stmts

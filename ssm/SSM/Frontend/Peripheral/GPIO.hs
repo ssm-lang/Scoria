@@ -110,7 +110,7 @@ insertGPIOutput i id = do
   where
       -- | GPIO pins have a binary state, so treating them like @Bool@s seems reasonable
       typ :: Type
-      typ = Ref TBool
+      typ = mkReference $ typeOf $ Proxy @Bool
 
 class GPIOHandler backend where
     make_handler :: proxy backend -> Ref GPIO -> Word8 -> OutputHandler backend
@@ -136,7 +136,7 @@ output :: forall backend .
        => Word8 -> Compile backend (Ref GPIO, OutputHandler backend)
 output i = do
     n <- fresh
-    let id = makeIdent n
+    let id = makeIdent ("output" <> show n)
 
     ref <- insertGPIOutput i id
 
@@ -200,14 +200,14 @@ insertGPInputO i id = do
   where
       -- | GPIO pins have a binary state, so treating them like @Bool@s seems reasonable
       typ :: Type
-      typ = Ref TBool
+      typ = mkReference $ typeOf $ Proxy @Bool
 
 input :: forall backend .
       (IsPeripheral backend GPInputO, GPIOHandler backend)
       => Word8 -> Compile backend (Ref Switch)
 input i = do
     n <- fresh
-    let id = makeIdent n
+    let id = makeIdent ("input" <> show n)
 
     ref <- insertGPInputO i id
 

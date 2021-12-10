@@ -191,8 +191,8 @@ pdeps cs currentPrio currentDepth =
 
 pdep :: Int -> Int -> C.Exp -> C.Exp -> (C.Exp, C.Exp)
 pdep k cs currentPrio currentDepth =
-  let prio = [cexp|$exp:currentPrio + ($int:(k-1) * (1 << $exp:depth))|]
-      depth  = [cexp|$exp:currentDepth - $exp:(depthSub cs)|]
+  let prio  = [cexp|$exp:currentPrio + ($int:(k-1) * (1 << $exp:depth))|]
+      depth = [cexp|$exp:currentDepth - $exp:(depthSub cs)|]
   in (prio, depth)
 
 {- | Calculate the subexpression that should be subtracted from the current depth

@@ -62,6 +62,7 @@ library
       SSM.Plugin
       SSM.Pretty
       SSM.Pretty.Syntax
+      SSM.Test
       SSM.Util.Default
       SSM.Util.HughesList
       SSM.Util.Operators

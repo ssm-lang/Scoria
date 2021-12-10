@@ -9,6 +9,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeApplications #-}
 module SSM.Backend.C.CodeGen
   ( compile_
   ) where
@@ -25,10 +26,10 @@ import qualified Data.Map                      as Map
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
 
+import           Data.Proxy
 import           Data.List                      ( sortOn )
 import           SSM.Backend.C.Identifiers
 import           SSM.Backend.C.Types
-import           SSM.Backend.C.Peripheral
 
 import           SSM.Core
 
@@ -41,7 +42,7 @@ compile_ program = (compUnit, includes)
  where
   -- | The file to generate, minus include statements
   compUnit :: [C.Definition]
-  compUnit = concat [ declarePeripherals program
+  compUnit = concat [ concatMap (globalDeclarations (Proxy @C)) (peripherals program)
                     , preamble
                     , decls
                     , defns
@@ -119,7 +120,7 @@ actm = "act"
 genInitProgram :: Program C -> [C.Definition]
 genInitProgram p = [cunit|
   int $id:initialize_program(void) {
-    $items:(initPeripherals p)
+    $items:(concatMap (staticInitialization (Proxy @C)) (peripherals p))
     $items:(initialForks $ initialQueueContent p)
 
     return 0;
@@ -128,50 +129,23 @@ genInitProgram p = [cunit|
  where
   -- | Create statements for scheduling the initial ready-queue content
   initialForks :: [QueueContent C] -> [C.BlockItem]
-  initialForks ips =
-    zipWith
-      initialFork
-        (pdeps
-          (length ips)
-          priority_at_root
-          depth_at_root)
-        ips
+  initialForks ips = concat $ zipWith3 initialFork [1..length ips] (repeat $ length ips) ips
     where
-      -- | Create the schedule statement for a single schedulable thing
-      initialFork :: (C.Exp, C.Exp) -> QueueContent C -> C.BlockItem
-      initialFork (priority, depth) (SSMProcedure id args) =
-        [citem| $id:fork($id:(enter_ (identName id))( &$id:top_parent
-                                                    , $exp:priority
-                                                    , $exp:depth
-                                                    , $args:(map cargs args)
-                                                    )
-                        ); |]
-      -- initialFork (priority, depth) (Handler h) =
-      --   [citem|$id:fork($id:(resolveNameOfHandler h)
-      --                                     ( &$id:top_parent
-      --                                     , $exp:priority
-      --                                     , $exp:depth
-      --                                     , $args:(argsOfHandler h)
-      --                                     )
-      --                  );|]
-      initialFork (priority, depth) (OutputHandler (Handler f _)) = error "fixme"
-
-      -- -- | Take a handler and return a list of arguments to it
-      -- argsOfHandler :: Handler -> [C.Exp]
-      -- argsOfHandler (Output variant ref) = case variant of
-      --   LED id -> [ [cexp| &$id:(refName ref).sv |]
-      --             , [cexp| $uint:id |]
-      --             ]
-      --   BLE bh -> case bh of
-      --     Broadcast          -> [ [cexp| &$id:(refName ref).sv |] ]
-      --     BroadcastControl   -> [ [cexp| &$id:(refName ref).sv |] ]
-      --     ScanControl        -> [ [cexp| &$id:(refName ref).sv |] ]
+      initialFork :: Int -> Int -> QueueContent C -> [C.BlockItem]
+      initialFork k cs (SSMProcedure id args) =
+        let (prio, depth) = pdep k cs priority_at_root depth_at_root
+        in [[citem| $id:fork($id:(enter_ (identName id))( &$id:top_parent
+                                                        , $exp:prio
+                                                        , $exp:depth
+                                                        , $args:(map cargs args)
+                                                        )
+                            ); |]]
+      initialFork k cs (OutputHandler (Handler f _)) = f k cs
 
       cargs :: Either SSMExp Reference -> C.Exp
       cargs (Left e)  = genExp [] e
       cargs (Right r@(Static _)) = [cexp| &$id:(refName r).sv|]
       cargs (Right r@(Dynamic _)) = error "Why does StaticOutputHandler refer to a non-static var?"
-      x = refName
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]
