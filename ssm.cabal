@@ -28,7 +28,6 @@ library
       SSM.Backend.C.CodeGen
       SSM.Backend.C.Compile
       SSM.Backend.C.Identifiers
-      SSM.Backend.C.Peripheral
       SSM.Backend.C.Types
       SSM.Compile
       SSM.Core

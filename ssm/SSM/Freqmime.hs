@@ -41,8 +41,8 @@ mmmain = do
 
 testGlobal :: Compile C ()
 testGlobal = do
-    x <- global @C @Word8
-    y <- global @C @Word64
+    x <- global @Word8
+    y <- global @Word64
 
     let ?x = x
         ?y = y

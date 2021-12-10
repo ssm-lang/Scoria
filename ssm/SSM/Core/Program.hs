@@ -16,7 +16,7 @@ module SSM.Core.Program
 
     ) where
 
-import           SSM.Core.Backend               ( Schedule )
+import           SSM.Core.Backend               ( Statement )
 import           SSM.Core.Ident                 ( Ident )
 import           SSM.Core.Peripheral            ( Peripheral )
 import           SSM.Core.Reference             ( Reference )
@@ -42,18 +42,22 @@ data QueueContent backend
     = SSMProcedure Ident [Either SSMExp Reference]
     | OutputHandler (Handler backend)
 
+{- | A @Handler@ can do two things. If the Handler is given its ordinal in the list
+of things that are scheduled and the total number of things that are scheduled, the
+handler can return the statements that schedule this handler.
+A Handler can also specify a string to use when pretty-printing. -}
 data Handler backend = Handler
-  { gen_handler    :: Int -> Int -> [Schedule backend]
+  { gen_handler    :: Int -> Int -> [Statement backend]
   , pretty_handler :: String
   }
 
 instance Show (QueueContent backend) where
   show (SSMProcedure id args) = "SSMProcedure " <> show id <> " " <> show args
-  show (OutputHandler _) = "<output-handler>"
+  show (OutputHandler _)      = "<output-handler>"
 
 instance Eq (QueueContent backend) where
   SSMProcedure id1 args1 == SSMProcedure id2 args2 = id1 == id2 && args1 == args2
-  OutputHandler _ == OutputHandler _ = undefined -- TODO
+  OutputHandler _        == OutputHandler _        = undefined -- EE
 
 {- | Get the identifier of the SSM procedure that is scheduled at the start of a SSM
 program -}

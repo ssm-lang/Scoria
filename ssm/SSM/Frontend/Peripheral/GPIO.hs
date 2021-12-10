@@ -1,3 +1,5 @@
+{-| This module exposes the GPIO peripheral. The GPIO peripheral enables a developer
+to write programs that use GPIO pins either as high/low output or high/low input. -}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -6,13 +8,17 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ConstraintKinds #-}
 module SSM.Frontend.Peripheral.GPIO
-  ( output
-  , input
+  ( -- * SUpporting GPIO
+    SupportGPIO
+    -- * Output GPIO
   , GPIO
+  , output
+    -- * Input GPIO
+  , input
   , Switch
+    -- * Controlling GPIO
   , high
   , low
-  , SupportGPIO
   )
   where
 
@@ -66,19 +72,14 @@ instance IsPeripheral C GPIOutput where
     declaredReferences _ gpio =
         map (uncurry makeStaticRef) $ Map.elems $ output_ gpio
     
-    globalDeclarations p gpio =
-        flip map (declaredReferences p gpio) $ \ref ->
-            [cedecl| $ty:(svt_ $ dereference $ refType ref) $id:(refName ref); |]
+    globalDeclarations p gpio = []
 
-    staticInitialization p gpio = flip concatMap (declaredReferences p gpio) $ \ref ->
-        let bt     = dereference $ refType ref
-            init   = initialize_ bt [cexp| &$id:(refName ref)|]
-            assign = assign_ bt [cexp| &$id:(refName ref)|] [cexp|0|] [cexp|0|]
-        in [citems| $exp:init; $exp:assign; |]
+    staticInitialization p gpio = []
 
 gpioutputkey :: String
 gpioutputkey = "gpioutput"
 
+-- | GPIO output pins have a binary state
 type GPIO = Bool
 
 {- | Populates the GPIO pripheral with a new reference.
@@ -127,10 +128,15 @@ instance GPIOHandler C where
             pretty = concat ["initialize_static_output_device(", refName r, ", ", show i, ")"]
         in Handler sched pretty
         
-{- | Ask the GPIO peripheral for a GPIO pin identified by the @Word8@, and
-get the reference and handler back. The reference is what is used to interact
-with the GPIO, and the handler must be `schedule`d in order to actually
-perform the IO output actions. -}
+{- | Ask the GPIO peripheral for an output pin that can take the value high or low.
+The pin is identified by the @Word8@ parameter.
+
+The output is
+
+  1. A reference that controls the pin
+  2. A handler than when scheduled will make sure that the IO is actualized
+
+ -}
 output :: forall backend .
        (IsPeripheral backend GPIOutput, GPIOHandler backend)
        => Word8 -> Compile backend (Ref GPIO, OutputHandler backend)
@@ -158,22 +164,19 @@ instance IsPeripheral C GPInputO where
     declaredReferences _ gpio =
         map (uncurry makeStaticRef) $ Map.elems $ input_ gpio
     
-    globalDeclarations p gpio =
-        flip map (declaredReferences p gpio) $ \ref ->
-            [cedecl| $ty:(svt_ $ dereference $ refType ref) $id:(refName ref); |]
+    globalDeclarations p gpio = []
 
     staticInitialization p gpio = flip concatMap (Map.toList (input_ gpio)) $
       \(i,(id,t)) ->
         let 
             bt     = dereference t
             ref    = makeStaticRef id t
-            init   = initialize_ bt [cexp| &$id:(refName ref)|]
-            assign = assign_ bt [cexp| &$id:(refName ref)|] [cexp|0|] [cexp|0|]
             bind   = [cexp| $id:initialize_static_input_device(
-                  (typename ssm_sv_t *) &$id:(refName ref).sv,
-                  $uint:i) |]
-        in [citems| $exp:init; $exp:assign; $exp:bind; |]
+                                    (typename ssm_sv_t *) &$id:(refName ref).sv,
+                                    $uint:i) |]
+        in [citems|  $exp:bind; |]
 
+-- | GPIO input pins have a binary state
 type Switch = Bool
 
 gpinputokey :: String
@@ -202,6 +205,11 @@ insertGPInputO i id = do
       typ :: Type
       typ = mkReference $ typeOf $ Proxy @Bool
 
+{- | Ask the GPIO peripheral for an input pin that can take the value high or low.
+The pin is identified by the @Word8@ parameter.
+
+The output is a reference that is written to by the GPIO driver when an input is received
+ -}
 input :: forall backend .
       (IsPeripheral backend GPInputO, GPIOHandler backend)
       => Word8 -> Compile backend (Ref Switch)
@@ -213,12 +221,16 @@ input i = do
 
     return ref
 
+-- | pin state high
 high :: Exp Bool
 high = true
 
+-- | pin state low
 low :: Exp Bool
 low = false
 
+{- | A backend that satisfies the @SupportGPIO@ constraint fully supports both input and
+output GPIO pins. -}
 type SupportGPIO backend = ( IsPeripheral backend GPIOutput
                            , IsPeripheral backend GPInputO
                            , GPIOHandler backend

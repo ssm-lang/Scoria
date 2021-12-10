@@ -175,20 +175,20 @@ throw = "SSM_THROW"
 exhausted_priority :: C.Exp
 exhausted_priority = [cexp|SSM_EXHAUSTED_PRIORITY|]
 
-{- | Create C expressions that represent the new priorities and depths of the
-initially scheduled processes. -}
--- pdeps :: Int -> C.Exp -> C.Exp -> [(C.Exp, C.Exp)]
--- pdeps cs currentPrio currentDepth =
---       [ let prio  = [cexp|$exp:currentPrio + ($int:(i-1) * (1 << $exp:depth))|]
---             depth = [cexp|$exp:currentDepth - $exp:(depthSub cs)|]
---         in (prio, depth)
---       | i <- [1..cs]
---       ]
-
+-- | Generate a list of priority-depth pairs to use when forking new processes.
 pdeps :: Int -> C.Exp -> C.Exp -> [(C.Exp, C.Exp)]
 pdeps cs currentPrio currentDepth =
   map (\k -> pdep k cs currentPrio currentDepth) [1..cs]
 
+{- | Generate a priority-depth pair to use when populating the ready queue.
+
+Arguments are:
+
+  1. We want the priority and depth of the k:th procedure
+  2. Total number of processes that are being enqueued
+  3. Expression that represents priority of parent
+  4. Expression that represents depth of parent
+-}
 pdep :: Int -> Int -> C.Exp -> C.Exp -> (C.Exp, C.Exp)
 pdep k cs currentPrio currentDepth =
   let prio  = [cexp|$exp:currentPrio + ($int:(k-1) * (1 << $exp:depth))|]
@@ -202,9 +202,11 @@ The argument is the number of new processes that are being forked. -}
 depthSub :: Int -> C.Exp
 depthSub k = [cexp|$int:(ceiling $ logBase (2 :: Double) $ fromIntegral $ k :: Int) |]
 
+-- | Depth at program initialization
 depth_at_root :: C.Exp
 depth_at_root = [cexp|SSM_ROOT_DEPTH|]
 
+-- | Priority at program initialization
 priority_at_root :: C.Exp
 priority_at_root = [cexp|SSM_ROOT_PRIORITY|]
 

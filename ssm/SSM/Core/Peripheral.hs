@@ -1,11 +1,11 @@
-{- | This module implements functionality that allows us to talk about peripherals.
-A peripheral, rihgt now, is something that might declare some variables in the global
-scope, and there might be some initial initialization required upon program startup.
+{- | This module implements functionality related to talking about peripherals.
 
-The purpose of this module is mainly to not let any details about C leak to the
-core representation. An alternative would be to have the core representation use a
-\"C-compileable\" constraint instead, but then we would tie the core representation to
-the fact that there exists a C backend. -}
+All peripherals must implement the @IsPeripheral@ typeclass, once for each backend
+that supports the peripheral.
+
+To get a common interface to talk about peripherals that abstracts away the type of
+the actual peripheral, we use a GADT @Peripheral@. @Peripheral@ only talks about the
+backend the peripheral supports, not the type of the peripheral itself. -}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -34,12 +34,37 @@ instance Show (Peripheral backend) where
 instance Eq (Peripheral backend) where
     (==) = undefined
 
+-- | @IsPeripheral@ describes everything that a peripheral is and what it can do
 class IsPeripheral backend a where
+    {- | Declare a peripheral that is declared in the global scope. The peripheral
+    might need to identify some IO driver that it needs to be connected to, which
+    is what the @Word8@ parameter is for. -}
     declareReference     :: proxy backend -> Type -> Ident -> Word8 -> a -> a
-    declaredReferences   :: proxy backend -> a -> [Reference]
-    globalDeclarations   :: proxy backend -> a -> [Definition backend]
-    staticInitialization :: proxy backend -> a -> [Initialization backend]
 
+    {- | Fetch a list of all the references that has been declared in the global scope
+    by this peripheral. -}
+    declaredReferences   :: proxy backend -> a -> [Reference]
+
+    {- | Fetch a list of declarations that needs to be done at the top-level in
+    the generated program. This could be variable declarations, type declarations,
+    functions etc.
+    
+    NOTE: This list of definitions don't need to declare the references. This should
+    be handled by each respective backend by calling @declaredReferences@ and using
+    that alone to generate the reference definitions. -}
+    globalDeclarations   :: proxy backend -> a -> [Definition backend]
+
+    {- | Fetch the statements that make up the static initialization of this peripheral.
+    These statements must be inserted in the generated setup procedure.
+    
+    NOTE: This list of initialization statements don't need to initialize the references
+    declared by a peripheral. This should be handled by each respective backend by
+    calling @declaredReferences@ and using that information to do initialization.
+    It should be assumed that this initialization has happened before these
+    statements are executed. -}
+    staticInitialization :: proxy backend -> a -> [Statement backend]
+
+-- | Dummy instance to prevent the need for wrapping/unwrapping of @Peripherals@
 instance IsPeripheral backend (Peripheral backend) where
     declareReference proxy t id i (Peripheral p) =
         Peripheral $ declareReference proxy t id i p

@@ -42,12 +42,17 @@ compile_ program = (compUnit, includes)
  where
   -- | The file to generate, minus include statements
   compUnit :: [C.Definition]
-  compUnit = concat [ concatMap (globalDeclarations (Proxy @C)) (peripherals program)
+  compUnit = concat [ peripheralDeclarations
                     , preamble
                     , decls
                     , defns
                     , initProg
                     ]
+
+  peripheralDeclarations :: [C.Definition]
+  peripheralDeclarations = flip concatMap (peripherals program) (\pe ->
+                             flip map (declaredReferences (Proxy @C) pe) (\ref ->
+    [cedecl| $ty:(svt_ $ dereference $ refType ref) $id:(refName ref);|]))
 
   initProg :: [C.Definition]
   initProg = genInitProgram program
@@ -120,6 +125,7 @@ actm = "act"
 genInitProgram :: Program C -> [C.Definition]
 genInitProgram p = [cunit|
   int $id:initialize_program(void) {
+    $items:initPeripheralReferences
     $items:(concatMap (staticInitialization (Proxy @C)) (peripherals p))
     $items:(initialForks $ initialQueueContent p)
 
@@ -127,6 +133,17 @@ genInitProgram p = [cunit|
   }
   |]
  where
+  initPeripheralReferences :: [C.BlockItem]
+  initPeripheralReferences =
+    concatMap (concatMap initSingle . declaredReferences (Proxy @C)) (peripherals p)
+    where
+      initSingle :: Reference -> [C.BlockItem]
+      initSingle ref =
+        let bt     = dereference $ refType ref
+            init   = initialize_ bt [cexp| &$id:(refName ref) |]
+            assign = assign_ bt [cexp| &$id:(refName ref) |] [cexp|0|] [cexp|0|]
+        in [citems| $exp:init; $exp:assign; |]
+
   -- | Create statements for scheduling the initial ready-queue content
   initialForks :: [QueueContent C] -> [C.BlockItem]
   initialForks ips = concat $ zipWith3 initialFork [1..length ips] (repeat $ length ips) ips

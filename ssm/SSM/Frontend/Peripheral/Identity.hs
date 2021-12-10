@@ -1,10 +1,14 @@
+{- | This module implements an identity peripheral. The identity peripheral has
+no IO actions associated with it, and is used solely to create references that
+exist in the global scope.  -}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
-module SSM.Frontend.Peripheral.Identity where
+{-# LANGUAGE FlexibleInstances #-}
+module SSM.Frontend.Peripheral.Identity ( global ) where
 
 import SSM.Core hiding (peripherals)
 
@@ -30,7 +34,8 @@ data Globals = Globals { references :: Map.Map Ident Type }
 emptyGlobals :: Globals
 emptyGlobals = Globals Map.empty
 
-instance IsPeripheral C Globals where
+-- | The identity peripheral works regardless of backend, since no IO is involved
+instance IsPeripheral backend Globals where
     declareReference _ t id _ global =
         let m = references global
         in global { references = Map.insert id t m}
@@ -38,17 +43,27 @@ instance IsPeripheral C Globals where
     declaredReferences _ globals =
         map (uncurry makeStaticRef) $ Map.toList $ references globals
     
-    globalDeclarations p globals =
-        flip map (declaredReferences p globals) $ \ref ->
-            [cedecl| $ty:(svt_ $ dereference $ refType ref) $id:(refName ref); |]
+    globalDeclarations p globals = []
 
-    staticInitialization p globals = flip concatMap (declaredReferences p globals) $ \ref ->
-        let bt = dereference $ refType ref
-            init = initialize_ bt [cexp| &$id:(refName ref) |]
-            assign = assign_ bt [cexp| &$id:(refName ref)|] [cexp|0|] [cexp|0|]
-        in [citems| $exp:init; $exp:assign; |]
+    staticInitialization p globals = []
 
-global :: forall backend a . (IsPeripheral backend Globals, SSMType a) => Compile backend (Ref a)
+{- | Create a global reference. The reference is created in the compile monad and
+can be shared across the Scoria program with the @ImplicitParams@ extension.
+
+@
+program :: Compile backend ()
+program = do
+    ref <- global @Word8
+    let ?ref = ref
+
+    schedule main
+
+main :: (?ref :: Ref Word8) => SSM ()
+main = assign ?ref 5
+@
+
+-}
+global :: forall a backend . SSMType a => Compile backend (Ref a)
 global = do
     n <- fresh
     let id = Ident ("global" <> show n) Nothing
