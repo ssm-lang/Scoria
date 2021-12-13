@@ -157,7 +157,7 @@ genInitProgram p = [cunit|
                                                         , $args:(map cargs args)
                                                         )
                             ); |]]
-      initialFork k cs (OutputHandler (Handler f _)) = f k cs
+      initialFork k cs (OutputHandler (Handler f)) = f k cs
 
       cargs :: Either SSMExp Reference -> C.Exp
       cargs (Left e)  = genExp [] e

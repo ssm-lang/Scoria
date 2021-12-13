@@ -75,5 +75,5 @@ import SSM.Core.Program
 import SSM.Pretty.Syntax ( prettyProgram )
 import SSM.Core.Backend
 
-prettySSM :: forall backend a . SSMProgram backend a => a -> String
-prettySSM = prettyProgram . toProgram @backend
+prettySSM :: SSMProgram PrettyPrint a => a -> String
+prettySSM = prettyProgram . toProgram

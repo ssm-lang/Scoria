@@ -64,14 +64,18 @@ initBasicBLE = BasicBLE
   , scanControl_      = (makeIdent "scanControl",      mkReference $ typeOf $ Proxy @Bool)
   }
 
+declareReferenceBasicBLE :: proxy backend -> Type -> Ident -> Word8 -> BasicBLE -> BasicBLE
+declareReferenceBasicBLE _ _ _ _ _ = error "error --- declareReference BasicBLE called"
+
+declaredReferencesBasicBLE :: proxy backend -> BasicBLE -> [Reference]
+declaredReferencesBasicBLE _ bble =
+  map (\f -> uncurry makeStaticRef $ f bble)
+    [broadcast_, broadcastControl_, scan_, scanControl_]
+
 -- | @BasicBLE@ can be compiled to C
 instance IsPeripheral C BasicBLE where
-    declareReference _ _ id _ _ = error "error --- declareReference BasicBLE called"
-
-    declaredReferences _ bble = map
-        (\f -> uncurry makeStaticRef $ f bble)
-        [broadcast_, broadcastControl_, scan_, scanControl_]
-
+    declareReference = declareReferenceBasicBLE
+    declaredReferences = declaredReferencesBasicBLE
     globalDeclarations p bble = []
 
     staticInitialization p bble =
@@ -79,6 +83,52 @@ instance IsPeripheral C BasicBLE where
             scanref  = uncurry makeStaticRef (scan_ bble)
             scaninit =  [cexp| $id:initialize_static_input_ble_scan_device(&$id:(refName scanref).sv) |]
         in [citems| $exp:enable; $exp:scaninit; |]
+
+instance IsPeripheral PrettyPrint BasicBLE where
+    declareReference = declareReferenceBasicBLE
+    declaredReferences = declaredReferencesBasicBLE
+
+    globalDeclarations p bble = map init [
+        unlines [ "-- BBLE peripheral broadcast handler:"
+                , "-- initialize_static_output_ble_broadcast(ref) binds the ref to this procedure"
+                , "broadcast_handler() {"
+                , "  while(true) {"
+                , concat ["    wait ", identName $ fst $ broadcast_ bble]
+                , "    -- reflect value of broadcast ref in BLE broadcast payload"
+                , "  }"
+                , "}"
+                ]
+      , unlines [ "-- BBLE peripheral broadcast control handler:"
+                , "-- initialize_static_output_ble_broadcast_control(ref) binds the ref to this procedure"
+                , "broadcast_control_handler() {"
+                , "  while(true) {"
+                , concat ["    wait ", identName $ fst $ broadcastControl_ bble]
+                , "    -- toggle broadcasting on or off depending on broadcastControl value"
+                , "  }"
+                , "}"
+                ]
+      , unlines [ "-- BBLE peripheral scan control handler:"
+                , "-- initialize_static_output_ble_scan_control(ref) binds the ref to this procedure"
+                , "scan_control_handler() {"
+                , "  while(true) {"
+                , concat ["    wait ", identName $ fst $ scanControl_ bble]
+                , "    -- toggle scanning on or off depending on scanControl value"
+                , "  }"
+                , "}"
+                ]
+      , unlines [ "-- BBLE peripheral broadcast handler:"
+                , "-- initialize_static_output_ble_scan(ref) binds the ref to this procedure"
+                , "scan_handler() {"
+                , "  while(true) {"
+                , "    -- wait to successfully scan for a received BLE packet"
+                , concat ["    -- turn the scanned message into an event on the ", identName $ fst $ scan_ bble, " ref"]
+                , "  }"
+                , "}"
+                ]
+      ]
+
+    staticInitialization p bble = [ "enable_ble()"
+                                  , concat ["initialize_static_output_ble_scan(", identName $ fst $ scan_ bble, ")"]]
 
 -- | This class abstracts away the action of creating handlers for a specific backend
 class BLEHandlers backend where
@@ -94,9 +144,6 @@ instance BLEHandlers C where
                 proto      = initialize_static_output_ble_broadcast_device
                 refname    = identName $ fst $ broadcast_ bble
             in [[citem| $id:proto(&$id:(refname).sv); |]])
-        (concat [ "bind_static_ble_broadcast_handler_device("
-                , identName $ fst $ broadcast_ bble
-                , ")"])
 
     broadcastControlHandler _ bble = Handler
         (\k cs ->
@@ -104,9 +151,6 @@ instance BLEHandlers C where
                 proto      = initialize_static_output_ble_broadcast_control_device
                 refname    = identName $ fst $ broadcastControl_ bble
             in [[citem| $id:proto(&$id:(refname).sv); |]])
-        (concat [ "bind_static_ble_broadcast_control_handler_device("
-                , identName $ fst $ broadcastControl_ bble
-                , ")"])
 
     scanControlHandler _ bble = Handler
         (\k cs ->
@@ -114,9 +158,22 @@ instance BLEHandlers C where
                 proto      = initialize_static_output_ble_scan_control_device
                 refname    = identName $ fst $ scanControl_ bble
             in [[citem| $id:proto(&$id:(refname).sv); |]])
-        (concat [ "bind_static_ble_scan_control_handler_device("
-                , identName $ fst $ scanControl_ bble
-                , ")"])
+
+instance BLEHandlers PrettyPrint where
+    broadcastHandler _ bble = Handler $ \_ _ ->
+      [concat [ "initialize_static_output_ble_broadcast("
+              , identName $ fst $ broadcast_ bble, ")"
+              ]]
+
+    broadcastControlHandler _ bble = Handler $ \_ _ ->
+      [concat [ "initialize_static_output_ble_broadcast_control("
+              , identName $ fst $ broadcastControl_ bble, ")"
+              ]]
+
+    scanControlHandler _ bble = Handler $ \_ _ ->
+      [concat [ "initialize_static_output_ble_scan_control("
+              , identName $ fst $ scan_ bble, ")"
+              ]]
 
 ---------- Frontend API of BBLE ----------
 

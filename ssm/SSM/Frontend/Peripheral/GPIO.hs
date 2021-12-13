@@ -66,13 +66,37 @@ data GPIOutput = GPIOutput { output_ :: Map.Map Word8 (Ident, Type)}
 emptyGPIOutput :: GPIOutput
 emptyGPIOutput = GPIOutput { output_ = Map.empty }
 
-instance IsPeripheral C GPIOutput where
-    declareReference _ t id i gpio = gpio { output_ = Map.insert i (id,t) (output_ gpio) }
+declareReferenceGPIOutput :: proxy backend -> Type -> Ident -> Word8 -> GPIOutput -> GPIOutput
+declareReferenceGPIOutput _ t id i gpio = gpio { output_ = Map.insert i (id,t) (output_ gpio) }
 
-    declaredReferences _ gpio =
-        map (uncurry makeStaticRef) $ Map.elems $ output_ gpio
-    
+declaredReferencesGPIOutput :: proxy backend -> GPIOutput -> [Reference]
+declaredReferencesGPIOutput _ gpio = map (uncurry makeStaticRef) $ Map.elems $ output_ gpio
+
+instance IsPeripheral C GPIOutput where
+    declareReference = declareReferenceGPIOutput
+
+    declaredReferences = declaredReferencesGPIOutput
+
     globalDeclarations p gpio = []
+
+    staticInitialization p gpio = []
+
+instance IsPeripheral PrettyPrint GPIOutput where
+    declareReference = declareReferenceGPIOutput
+
+    declaredReferences = declaredReferencesGPIOutput
+
+    globalDeclarations p gpio = [
+        unlines [ "-- GPIO peripheral output handler:"
+                , "-- initialize_static_output_device(ref,id) binds the ref to this procedure"
+                , "output_handler(ref,id) {"
+                , "  while(true) {"
+                , "    wait ref"
+                , "    -- actualize value of ref to output pin id"
+                , "  }"
+                , "}"
+                ]
+      ]
 
     staticInitialization p gpio = []
 
@@ -125,9 +149,12 @@ instance GPIOHandler C where
                                                      $exp:dep,
                                                      &$id:(refName r).sv,
                                                      $uint:i);|]]
-            pretty = concat ["initialize_static_output_device(", refName r, ", ", show i, ")"]
-        in Handler sched pretty
-        
+        in Handler sched
+
+instance GPIOHandler PrettyPrint where
+  make_handler _ (Ptr r) i = Handler $ \_ _ ->
+    [concat ["initialize_static_output_device(", refName r, ", ", show i, ")"]]
+
 {- | Ask the GPIO peripheral for an output pin that can take the value high or low.
 The pin is identified by the @Word8@ parameter.
 
@@ -158,15 +185,20 @@ data GPInputO = GPInputO { input_ :: Map.Map Word8 (Ident, Type) }
 emptyGPInputO :: GPInputO
 emptyGPInputO = GPInputO { input_ = Map.empty }
 
-instance IsPeripheral C GPInputO where
-    declareReference _ t id i gpio = gpio { input_ = Map.insert i (id,t) (input_ gpio) }
+declareReferenceGPInputO :: proxy backend -> Type -> Ident -> Word8 -> GPInputO -> GPInputO
+declareReferenceGPInputO _ t id i gpio = gpio { input_ = Map.insert i (id,t) (input_ gpio) }
 
-    declaredReferences _ gpio =
-        map (uncurry makeStaticRef) $ Map.elems $ input_ gpio
-    
+declaredReferencesGPInputO :: proxy backend -> GPInputO -> [Reference]
+declaredReferencesGPInputO _ gpio = map (uncurry makeStaticRef) $ Map.elems $ input_ gpio
+
+instance IsPeripheral C GPInputO where
+    declareReference = declareReferenceGPInputO
+
+    declaredReferences = declaredReferencesGPInputO
+
     globalDeclarations p gpio = []
 
-    staticInitialization p gpio = flip concatMap (Map.toList (input_ gpio)) $
+    staticInitialization p gpio = flip map (Map.toList (input_ gpio)) $
       \(i,(id,t)) ->
         let 
             bt     = dereference t
@@ -174,7 +206,27 @@ instance IsPeripheral C GPInputO where
             bind   = [cexp| $id:initialize_static_input_device(
                                     (typename ssm_sv_t *) &$id:(refName ref).sv,
                                     $uint:i) |]
-        in [citems|  $exp:bind; |]
+        in [citem| $exp:bind; |]
+
+instance IsPeripheral PrettyPrint GPInputO where
+    declareReference = declareReferenceGPInputO
+
+    declaredReferences = declaredReferencesGPInputO
+
+    globalDeclarations p gpio = map init [
+        unlines [ "-- GPIO peripheral input handler:"
+                , "-- initialize_static_input_device(ref,id) binds the ref to this procedure"
+                , "input_handler(ref,id) {"
+                , "  while(true) {"
+                , "    -- wait for input on pin id"
+                , "    -- turn input on pin id to a write to ref"
+                , "  }"
+                , "}"
+                ]
+      ]
+
+    staticInitialization _ gpio = flip map (Map.toList (input_ gpio)) $
+      \(i,(id,t)) -> concat ["initialize_static_input_device(", identName id, ", ", show i, ")"]
 
 -- | GPIO input pins have a binary state
 type Switch = Bool
