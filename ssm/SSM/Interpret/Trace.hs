@@ -11,6 +11,7 @@ and at the beginning of each step function. The running microtick count persists
 between instants, so that it increases monotonically throughout the execution.
 -}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DerivingVia #-}
 module SSM.Interpret.Trace where
 
 import qualified Data.Text                     as T
@@ -71,7 +72,7 @@ data Event =
   | CrashArithmeticError
   -- | Interpreter crashed for an unforeseen reason (should be unreachable).
   | CrashUnforeseen String
-  deriving (Show, Eq)
+  deriving (Show, Read, Eq)
 
 isTerminal :: Event -> Bool
 isTerminal TerminatedOk         = True
@@ -100,7 +101,7 @@ type ActIdent = String
 -- Even if the variable is a reference, VarVal should contain its base type
 -- (i.e., without the reference) and base value (i.e., dereferenced).
 data VarVal = VarVal VarIdent Type ConcreteValue
-  deriving (Show, Eq)
+  deriving (Show, Read, Eq)
 
 -- | An untyped, concrete value.
 --
@@ -186,8 +187,11 @@ ref = "Ref"
 
 {-********** Generate random traces **********-}
 
-instance Arbitrary Type where
-  arbitrary = elements $ basetypes ++ Prelude.map Ref basetypes
+{- Need to newtype this so the test-suites don't complain about duplicate arbitrary
+instances for Types -}
+newtype TType = TType Type
+instance Arbitrary TType where
+  arbitrary = elements $ map TType $ basetypes ++ Prelude.map Ref basetypes
     where basetypes = [TUInt8, TUInt64, TInt32, TInt64, TBool, TEvent]
 
 instance Arbitrary ConcreteValue where
@@ -197,7 +201,7 @@ instance Arbitrary VarVal where
   arbitrary = do
     i <- arbitrary :: Gen Word8
     let varIdent = "v" ++ show i
-    t  <- arbitrary
+    TType t  <- arbitrary
     cv <- arbitrary
     return $ VarVal varIdent t cv
 

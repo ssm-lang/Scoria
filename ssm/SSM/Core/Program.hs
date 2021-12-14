@@ -46,8 +46,7 @@ data QueueContent backend
 of things that are scheduled and the total number of things that are scheduled, the
 handler can return the statements that schedule this handler.
 A Handler can also specify a string to use when pretty-printing. -}
-data Handler backend = Handler
-  { gen_handler    :: Int -> Int -> [Statement backend] }
+data Handler backend = Handler { gen_handler :: Int -> Int -> [Statement backend] }
 
 instance Show (QueueContent backend) where
   show (SSMProcedure id args) = "SSMProcedure " <> show id <> " " <> show args

@@ -100,6 +100,12 @@ instance IsPeripheral PrettyPrint GPIOutput where
 
     staticInitialization p gpio = []
 
+instance IsPeripheral Interpret GPIOutput where
+    declareReference            = declareReferenceGPIOutput
+    declaredReferences          = declaredReferencesGPIOutput
+    globalDeclarations p gpio   = []
+    staticInitialization p gpio = []
+
 gpioutputkey :: String
 gpioutputkey = "gpioutput"
 
@@ -154,6 +160,9 @@ instance GPIOHandler C where
 instance GPIOHandler PrettyPrint where
   make_handler _ (Ptr r) i = Handler $ \_ _ ->
     [concat ["initialize_static_output_device(", refName r, ", ", show i, ")"]]
+
+instance GPIOHandler Interpret where
+  make_handler _ _ _ = Handler $ \_ _ -> []
 
 {- | Ask the GPIO peripheral for an output pin that can take the value high or low.
 The pin is identified by the @Word8@ parameter.
@@ -227,6 +236,12 @@ instance IsPeripheral PrettyPrint GPInputO where
 
     staticInitialization _ gpio = flip map (Map.toList (input_ gpio)) $
       \(i,(id,t)) -> concat ["initialize_static_input_device(", identName id, ", ", show i, ")"]
+
+instance IsPeripheral Interpret GPInputO where
+    declareReference            = declareReferenceGPInputO
+    declaredReferences          = declaredReferencesGPInputO
+    globalDeclarations p gpio   = []
+    staticInitialization p gpio = []
 
 -- | GPIO input pins have a binary state
 type Switch = Bool

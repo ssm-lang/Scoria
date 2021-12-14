@@ -2,6 +2,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleContexts #-}
 module SSM.Interpret.Interpreter
   ( interpret
   , InterpretConfig(..)
@@ -27,8 +28,8 @@ import           Control.Monad.State.Lazy
 import           Control.Monad.Writer.Lazy
 
 -- | Interpret an SSM program with the default configuration.
-interpret_ :: forall backend p . SSMProgram backend p => p -> T.Trace
-interpret_ = interpret @backend def
+interpret_ :: forall p . SSMProgram Interpret p => p -> T.Trace
+interpret_ = interpret def
 
 {-| Interpret an SSM program.
 
@@ -40,9 +41,9 @@ issue. What you do to get the output in that case is to ask it for a finite amou
 of output, such as @take 10000 (interpret program)@. After evaluating enough to
 give you @10000@ trace items, it will not evaluate more.
 -}
-interpret :: forall backend p . SSMProgram backend p => InterpretConfig -> p -> T.Trace
+interpret :: forall p . SSMProgram Interpret p => InterpretConfig -> p -> T.Trace
 interpret config program = runST $ do
-  let p = toProgram @backend program
+  let p = toProgram @Interpret program
   -- Fetch procedure body
   fun <- case Map.lookup (entry p) (funs p) of
     Just p' -> return p'

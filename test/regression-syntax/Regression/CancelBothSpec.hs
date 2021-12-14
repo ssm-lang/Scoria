@@ -18,7 +18,7 @@ fun0 = routine $ do
     v1 <- var $ changed v0
     after (nsecs 3872) v1 false'
 
-p :: Program
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList

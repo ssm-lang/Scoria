@@ -19,7 +19,7 @@ fun0 = routine $ do
     var event'
     return ()
 
-p :: Program
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs             = fromList

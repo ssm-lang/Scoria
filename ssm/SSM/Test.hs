@@ -25,8 +25,8 @@ program = do
     (led2, handler2) <- output 2
     input0           <- input  0
     input1           <- input  1
-    glo <- global @Word8
-    (_, b, bc, sc) <- enableBLE
+    glo              <- global @Word8
+    (_, b, bc, sc)   <- enableBLE
 
     let ?led0   = led0
         ?led1   = led1

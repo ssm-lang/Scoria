@@ -28,7 +28,7 @@ fun1 ref1 ref3 = routine $ do
     wait ref1
     wait ref3
 
-p :: Program
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList

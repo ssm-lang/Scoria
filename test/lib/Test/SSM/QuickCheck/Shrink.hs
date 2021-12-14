@@ -17,7 +17,7 @@ import Test.SSM.QuickCheck.Shrink.Expressions ( expressions )
 {- | Shrink a program into several sub-programs. Please refer to the separate modules
 implementing the shrinking strategies for more documentation of what each strategy
 actually does. -}
-shrinkProgram :: Program -> [Program]
+shrinkProgram :: Program backend -> [Program backend]
 shrinkProgram p =
     let p' = removeUnusedProcedures p
     in concat $ map ($p') [ shrinkManyProcedures

@@ -27,7 +27,7 @@ data Type
     | TBool     -- ^ Boolean type
     | TEvent    -- ^ Event type
     | Ref Type  -- ^ A reference to another type
-    deriving (Eq, Show)
+    deriving (Eq, Show, Read)
 
 -- | Dereference a type. Throws an error if the type is not a reference.
 dereference :: Type -> Type

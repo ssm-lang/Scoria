@@ -16,7 +16,7 @@ fun0 = routine $ do
     v0 <- var (0 :: Exp Int32)
     after (nsecs 2) v0 1
 
-p :: Program
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList

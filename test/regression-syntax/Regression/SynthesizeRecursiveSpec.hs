@@ -21,7 +21,7 @@ fun0 = routine $ do
               fork [wait x]
          ]
 
-p = Program
+p = Program backend
   {
       initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
     , funs = fromList [( Ident "fun0" Nothing

@@ -17,7 +17,7 @@ import qualified Data.Set as Set
 
 -- | Return all mutations where one function were removed from the program. Never
 -- tries to remove the main function.
-shrinkSingleProcedures :: Program -> [Program]
+shrinkSingleProcedures :: Program backend -> [Program backend]
 shrinkSingleProcedures p =
   -- for each procedure in the program that is not the programs entry point
   let ps = for (delete (entry p) (Map.keys (funs p))) $ \fun ->
@@ -28,7 +28,7 @@ shrinkSingleProcedures p =
 
 {- | A more greedy versio pn of program shrinking where one third of the entire program
 is removed at once. -} 
-shrinkManyProcedures :: Program -> [Program]
+shrinkManyProcedures :: Program backend -> [Program backend]
 shrinkManyProcedures p = concat $ for [ removeCallsFromProgram h1 p
                                       , removeCallsFromProgram h2 p
                                       , removeCallsFromProgram h3 p
@@ -64,7 +64,7 @@ shrinkManyProcedures p = concat $ for [ removeCallsFromProgram h1 p
 program but where now no procedure every forks any of the deleted procedures.
 Returns @Nothing@ if the program was unchanged (in which case no shrinking could
 have occured). -}
-removeCallsFromProgram :: [Ident] -> Program -> Maybe Program
+removeCallsFromProgram :: [Ident] -> Program backend -> Maybe (Program backend)
 removeCallsFromProgram deletedfuns p =
   let -- delete the procedures from the program
       funs'   = foldl (\m' n -> Map.delete n m') (funs p) deletedfuns
@@ -117,7 +117,7 @@ removeCallsFromProcedure funs p =
 
 
 -- | Remove procedures from a program that are not used (dead code)
-removeUnusedProcedures :: Program -> Program
+removeUnusedProcedures :: Program backend -> Program backend
 removeUnusedProcedures p = case removeCallsFromProgram (toremove' p) p of
   Just p -> p
   Nothing -> p
@@ -144,7 +144,7 @@ removeUnusedProcedures p = case removeCallsFromProgram (toremove' p) p of
 
      {- | Takes a program and returns a list of names of procedures that are unused can that
      can be safely removed all together. -}
-     toremove' :: Program -> [Ident]
+     toremove' :: Program backend -> [Ident]
      toremove' p = let -- Set of procedures that exist
                        s1 = Set.fromList $ Map.keys (funs p)
                        -- Set of procedures that are used

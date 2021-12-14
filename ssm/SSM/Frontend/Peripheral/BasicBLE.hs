@@ -130,6 +130,12 @@ instance IsPeripheral PrettyPrint BasicBLE where
     staticInitialization p bble = [ "enable_ble()"
                                   , concat ["initialize_static_output_ble_scan(", identName $ fst $ scan_ bble, ")"]]
 
+instance IsPeripheral Interpret BasicBLE where
+    declareReference            = declareReferenceBasicBLE
+    declaredReferences          = declaredReferencesBasicBLE
+    globalDeclarations p bble   = []
+    staticInitialization p bble = []
+
 -- | This class abstracts away the action of creating handlers for a specific backend
 class BLEHandlers backend where
     broadcastHandler        :: proxy backend -> BasicBLE -> Handler backend
@@ -175,6 +181,10 @@ instance BLEHandlers PrettyPrint where
               , identName $ fst $ scan_ bble, ")"
               ]]
 
+instance BLEHandlers Interpret where
+  broadcastHandler _ _        = Handler $ \_ _ -> []
+  broadcastControlHandler _ _ = Handler $ \_ _ -> []
+  scanControlHandler _ _      = Handler $ \_ _ -> []
 ---------- Frontend API of BBLE ----------
 
 -- | This object can be used to access the BLE driver

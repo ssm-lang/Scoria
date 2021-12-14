@@ -17,7 +17,7 @@ import Data.Int
 fun0 :: SSM ()
 fun0 = routine $ fork [fun0]
 
-p :: Program
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList

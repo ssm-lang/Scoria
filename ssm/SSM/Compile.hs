@@ -1,6 +1,7 @@
 -- | SSM EDSL compilation interface, for compiling to C code.
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
 module SSM.Compile
   ( SSMProgram(..)
   , toC
@@ -23,18 +24,19 @@ import           SSM.Core.Backend
 -- | Compile a program to a C-file.
 --
 -- TODO: This can fail, so it should return Either CompileError String.
-toC :: SSMProgram C a => a -> String
-toC = compile . toProgram
+--toC :: SSMProgram C a => a -> String
+toC :: SSMProgram C p => p -> String
+toC p = compile $ toProgram p
 
 -- | Compile a program and write it to the specified path.
-compileFile :: SSMProgram C a => FilePath -> a -> IO ()
+compileFile :: SSMProgram C p => FilePath -> p -> IO ()
 compileFile fp = writeFile fp . toC
 
 -- | Create command-line compilation interface for specific program.
 --
 -- Includes parameter for specifying a default filepath. If this is not needed,
 -- use @compileCli_@.
-compileCli :: SSMProgram C a => Maybe FilePath -> a -> IO ()
+compileCli :: SSMProgram C p => Maybe FilePath -> p -> IO ()
 compileCli defaultPath program = do
   args <- getArgs
   path <- getFilePath args
@@ -61,5 +63,5 @@ compileCli defaultPath program = do
     exitWith $ ExitFailure 1
 
 -- | Create command-line compilation interface for specific program.
-compileCli_ :: SSMProgram C a => a -> IO ()
+compileCli_ :: SSMProgram C p => p -> IO ()
 compileCli_ = compileCli Nothing

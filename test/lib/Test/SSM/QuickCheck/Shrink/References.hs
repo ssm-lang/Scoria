@@ -10,7 +10,7 @@ import Test.SSM.QuickCheck.Util
 
 import Data.Maybe
 
-refs :: Program -> [Program]
+refs :: Program backend -> [Program backend]
 refs = transformProcedures removeAllDeclaredRefs
 
 {- | Given a procedure, this function will return all successful transformations of the

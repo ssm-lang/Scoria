@@ -21,7 +21,7 @@ fun0 = routine $ do
     fork [ x <~ deref x + deref y
          ]
 
-p = Program
+p = Program backend
   {
       initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
     , funs = fromList [( Ident "generatedfresh0" Nothing

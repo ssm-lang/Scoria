@@ -14,7 +14,7 @@ import Data.Int
 fun1 :: SSM ()
 fun1 = routine $ return ()
 
-p :: Program
+p :: Program backend
 p = Program {initialQueueContent = [SSMProcedure (Ident "fun1" Nothing) []], funs = fromList [(Ident "fun1" Nothing,Procedure {name = Ident "fun1" Nothing, arguments = [], body = []})], peripherals = []}
 
 spec :: H.Spec

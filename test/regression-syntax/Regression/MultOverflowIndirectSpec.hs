@@ -23,7 +23,7 @@ fun1 = routine $ do
     fresh1 <- var (0 :: Exp Int32)
     wait fresh1
 
-p :: Program
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun1" Nothing) []]
   , funs  = fromList

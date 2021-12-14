@@ -8,7 +8,7 @@ import SSM.Util.HughesList hiding ( (++) )
 
 import Test.SSM.QuickCheck.Util
 
-statements :: Program -> [Program]
+statements :: Program backend -> [Program backend]
 statements = transformProcedures shrinkAllStmtsProcedure
 
 -- | Return a list of new procedures where the procedure is mutated by removing

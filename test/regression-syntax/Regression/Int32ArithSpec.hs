@@ -21,7 +21,7 @@ fun0 = routine $ do
 fun3 :: Exp Int64 -> SSM ()
 fun3 var3 = routine $ return ()
 
-p :: Program
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs             = fromList

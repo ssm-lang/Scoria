@@ -18,7 +18,7 @@ import qualified Data.Map as Map
 import Debug.Trace
 
 -- | Shrink procedure arities
-arities :: Program -> [Program]
+arities :: Program backend -> [Program backend]
 arities p =
   [ -- delete argument from argument list
     let newargs     = removeNth i (arguments procedure)

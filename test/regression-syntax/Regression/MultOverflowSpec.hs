@@ -22,7 +22,7 @@ fun1 = routine $ do
       (after (nsecs 2) fresh0 1)
     wait fresh0
 
-p :: Program
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun1" Nothing) []]
   , funs  = fromList

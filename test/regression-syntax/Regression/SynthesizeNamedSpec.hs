@@ -24,7 +24,7 @@ fun0 :: SSM ()
 fun0 = routine $ do
     fork [ delay (nsecs 2) ]
 
-p = Program
+p = Program backend
   {
       initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
     , funs = fromList [( Ident "generatedfresh0" Nothing

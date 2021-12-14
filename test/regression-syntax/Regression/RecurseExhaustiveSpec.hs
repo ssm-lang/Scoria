@@ -20,7 +20,7 @@ fun0 = routine $ fork [fun0, fun1]
 fun1 :: SSM ()
 fun1 = routine $ return ()
 
-p :: Program
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList

@@ -11,7 +11,7 @@ import Test.SSM.QuickCheck.Util
 
 {- | Shrink the expressions in a program. Each program in the output has at most
 and at least one expression shrunk. -}
-expressions :: Program -> [Program]
+expressions :: Program backend -> [Program backend]
 expressions = transformProcedures shrinkExpInProcedure
 
 {- | Take a procedure and produce a list of mutated procedures, where each mutation has

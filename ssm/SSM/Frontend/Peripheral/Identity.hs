@@ -8,7 +8,10 @@ exist in the global scope.  -}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-module SSM.Frontend.Peripheral.Identity ( global ) where
+module SSM.Frontend.Peripheral.Identity
+  ( global
+  , Globals(..) -- only exposed for testing, FIXME
+  ) where
 
 import SSM.Core hiding (peripherals)
 

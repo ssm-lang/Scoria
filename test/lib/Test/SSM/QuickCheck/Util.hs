@@ -27,7 +27,7 @@ new program is produced. In each new `Program`, only one procedure has been muta
 
 Example: You have a program with 5 procedures and they can all be shrunk twice each. The
 result of calling @transformProcedures@ will be a list of 10 new programs. -}
-transformProcedures :: (Procedure -> [Procedure]) -> Program -> [Program]
+transformProcedures :: (Procedure -> [Procedure]) -> Program backend -> [Program backend]
 transformProcedures tr prg = [ prg { funs = Map.insert n fun' (funs prg) }
                              | (n,fun) <- Map.toList (funs prg)
                              , fun' <- tr fun

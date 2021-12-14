@@ -14,8 +14,9 @@ import SSM.Core.Ident
 import SSM.Core.Reference
 import SSM.Core.Program
 import SSM.Core.Type
-import SSM.Core.Peripheral.Identity
 import SSM.Core.Peripheral
+
+import SSM.Frontend.Peripheral.Identity
 
 import SSM.Util.HughesList hiding ( (++) )
 
@@ -47,7 +48,7 @@ genListOfLength :: Gen a -> Int -> Gen [a]
 genListOfLength ga 0 = return []
 genListOfLength ga n = (:) <$> ga <*> genListOfLength ga (n-1)
 
-instance Arbitrary Program where
+instance Arbitrary (Program backend) where
   shrink = shrinkProgram
 
   arbitrary = do
@@ -88,7 +89,7 @@ instance Arbitrary Program where
 
     return $ Program [SSMProcedure entryPoint []] procedures [Peripheral identityperipheral]
 
-genGlobals :: Gen (IdentityPeripheral, [Reference])
+genGlobals :: Gen (Globals, [Reference])
 genGlobals = do
   globaltypes <-
     genListOfLength (elements (map Ref basetypes)) =<< choose (0,5)
@@ -99,7 +100,7 @@ genGlobals = do
   let globalrefs =
        map (uncurry makeStaticRef) globals
 
-  let idsvs = foldl (\svs (id, t) -> addIdentitySV id t svs) emptyIdentityPeripheral globals
+  let idsvs = foldl (\(Globals m) (id, t) -> Globals $ Map.insert id t m) (Globals Map.empty) globals
   return (idsvs, globalrefs)
 
 -- | Generate a procedure body.
