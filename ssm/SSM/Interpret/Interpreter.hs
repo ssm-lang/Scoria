@@ -7,7 +7,6 @@ module SSM.Interpret.Interpreter
   ( interpret
   , InterpretConfig(..)
   , interpret_
-  , SSMProgram(..)
   ) where
 
 import           SSM.Core
@@ -28,7 +27,7 @@ import           Control.Monad.State.Lazy
 import           Control.Monad.Writer.Lazy
 
 -- | Interpret an SSM program with the default configuration.
-interpret_ :: forall p . SSMProgram Interpret p => p -> T.Trace
+interpret_ :: Program Interpret -> T.Trace
 interpret_ = interpret def
 
 {-| Interpret an SSM program.
@@ -41,9 +40,8 @@ issue. What you do to get the output in that case is to ask it for a finite amou
 of output, such as @take 10000 (interpret program)@. After evaluating enough to
 give you @10000@ trace items, it will not evaluate more.
 -}
-interpret :: forall p . SSMProgram Interpret p => InterpretConfig -> p -> T.Trace
-interpret config program = runST $ do
-  let p = toProgram @Interpret program
+interpret :: InterpretConfig -> Program Interpret -> T.Trace
+interpret config p = runST $ do
   -- Fetch procedure body
   fun <- case Map.lookup (entry p) (funs p) of
     Just p' -> return p'

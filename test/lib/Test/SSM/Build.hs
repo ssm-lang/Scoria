@@ -13,9 +13,7 @@ import           System.Exit                    ( ExitCode(..) )
 import           System.Process                 ( readProcessWithExitCode )
 
 import           SSM.Core                       ( Program, C )
-import           SSM.Compile                    ( SSMProgram(..)
-                                                , toC
-                                                )
+import           SSM.Compile                    ( toC' )
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
@@ -34,9 +32,9 @@ buildPlatform :: String
 buildPlatform = "trace"
 
 -- | Compile an SSM program to a C program's string representation.
-doCompile :: (SSMProgram C p, Monad m) => Slug -> p -> QC.PropertyM m String
+doCompile :: Monad m => Slug -> Program C -> QC.PropertyM m String
 doCompile slug program = do
-  let cSrc = toC program
+  let cSrc = toC' program
   reportOnFail slug (show slug ++ ".c") cSrc
   return cSrc
 

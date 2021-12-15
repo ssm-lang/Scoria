@@ -40,18 +40,15 @@ instance IntState (CompileSt backend) where
     getInt = compileCounter
     setInt i st = st { compileCounter = i }
 
-{- | If you have a @Compile (SSM ())@ you have probably set up some global variables
-using the @Compile@ monad. This instance makes sure that you can compile and interpret
-something that is a program with such global variables. -}
-instance SSMProgram backend (Compile backend ()) where
-    toProgram (Compile p) =
+toProgram :: Compile backend () -> Program backend
+toProgram (Compile p) =
         let (a, s) = runState
                 p
                 (CompileSt 0 [] Nothing Map.empty)
             (n, f) = transpile $ fromJust $ entryPoint s
         in  Program (reverse $ SSM.Frontend.Compile.initialQueueContent s) f
                 $ Map.elems (SSM.Frontend.Compile.peripherals s)
-                
+
 type OutputHandler backend = Handler backend
 
 class Schedulable backend a where

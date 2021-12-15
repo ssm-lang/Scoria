@@ -11,7 +11,6 @@ module SSM.Core.Program
     , QueueContent(..)
     , entry
     , Program(..)
-    , SSMProgram(..)
     , Handler(..)
 
     ) where
@@ -84,12 +83,3 @@ data Program backend = Program
 instance Eq (Program backend) where
   p1 == p2 = initialQueueContent p1 == initialQueueContent p2 &&
              funs p1 == funs p2
-
--- | Class of types that can be converted to a `Program`.
-class SSMProgram backend a where
-  -- | This function takes an @a@ and converts it to a `Program`
-  toProgram :: a -> Program backend
-
--- | Dummy instance for `Program`. Does nothing -- defined to be the identity function.
-instance SSMProgram backend (Program backend) where
-    toProgram = id

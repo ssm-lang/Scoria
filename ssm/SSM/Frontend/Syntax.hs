@@ -155,13 +155,6 @@ getProcedureName :: [SSMStm] -> Ident
 getProcedureName (Procedure n _ _ : _) = n
 getProcedureName _                     = error "not a procedure"
 
-{- | Instance of `SSM.Core.Syntax.SSMProgram`, so that the compiler knows how to turn
-the frontend representation into something that it can generate code for. Just compiling
-a program does not introduce any global variables. -}
-instance SP.SSMProgram backend (SSM ()) where
-  toProgram p =
-    let (n, f) = transpile p in SP.Program [SP.SSMProcedure n []] f []
-
 {-********** Transpiling to core syntax **********-}
 
 -- | Transpilation monad
