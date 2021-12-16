@@ -7,6 +7,7 @@ import           Prelude hiding (sum)
 
 import SSM.Language
 import SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Core
 import Data.Map as Map
 import qualified Test.Hspec                    as H
@@ -20,6 +21,9 @@ fun0 = routine $ do
 
 fun3 :: Exp Int64 -> SSM ()
 fun3 var3 = routine $ return ()
+
+p1 :: Compile backend ()
+p1 = schedule fun0
 
 p :: Program backend
 p = Program
@@ -67,4 +71,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "Int32Arith" fun0 p
+spec = T.propSyntacticEquality "Int32Arith" (toProgram p1) p

@@ -12,12 +12,14 @@ module Test.SSM.Prop
   , semanticIncorrectSpec
   ) where
 
+import           Unsafe.Coerce                  ( unsafeCoerce )
 import           SSM.Core                       ( Program
                                                 , C
                                                 , Interpret
                                                 , PrettyPrint
                                                 )
 import           SSM.Compile
+import           SSM.Pretty
 import           Test.SSM.QuickCheck.Generator  ( ) -- instance Arbitrary Program
 
 import qualified Test.Hspec                    as H
@@ -78,9 +80,9 @@ propValgrindWithSize tn program (aQSize, eQSize) = do
 
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
-propCorrect :: TestName -> (forall backend . Program backend) -> QC.Property
+propCorrect :: TestName -> Program backend -> QC.Property
 propCorrect tn program =
-  QC.monadicIO $ mapM_ (propCorrectWithSize tn program) queueSizes
+  QC.monadicIO $ mapM_ (propCorrectWithSize tn $ unsafeCoerce program) queueSizes
 
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
@@ -129,4 +131,12 @@ semanticIncorrectSpec name p = do
 
 propSyntacticEquality :: String -> (forall backend . Program backend) -> (forall backend . Program backend) -> H.Spec
 propSyntacticEquality name p1 p2 = do
-  H.prop "produces correct syntax" $ p1 == p2
+  H.prop "produces correct syntax" $ QC.monadicIO $ do
+    QC.monitor $ QC.whenFail $ do
+      putStrLn "Program produce illegal syntax"
+      putStrLn "program 1:"
+      putStrLn $ show p1
+      putStrLn ""
+      putStrLn "program 2:"
+      putStrLn $ show p2
+    return $ p1 == p2

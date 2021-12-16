@@ -6,6 +6,7 @@
 -- This is the front-end version of regression-low/Regression/RecurseForeverSpec.hs
 module Regression.RecurseForeverSpec where
 
+import SSM.Frontend.Compile
 import           SSM.Frontend.Language
 import           SSM.Frontend.Box
 import           SSM.Frontend.Syntax
@@ -17,5 +18,8 @@ fun0 :: SSM ()
 fun0 = boxNullary "fun0" $ do
     fork [ fun0 ]
 
+program :: Compile backend ()
+program = schedule fun0
+
 spec :: H.Spec
-spec = T.correctSpec "RecurseForever" fun0
+spec = T.correctSpec "RecurseForever" (toProgram program)

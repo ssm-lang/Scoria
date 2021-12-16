@@ -7,6 +7,7 @@ import           Prelude hiding (sum)
 
 import SSM.Language
 import SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Core
 import Data.Map as Map
 import qualified Test.Hspec                    as H
@@ -16,17 +17,20 @@ import Data.Int
 
 fun0 :: SSM ()
 fun0 = routine $ do
-    fresh0 <- var true'
+    fresh0 <- var true
     fresh1 <- var (0 :: Exp Int32)
     fork [fun1 fresh0 fresh1]
 
 fun1 :: Ref Bool -> Ref Int32 -> SSM ()
 fun1 ref1 ref3 = routine $ do
-    after (nsecs 2) ref1 true'
+    after (nsecs 2) ref1 true
     after (nsecs 1) ref3 3
     ref3 <~ 4
     wait ref1
     wait ref3
+
+p1 :: Compile backend ()
+p1 = schedule fun0
 
 p :: Program backend
 p = Program
@@ -37,10 +41,10 @@ p = Program
                   { name      = Ident "fun0" Nothing
                   , arguments = []
                   , body      =
-                    [ NewRef (Ident "fresh0" Nothing) TBool  (Lit TBool (LBool True))
-                    , NewRef (Ident "fresh1" Nothing) TInt32 (Lit TInt32 (LInt32 0))
+                    [ NewRef (Ident "var0" Nothing) TBool  (Lit TBool (LBool True))
+                    , NewRef (Ident "var1" Nothing) TInt32 (Lit TInt32 (LInt32 0))
                     , Fork
-                      [(Ident "fun1" Nothing, [Right (Dynamic (Ident "fresh0" Nothing, Ref TBool)), Right (Dynamic (Ident "fresh1" Nothing, Ref TInt32))])]
+                      [(Ident "fun1" Nothing, [Right (Dynamic (Ident "var0" Nothing, Ref TBool)), Right (Dynamic (Ident "var1" Nothing, Ref TInt32))])]
                     ]
                   }
                 )
@@ -65,4 +69,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "LaterAssign" fun0 p
+spec = T.propSyntacticEquality "LaterAssign" (toProgram p1) p

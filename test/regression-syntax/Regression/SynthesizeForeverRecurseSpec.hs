@@ -7,6 +7,7 @@ import           Prelude hiding (sum)
 
 import SSM.Language
 import SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Core
 import Data.Map as Map
 import qualified Test.Hspec                    as H
@@ -25,20 +26,24 @@ fun0 = routine $ do
 fun1 :: SSM ()
 fun1 = routine $ fork [fun1]
 
-p = Program backend
+p1 :: Compile backend ()
+p1 = schedule fun0
+
+p :: Program backend
+p = Program
   {
       initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
-    , funs = fromList [( Ident "generatedfresh0" Nothing
-                       , Procedure { name = Ident "generatedfresh0" Nothing
-                                   , arguments = [(Ident "fresh0" Nothing, Ref TInt64), (Ident "fresh1" Nothing, Ref TInt64)]
-                                   , body = [ SetRef (Dynamic (Ident "fresh0" Nothing, Ref TInt64)) (BOp TInt64 (UOpR TInt64 (Dynamic (Ident "fresh0" Nothing, Ref TInt64)) Deref) (UOpR TInt64 (Dynamic (Ident "fresh1" Nothing, Ref TInt64)) Deref) OPlus)
+    , funs = fromList [( Ident "generated0" Nothing
+                       , Procedure { name = Ident "generated0" Nothing
+                                   , arguments = [(Ident "var0" Nothing, Ref TInt64), (Ident "var1" Nothing, Ref TInt64)]
+                                   , body = [ SetRef (Dynamic (Ident "var0" Nothing, Ref TInt64)) (BOp TInt64 (UOpR TInt64 (Dynamic (Ident "var0" Nothing, Ref TInt64)) Deref) (UOpR TInt64 (Dynamic (Ident "var1" Nothing, Ref TInt64)) Deref) OPlus)
                                             , Fork [(Ident "fun1" Nothing, [])]
                                             ]})
                        ,( Ident "fun0" Nothing
                         , Procedure (Ident "fun0" Nothing) []
-                            [ NewRef (Ident "fresh0" Nothing) TInt64 (Lit TInt64 (LInt64 0))
-                            , NewRef (Ident "fresh1" Nothing) TInt64 (Lit TInt64 (LInt64 1))
-                            , Fork [(Ident "generatedfresh0" Nothing,[Right $ Dynamic (Ident "fresh0" Nothing, Ref TInt64), Right $ Dynamic (Ident "fresh1" Nothing, Ref TInt64)])]]
+                            [ NewRef (Ident "var0" Nothing) TInt64 (Lit TInt64 (LInt64 0))
+                            , NewRef (Ident "var1" Nothing) TInt64 (Lit TInt64 (LInt64 1))
+                            , Fork [(Ident "generated0" Nothing,[Right $ Dynamic (Ident "var0" Nothing, Ref TInt64), Right $ Dynamic (Ident "var1" Nothing, Ref TInt64)])]]
                         )
                        , ( Ident "fun1" Nothing
                          , Procedure (Ident "fun1" Nothing) []
@@ -48,4 +53,4 @@ p = Program backend
 
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "SynthesizeForeverRecurse" fun0 p
+spec = T.propSyntacticEquality "SynthesizeForeverRecurse" (toProgram p1) p

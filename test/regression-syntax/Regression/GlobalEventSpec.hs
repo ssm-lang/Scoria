@@ -7,6 +7,7 @@ import           Prelude hiding (sum)
 
 import SSM.Language
 import SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Core
 import Data.Map as Map
 import qualified Test.Hspec                    as H
@@ -35,8 +36,8 @@ p = Program
                              }
                            )
                          ]
-  , peripherals = [Peripheral $ IdentityPeripheral (fromList [(Ident "glob0" Nothing, Ref TUInt8)])]
+  , peripherals = [Peripheral $ Globals (fromList [(Ident "glob0" Nothing, Ref TUInt8)])]
   }
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "GlobalEvent" program p
+spec = T.propSyntacticEquality "GlobalEvent" (toProgram program) p

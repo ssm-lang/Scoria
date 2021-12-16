@@ -7,6 +7,7 @@ import           Prelude hiding (sum)
 
 import SSM.Language
 import SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Core
 import Data.Map as Map
 import qualified Test.Hspec                    as H
@@ -22,6 +23,9 @@ fun1 = routine $ do
       (after (nsecs 2) fresh0 1)
     wait fresh0
 
+p1 :: Compile backend ()
+p1 = schedule fun1
+
 p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun1" Nothing) []]
@@ -31,22 +35,22 @@ p = Program
         { name      = Ident "fun1" Nothing
         , arguments = []
         , body      =
-          [ NewRef ((Ident "fresh0" Nothing)) TInt32 (Lit TInt32 (LInt32 999999))
+          [ NewRef ((Ident "var0" Nothing)) TInt32 (Lit TInt32 (LInt32 999999))
           , If
             (BOp TBool
                  (Lit TInt32 (LInt32 0))
-                 (BOp TInt32 (UOpR TInt32 (Dynamic (Ident "fresh0" Nothing, Ref TInt32)) Deref) (UOpR TInt32 (Dynamic (Ident "fresh0" Nothing, Ref TInt32)) Deref) OTimes)
+                 (BOp TInt32 (UOpR TInt32 (Dynamic (Ident "var0" Nothing, Ref TInt32)) Deref) (UOpR TInt32 (Dynamic (Ident "var0" Nothing, Ref TInt32)) Deref) OTimes)
                  OLT
             )
             [ After (Lit TUInt64 (LUInt64 2))
-                    (Dynamic ((Ident "fresh0" Nothing), Ref TInt32))
+                    (Dynamic ((Ident "var0" Nothing), Ref TInt32))
                     (Lit TInt32 (LInt32 0))
             ]
             [ After (Lit TUInt64 (LUInt64 2))
-                    (Dynamic ((Ident "fresh0" Nothing), Ref TInt32))
+                    (Dynamic ((Ident "var0" Nothing), Ref TInt32))
                     (Lit TInt32 (LInt32 1))
             ]
-          , Wait [Dynamic ((Ident "fresh0" Nothing), Ref TInt32)]
+          , Wait [Dynamic ((Ident "var0" Nothing), Ref TInt32)]
           ]
         }
       )
@@ -54,4 +58,4 @@ p = Program
   , peripherals = []}
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "MultOverflow" fun1 p
+spec = T.propSyntacticEquality "MultOverflow" (toProgram p1) p

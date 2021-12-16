@@ -3,6 +3,8 @@ import           SSM.Core.Type
 import           SSM.Interpret.Trace
 import           SSM.Interpret.TraceParser
 
+import           Test.QuickCheck
+
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 
@@ -10,6 +12,12 @@ import           Data.Either
 import qualified Data.Text                     as T
 
 import           Text.Megaparsec
+
+instance Arbitrary Type where
+    arbitrary = elements $ basetypes ++ map Ref basetypes
+      where
+          basetypes :: [Type]
+          basetypes = [TBool, TUInt8, TUInt32, TUInt64, TInt32, TInt64]
 
 main :: IO ()
 main = H.hspec $ do

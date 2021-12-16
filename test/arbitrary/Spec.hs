@@ -1,4 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
 import           SSM.Core.Program
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
@@ -10,7 +9,6 @@ import           Test.Hspec                     ( describe
 import           Test.Hspec.QuickCheck          ( modifyMaxSuccess
                                                 , prop
                                                 )
-
 -- | Hspec entry point for arbitrary quickcheck test.
 --
 -- To specify the number of random programs to test from the command line,
@@ -32,4 +30,4 @@ main = hspec $ do
     --   $ T.propValgrind T.RandomTest
 
     prop "compiles and runs according to interpreter"
-         (T.propCorrect T.RandomTest :: (forall backend . Program backend) -> QC.Property)
+         (T.propCorrect T.RandomTest :: Program backend -> QC.Property)

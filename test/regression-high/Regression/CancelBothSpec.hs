@@ -3,6 +3,7 @@ module Regression.CancelBothSpec where
 
 import           Prelude hiding (sum)
 
+import SSM.Frontend.Compile
 import           Data.Word
 import           SSM.Frontend.Language
 import           SSM.Frontend.Box
@@ -14,10 +15,13 @@ import qualified Test.SSM.Prop                 as T
 
 fun0 :: SSM ()
 fun0 = routine $ do
-    v0 <- var false'
-    after (nsecs 1) v0 true'
+    v0 <- var false
+    after (nsecs 1) v0 true
     v1 <- var $ changed v0
-    after (nsecs 3872) v1 false'
+    after (nsecs 3872) v1 false
+
+program :: Compile backend ()
+program = schedule fun0
 
 spec :: H.Spec
-spec = T.correctSpec "CancelBoth" fun0
+spec = T.correctSpec "CancelBoth" (toProgram program)

@@ -7,6 +7,7 @@ import           Prelude hiding (sum)
 
 import SSM.Language
 import SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Core
 import Data.Map as Map
 import qualified Test.Hspec                    as H
@@ -16,6 +17,9 @@ import Data.Int
 
 fun0 :: SSM ()
 fun0 = routine $ fork [fun0]
+
+p1 :: Compile backend ()
+p1 = schedule fun0
 
 p :: Program backend
 p = Program
@@ -32,4 +36,4 @@ p = Program
   , peripherals = []}
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "RecurseForever" fun0 p
+spec = T.propSyntacticEquality "RecurseForever" (toProgram p1) p

@@ -7,6 +7,7 @@ import           Prelude hiding (sum)
 
 import SSM.Language
 import SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Core
 import Data.Map as Map
 import qualified Test.Hspec                    as H
@@ -23,6 +24,9 @@ fun1 = routine $ do
     fresh1 <- var (0 :: Exp Int32)
     wait fresh1
 
+p1 :: Compile backend ()
+p1 = schedule fun1
+
 p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun1" Nothing) []]
@@ -32,23 +36,23 @@ p = Program
                   { name      = Ident "fun1" Nothing
                   , arguments = []
                   , body      =
-                    [ NewRef ((Ident "fresh0" Nothing))
+                    [ NewRef ((Ident "var0" Nothing))
                              TInt32
                              (Lit TInt32 (LInt32 999999))
                     , If
                       (BOp
                         TBool
                         (Lit TInt32 (LInt32 0))
-                        (BOp TInt32 (UOpR TInt32 (Dynamic (Ident "fresh0" Nothing, Ref TInt32)) Deref) (UOpR TInt32 (Dynamic (Ident "fresh0" Nothing, Ref TInt32)) Deref) OTimes)
+                        (BOp TInt32 (UOpR TInt32 (Dynamic (Ident "var0" Nothing, Ref TInt32)) Deref) (UOpR TInt32 (Dynamic (Ident "var0" Nothing, Ref TInt32)) Deref) OTimes)
                         OLT
                       )
                       [ After (Lit TUInt64 (LUInt64 2))
-                              (Dynamic ((Ident "fresh0" Nothing), Ref TInt32))
+                              (Dynamic ((Ident "var0" Nothing), Ref TInt32))
                               (Lit TInt32 (LInt32 0))
                       ]
                       []
-                    , NewRef (Ident "fresh1" Nothing) TInt32 (Lit TInt32 (LInt32 0))
-                    , Wait [Dynamic (Ident "fresh1" Nothing, Ref TInt32)]
+                    , NewRef (Ident "var1" Nothing) TInt32 (Lit TInt32 (LInt32 0))
+                    , Wait [Dynamic (Ident "var1" Nothing, Ref TInt32)]
                     ]
                   }
                 )
@@ -57,4 +61,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "MultOverflowIndirectSpec" fun1 p
+spec = T.propSyntacticEquality "MultOverflowIndirectSpec" (toProgram p1) p

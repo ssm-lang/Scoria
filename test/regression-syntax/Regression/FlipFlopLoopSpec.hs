@@ -3,6 +3,7 @@ module Regression.FlipFlopLoopSpec where
 
 import           Prelude hiding (sum)
 
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Language
 import SSM.Core
 import Data.Map as Map
@@ -13,16 +14,19 @@ import Data.Int
 
 fun0 :: SSM ()
 fun0 = routine $ do
-    ref2 <- var true'
+    ref2 <- var true
     fork [fun1 ref2]
 
 fun1 :: Ref Bool -> SSM ()
 fun1 fresh2 = routine $ do
-    while true' $ do
-        after (nsecs 2) fresh2 false'
+    while true $ do
+        after (nsecs 2) fresh2 false
         wait fresh2
-        after (nsecs 2) fresh2 true'
+        after (nsecs 2) fresh2 true
         wait fresh2
+
+p1 :: Compile backend ()
+p1 = schedule fun0
 
 p :: Program backend
 p = Program
@@ -32,8 +36,8 @@ p = Program
                 , Procedure
                   { name = Ident "fun0" Nothing
                   , arguments = []
-                  , body = [ NewRef (Ident "fresh0" Nothing) TBool (Lit TBool (LBool True))
-                           , Fork [(Ident "fun1" Nothing, [Right (Dynamic (Ident "fresh0" Nothing, Ref TBool))])]
+                  , body = [ NewRef (Ident "var0" Nothing) TBool (Lit TBool (LBool True))
+                           , Fork [(Ident "fun1" Nothing, [Right (Dynamic (Ident "var0" Nothing, Ref TBool))])]
                            ]
                   }
                 )
@@ -60,4 +64,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "FlipFlopLoop" fun0 p
+spec = T.propSyntacticEquality "FlipFlopLoop" (toProgram p1) p
