@@ -104,7 +104,7 @@ import           SSM.Util.Operators             ( (<#>) )
 
 import           SSM.Core
 
-import qualified SSM.Interpret.Trace           as T
+import qualified SSM.Trace.Trace           as T
 import           SSM.Interpret.Types
 
 {-********** Main interpret function helpers **********-}

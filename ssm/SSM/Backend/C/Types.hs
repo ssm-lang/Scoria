@@ -7,7 +7,7 @@ import           SSM.Core.Ident
 
 import           SSM.Backend.C.Identifiers
 
-import qualified SSM.Interpret.Trace           as T
+import qualified SSM.Trace.Trace           as T
 
 import           Language.C.Quote.GCC           ( cexp
                                                 , cstm

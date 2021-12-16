@@ -33,7 +33,7 @@ import           SSM.Backend.C.Types
 
 import           SSM.Core
 
-import qualified SSM.Interpret.Trace           as T
+import qualified SSM.Trace.Trace           as T
 
 -- | Given a 'Program', returns a tuple containing the compiled program and
 -- a list of all `include` statements.

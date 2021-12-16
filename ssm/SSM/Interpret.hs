@@ -10,7 +10,7 @@ module SSM.Interpret
 import SSM.Frontend.Compile
 import SSM.Core
 import SSM.Util.Default
-import qualified SSM.Interpret.Trace as T
+import qualified SSM.Trace.Trace as T
 
 import qualified SSM.Interpret.Interpreter as I
 

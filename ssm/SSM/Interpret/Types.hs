@@ -57,7 +57,7 @@ import           Control.Monad.Writer.Lazy
 
 import qualified Data.IntMap                   as IntMap
 import qualified Data.Map                      as Map
-import qualified SSM.Interpret.Trace           as T
+import qualified SSM.Trace.Trace           as T
 
 {- | SSM interpreter variables. A variable is a reference to a 5-tuple.
 The components are

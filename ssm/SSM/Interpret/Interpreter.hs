@@ -12,7 +12,7 @@ module SSM.Interpret.Interpreter
 import           SSM.Core
 
 import           SSM.Interpret.Internal
-import qualified SSM.Interpret.Trace           as T
+import qualified SSM.Trace.Trace           as T
 
 import           SSM.Util.Default               ( Default(def) )
 import           SSM.Util.HughesList     hiding ( (++) )

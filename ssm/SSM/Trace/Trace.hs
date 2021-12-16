@@ -12,7 +12,7 @@ between instants, so that it increases monotonically throughout the execution.
 -}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DerivingVia #-}
-module SSM.Interpret.Trace where
+module SSM.Trace.Trace where
 
 import qualified Data.Text                     as T
 import           Data.Word

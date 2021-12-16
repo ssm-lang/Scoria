@@ -54,14 +54,14 @@ library
       SSM.Interpret
       SSM.Interpret.Internal
       SSM.Interpret.Interpreter
-      SSM.Interpret.Trace
-      SSM.Interpret.TraceParser
       SSM.Interpret.Types
       SSM.Language
       SSM.Plugin
       SSM.Pretty
       SSM.Pretty.Syntax
       SSM.Test
+      SSM.Trace.Trace
+      SSM.Trace.TraceParser
       SSM.Util.Default
       SSM.Util.HughesList
       SSM.Util.Operators

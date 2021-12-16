@@ -27,8 +27,8 @@ import           SSM.Core                       ( Program, C, Interpret )
 import           SSM.Interpret                  ( InterpretConfig(..)
                                                 , interpret'
                                                 )
-import qualified SSM.Interpret.Trace           as Tr
-import qualified SSM.Interpret.TraceParser     as TrP
+import qualified SSM.Trace.Trace               as Tr
+import qualified SSM.Trace.TraceParser         as TrP
 
 import           SSM.Util.Default               ( Default(..) )
 
