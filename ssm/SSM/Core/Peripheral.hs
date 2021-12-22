@@ -36,7 +36,7 @@ instance Eq (Peripheral backend) where
 
 -- | @IsPeripheral@ describes everything that a peripheral is and what it can do
 class IsPeripheral backend a where
-    {- | Declare a peripheral that is declared in the global scope. The peripheral
+    {- | Declare a reference that is declared in the global scope. The peripheral
     might need to identify some IO driver that it needs to be connected to, which
     is what the @Word8@ parameter is for. -}
     declareReference     :: proxy backend -> Type -> Ident -> Word8 -> a -> a
