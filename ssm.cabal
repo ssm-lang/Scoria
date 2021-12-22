@@ -131,6 +131,7 @@ test-suite 1-regression-syntax
       Test.SSM.Build
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
+      Test.SSM.QuickCheck.Generator2
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
       Test.SSM.QuickCheck.Shrink.Fork
@@ -199,6 +200,7 @@ test-suite 2-regression-high
       Test.SSM.Build
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
+      Test.SSM.QuickCheck.Generator2
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
       Test.SSM.QuickCheck.Shrink.Fork
@@ -253,6 +255,7 @@ test-suite 3-regression-low
       Test.SSM.Build
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
+      Test.SSM.QuickCheck.Generator2
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
       Test.SSM.QuickCheck.Shrink.Fork
@@ -317,6 +320,7 @@ test-suite 4-arbitrary
       Test.SSM.Build
       Test.SSM.Prop
       Test.SSM.QuickCheck.Generator
+      Test.SSM.QuickCheck.Generator2
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
       Test.SSM.QuickCheck.Shrink.Fork
