@@ -73,6 +73,7 @@ module SSM.Pretty
 --import SSM.Core.Syntax ( SSM )
 import SSM.Core.Program
 import SSM.Pretty.Syntax ( prettyProgram )
+import SSM.Pretty.Peripherals -- make sure the instances are in scope
 import SSM.Core.Backend
 import SSM.Frontend.Compile
 

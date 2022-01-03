@@ -18,6 +18,7 @@ import           System.Exit                    ( ExitCode(..)
                                                 )
 
 import           SSM.Backend.C.Compile
+import           SSM.Backend.C.Peripherals -- import this for the instances
 import           SSM.Core.Program
 import           SSM.Core.Backend
 import           SSM.Frontend.Compile

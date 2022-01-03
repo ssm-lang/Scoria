@@ -28,19 +28,20 @@ library
       SSM.Backend.C.CodeGen
       SSM.Backend.C.Compile
       SSM.Backend.C.Identifiers
+      SSM.Backend.C.Peripherals
       SSM.Backend.C.Types
       SSM.Compile
       SSM.Core
       SSM.Core.Backend
       SSM.Core.Ident
       SSM.Core.Peripheral
+      SSM.Core.Peripheral.BasicBLE
+      SSM.Core.Peripheral.GPIO
+      SSM.Core.Peripheral.Identity
       SSM.Core.Program
       SSM.Core.Reference
       SSM.Core.Syntax
       SSM.Core.Type
-      SSM.FreqGen
-      SSM.Freqmime
-      SSM.FrequencyMime
       SSM.Frontend.Box
       SSM.Frontend.Compile
       SSM.Frontend.Exp
@@ -54,10 +55,12 @@ library
       SSM.Interpret
       SSM.Interpret.Internal
       SSM.Interpret.Interpreter
+      SSM.Interpret.Peripherals
       SSM.Interpret.Types
       SSM.Language
       SSM.Plugin
       SSM.Pretty
+      SSM.Pretty.Peripherals
       SSM.Pretty.Syntax
       SSM.Test
       SSM.Trace.Trace

@@ -13,6 +13,7 @@ import SSM.Util.Default
 import qualified SSM.Trace.Trace as T
 
 import qualified SSM.Interpret.Interpreter as I
+import SSM.Interpret.Peripherals -- make sure the instances are in scope
 
 interpret :: I.InterpretConfig -> Compile Interpret () -> T.Trace
 interpret cf c = I.interpret cf $ toProgram c

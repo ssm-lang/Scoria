@@ -15,6 +15,7 @@ import SSM.Frontend.Peripheral.BasicBLE
 import SSM.Core.Backend
 import SSM.Compile
 import SSM.Pretty
+import SSM.Interpret
 
 import Data.Word
 
