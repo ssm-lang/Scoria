@@ -7,6 +7,7 @@ import           Prelude hiding (sum)
 
 import SSM.Language
 import SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Core
 import Data.Map as Map
 import qualified Test.Hspec                    as H
@@ -14,7 +15,7 @@ import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 import Data.Word
 
-program :: Compile ()
+program :: Backend backend => Compile backend ()
 program = do
     glob0 <- global @Word8
     let ?glob0 = glob0
@@ -23,7 +24,7 @@ program = do
 fun0 :: (?glob0 :: Ref Word8) => SSM ()
 fun0 = routine $ return ()
 
-p :: Program
+p :: Backend backend => Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs             = fromList
@@ -35,8 +36,8 @@ p = Program
                              }
                            )
                          ]
-  , peripherals = [Peripheral $ IdentityPeripheral (fromList [(Ident "glob0" Nothing, Ref TUInt8)])]
+  , peripherals = [Peripheral $ Globals (fromList [(Ident "glob0" Nothing, Ref TUInt8)])]
   }
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "GlobalEvent" program p
+spec = T.propSyntacticEquality "GlobalEvent" (toProgram program) p

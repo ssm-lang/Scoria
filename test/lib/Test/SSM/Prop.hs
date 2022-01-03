@@ -1,3 +1,7 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE RankNTypes #-}
 module Test.SSM.Prop
   ( propCompiles
   , propValgrind
@@ -8,7 +12,15 @@ module Test.SSM.Prop
   , semanticIncorrectSpec
   ) where
 
-import           SSM.Compile                    ( SSMProgram(..) )
+import           Unsafe.Coerce                  ( unsafeCoerce )
+import           SSM.Core                       ( Program
+                                                , C
+                                                , Interpret
+                                                , PrettyPrint
+                                                , Backend(..)
+                                                )
+import           SSM.Compile
+import           SSM.Pretty
 import           Test.SSM.QuickCheck.Generator  ( ) -- instance Arbitrary Program
 
 import qualified Test.Hspec                    as H
@@ -37,13 +49,12 @@ queueSizes :: [(Int, Int)]
 queueSizes = [(32, 32), (256, 256), (2048, 2048)]
 
 -- | Tests that generated SSM programs compile successfully.
-propCompiles :: SSMProgram p => TestName -> p -> QC.Property
+propCompiles :: TestName -> (forall backend . Backend backend => Program backend) -> QC.Property
 propCompiles tn program =
   QC.monadicIO $ mapM_ (propCompilesWithSize tn program) queueSizes
 
 -- | Tests that generated SSM programs compile successfully, given some size.
-propCompilesWithSize
-  :: SSMProgram p => TestName -> p -> (Int, Int) -> QC.PropertyM IO ()
+propCompilesWithSize :: TestName -> (forall backend . Backend backend => Program backend) -> (Int, Int) -> QC.PropertyM IO ()
 propCompilesWithSize tn program (aQSize, eQSize) = do
   slug <- QC.run $ getSlug tn
   reportSlug slug
@@ -53,13 +64,12 @@ propCompilesWithSize tn program (aQSize, eQSize) = do
   return ()
 
 -- | Tests an SSM program by evaluating it under valgrind.
-propValgrind :: SSMProgram p => TestName -> p -> QC.Property
+propValgrind :: TestName -> (forall backend . Backend backend => Program backend) -> QC.Property
 propValgrind tn program =
   QC.monadicIO $ mapM_ (propValgrindWithSize tn program) queueSizes
 
 -- | Tests an SSM program by evaluating it under valgrind, given some size
-propValgrindWithSize
-  :: SSMProgram p => TestName -> p -> (Int, Int) -> QC.PropertyM IO ()
+propValgrindWithSize :: TestName -> (forall backend . Backend backend => Program backend) -> (Int, Int) -> QC.PropertyM IO ()
 propValgrindWithSize tn program (aQSize, eQSize) = do
   slug <- QC.run $ getSlug tn
   reportSlug slug
@@ -71,15 +81,15 @@ propValgrindWithSize tn program (aQSize, eQSize) = do
 
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
-propCorrect :: SSMProgram p => TestName -> p -> QC.Property
+propCorrect :: Backend backend => TestName -> Program backend -> QC.Property
 propCorrect tn program =
-  QC.monadicIO $ mapM_ (propCorrectWithSize tn program) queueSizes
+  QC.monadicIO $ mapM_ (propCorrectWithSize tn $ unsafeCoerce program) queueSizes
 
 -- | Tests an SSM program by evaluating both the interpreter and running the
 -- compiled C code and comparing the output.
 -- Sizes are give as an argument
-propCorrectWithSize
-  :: SSMProgram p => TestName -> p -> (Int, Int) -> QC.PropertyM IO ()
+propCorrectWithSize ::
+  TestName -> (forall backend . Program backend) -> (Int, Int) -> QC.PropertyM IO ()
 propCorrectWithSize tn program (aQSize, eQSize) = do
   slug <- QC.run $ getSlug tn
   reportSlug slug
@@ -96,11 +106,11 @@ propCorrectWithSize tn program (aQSize, eQSize) = do
 -- without memory errors, and behaves the same as the interpreter.
 --
 -- Used to build passing integration tests.
-correctSpec :: SSMProgram p => String -> p -> H.Spec
+correctSpec :: String -> (forall backend . Backend backend => Program backend) -> H.Spec
 correctSpec name p = do
   once $ H.prop "compiles" $ propCompiles tn p
   once $ H.prop "no memory errors" $ propValgrind tn p
-  once $ H.prop "matches interpreter" $ propCorrect tn p
+  once $ H.prop "matches interpreter" $ propCorrect tn (p @C) -- FIXME
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name
@@ -111,15 +121,23 @@ correctSpec name p = do
 -- Used to note discrepancies with the interpreter in the regression test suite.
 -- Note that the description is still "matches interpreter" so that we can use
 -- the same test name match clause (i.e., with HSpec's --match argument).
-semanticIncorrectSpec :: SSMProgram p => String -> p -> H.Spec
+semanticIncorrectSpec :: String -> (forall backend . Backend backend => Program backend) -> H.Spec
 semanticIncorrectSpec name p = do
   once $ H.prop "compiles" $ propCompiles tn p
   once $ H.prop "no memory errors" $ propValgrind tn p
-  once $ H.prop "matches interpreter" $ QC.expectFailure $ propCorrect tn p
+  once $ H.prop "matches interpreter" $ QC.expectFailure $ propCorrect tn (p @C) -- FIXME
  where
   once = H.modifyMaxSuccess (const 1)
   tn   = NamedTest name
 
-propSyntacticEquality :: (SSMProgram p1, SSMProgram p2) => String -> p1 -> p2 -> H.Spec
+propSyntacticEquality :: String -> (forall backend . Backend backend => Program backend) -> (forall backend . Backend backend => Program backend) -> H.Spec
 propSyntacticEquality name p1 p2 = do
-  H.prop "produces correct syntax" $ toProgram p1 == toProgram p2
+  H.prop "produces correct syntax" $ QC.monadicIO $ do
+    QC.monitor $ QC.whenFail $ do
+      putStrLn "Program produce illegal syntax"
+      putStrLn "program 1:"
+      putStrLn $ show $ p1 @PrettyPrint
+      putStrLn ""
+      putStrLn "program 2:"
+      putStrLn $ show $ p2 @PrettyPrint
+    return $ p1 @PrettyPrint == p2

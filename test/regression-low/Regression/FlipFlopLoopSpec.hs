@@ -11,7 +11,7 @@ import qualified Test.SSM.Prop                 as T
 
 import SSM.Compile
 
-p :: Program
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList

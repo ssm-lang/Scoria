@@ -1,78 +1,57 @@
-{- | This module implements the peripheral that describes basic BLE support. The
-part that makes it basic is the fact that this module only supports broadcasting &
-scanning, in a very limited manner.
+{- | This module implements core support for describing the BasicBLE peripheral,
+Basically BLE. It supports very limited broadcasting and scanning (of 64 bits). -}
+{-# LANGUAGE TypeApplications #-}
+module SSM.Core.Peripheral.BasicBLE
+  ( BasicBLE
+  , broadcast_
+  , broadcastControl_
+  , scan_
+  , scanControl_
+  , initBasicBLE
+  , declareReferenceBasicBLE
+  , declaredReferencesBasicBLE
+  , BLEHandlers(..)
+  ) where
 
-  1. When you scan for messages, you need to specify the MAC-address of the remote board
-  you are scanning for messages from.
-  2. You can only broadcast/scan a single byta at a time, so the size of the payload
-  is very limited.
+import SSM.Core.Type
+import SSM.Core.Ident
+import SSM.Core.Reference
+import SSM.Core.Program
 
-This module is intended to act as a simple example of what we can do. Our ambition is to
-add support for the entire BLE stack.
+import Data.Word
+import Data.Proxy
 
--}
-module SSM.Core.Peripheral.BasicBLE where
-
-import           SSM.Core.Ident
-import           SSM.Core.Reference
-import           SSM.Core.Type
-
-import           SSM.Core.Peripheral
-
--- | Basic BLE data type
+{- | Internal representation of BasicBLE. It is just a collection of references to
+control different parts of the BLE API. -}
 data BasicBLE = BasicBLE
-    { broadcast        :: (Ident, Type)  -- ^ Name and type of broadcast reference
-    , broadcastControl :: (Ident, Type)  -- ^ Name and type of broadcast control reference
-    , scan             :: (Ident, Type)  -- ^ Name and type of scan reference
-    , scanControl      :: (Ident, Type)  -- ^ Name and type of scan control reference
-    }
-  deriving (Show, Read, Eq)
+  { broadcast_        :: (Ident, Type)  -- ^ This ref controls broadcast payload
+  , broadcastControl_ :: (Ident, Type)  -- ^ This ref controls broadcast status (on/off)
+  , scan_             :: (Ident, Type)  -- ^ This ref controls scanned messages
+  , scanControl_      :: (Ident, Type)  -- ^ This ref controls scan status (on/off)
+  }
+  deriving (Show, Eq)
 
-instance IsPeripheral BasicBLE where
-    declaredReferences = basicBLERefs
+-- | Create @BasicBLE@ default value
+initBasicBLE :: BasicBLE
+initBasicBLE = BasicBLE
+  { broadcast_        = (makeIdent "broadcast",        mkReference $ typeOf $ Proxy @Word64)
+  , broadcastControl_ = (makeIdent "broadcastControl", mkReference $ typeOf $ Proxy @Bool)
+  , scan_             = (makeIdent "scan",             mkReference $ typeOf $ Proxy @Word64)
+  , scanControl_      = (makeIdent "scanControl",      mkReference $ typeOf $ Proxy @Bool)
+  }
 
-    mainInitializers ble = concat [enable, normalInits, specials]
-      where
-        (broadcast : broadcastControl : scan : scanControl : _) =
-            basicBLERefs ble
+-- | Populate the BLE object with a reference
+declareReferenceBasicBLE :: proxy backend -> Type -> Ident -> Word8 -> BasicBLE -> BasicBLE
+declareReferenceBasicBLE _ _ _ _ _ = error "error --- declareReference BasicBLE called"
 
-        enable = [ Independent BLEEnable ]
+-- | Retrieve the declared references from the BLE object
+declaredReferencesBasicBLE :: proxy backend -> BasicBLE -> [Reference]
+declaredReferencesBasicBLE _ bble =
+  map (\f -> uncurry makeStaticRef $ f bble)
+    [broadcast_, broadcastControl_, scan_, scanControl_]
 
-        -- initialize the references like you normally initialize them
-        normalInits =
-            [ Normal broadcast
-            , Normal broadcastControl
-            , Normal scan
-            , Normal scanControl
-            ]
-
-        -- perform the BLE input-specific initializations
-        specials =
-            [ StaticInput BLEScan scan ]
-
-basicBLERefs :: BasicBLE -> [Reference]
-basicBLERefs ble = map
-    (uncurry makeStaticRef)
-    [broadcast ble, broadcastControl ble, scan ble, scanControl ble]
-
-{- | This function returns a peripheral that enables the BLE stack. The arguments are:
-
-  1. Name and type of the reference used to broadcast messages
-  2. Name and type of the reference that is used to control the broadcasting
-  functionality
-  3. Name and type of the reference used to scan for messages
-  4. Name and type of the reference that is used to control the scanning functionality
-
--}
-enableBLE
-    :: (Ident, Type)
-    -> (Ident, Type)
-    -> (Ident, Type)
-    -> (Ident, Type)
-    -> BasicBLE
-enableBLE broadcast broadcastControl scan scanControl = BasicBLE
-    { broadcast        = broadcast
-    , broadcastControl = broadcastControl
-    , scan             = scan
-    , scanControl      = scanControl
-    }
+-- | This class abstracts away the action of creating handlers for a specific backend
+class BLEHandlers backend where
+    broadcastHandler        :: proxy backend -> BasicBLE -> Handler backend
+    broadcastControlHandler :: proxy backend -> BasicBLE -> Handler backend
+    scanControlHandler      :: proxy backend -> BasicBLE -> Handler backend

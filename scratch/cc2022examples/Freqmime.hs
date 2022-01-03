@@ -2,6 +2,8 @@
 {-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE LinearTypes #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 --{-# OPTIONS_GHC -fplugin=SSM.Plugin -fplugin-opt=SSM.Plugin:mode=routine #-}
 module SSM.Freqmime where
 
@@ -11,118 +13,33 @@ import           SSM.Compile
 import           SSM.Language
 import           SSM.Pretty
 import qualified SSM.Core as C
+import           SSM.Core.Backend
 
 import           Data.Word
 
 import           SSM.Frontend.Peripheral.BasicBLE
 import           SSM.Frontend.Peripheral.GPIO
 import           SSM.Frontend.Peripheral.Identity
-import           SSM.Frontend.Peripheral.LED
-
--- gate_period :: Exp Time
--- gate_period = secs 1
-
--- blink_time :: Exp Time
--- blink_time = msecs 100
-
--- type Frequency = Word64
-
--- freq_count :: Ref SW -> Ref SW -> Ref Frequency -> SSM ()
--- freq_count =
---     box "freq_count" ["gate", "signal", "freq"] $ \gate signal freq -> do
---         wake  <- var event'
---         count <- var 0
---         while true' $ do
---             ifThen (unchanged gate) $ do
---                 wait gate
-
---             ifThenElse (changed signal) (count <~ 1) (count <~ 0)
---             after gate_period wake event'
-
---             doWhile
---                 (do
---                     wait (signal, wake)
---                     count <~ (deref count + 1)
---                 )
---                 (unchanged wake)
-
---             freq <~ (deref count * time2ns (secs 1 /. gate_period))
-
--- freq_mime :: Ref Frequency -> Ref LED -> SSM ()
--- freq_mime = box "freq_mime" ["freq", "led_ctl"] $ \freq led_ctl -> do
---     wake <- var event'
---     while true' $ do
-
---         ifThen (deref freq /=. 0) $ do
---             led_ctl <~ true'
---             after (secs 1 /. (nsecs $ deref freq)) wake event'
-
---         wait (wake, freq)
-
--- one_shot :: Ref Frequency -> Ref LED -> SSM ()
--- one_shot = box "one_shot" ["freq", "led_ctl"] $ \freq led_ctl -> do
---     while true' $ do
---         wait led_ctl
-
---         -- try to calculate delay for when it should turn off
---         -- delay will be stored in @delay@ as nanoseconds
---         delay <- var 0
---         ifThenElse
---             (deref freq /=. 0)
---             (  delay
---             <~ (time2ns $ lift2T min' blink_time (secs 1 // deref freq // 2)
---                )
---             )
---             (delay <~ time2ns blink_time)
-
---         ifThen (deref led_ctl) $ do
---             after (nsecs $ deref delay) led_ctl false'
-
--- mmain :: (?sw0::Ref SW, ?sw1::Ref SW, ?led_ctl::Ref Bool) => SSM ()
--- mmain = boxNullary "mmain" $ do
---     freq <- var $ u64 0
---     fork
---         [ freq_count ?sw0 ?sw1 freq
---         , freq_mime freq ?led_ctl
---         , one_shot freq ?led_ctl
---         ]
-
--- testprogram :: Compile ()
--- testprogram = do
---     x            <- switch 0
---     y            <- switch 1
---     (z, handler) <- onoffLED 0
-
---     let ?sw0     = x
---         ?sw1     = y
---         ?led_ctl = z
-
---     schedule mmain
---     schedule handler
 
 
-
-
-
-
-mmmain :: Compile ()
+mmmain :: Compile C ()
 mmmain = do
-    (x, handler) <- onoffLED 0
+    (x, handler) <- output 0
 
     let ?led = x
 
     schedule handler
     schedule mmain
   where
-    mmain :: (?led::Ref LED) => SSM ()
+    mmain :: (?led::Ref GPIO) => SSM ()
     mmain = boxNullary "mmain" $ do
         while true $ do
-            after (secs 1) ?led on
+            after (secs 1) ?led high
             wait ?led
-            after (secs 1) ?led off
+            after (secs 1) ?led low
             wait ?led
 
-testGlobal :: Compile ()
+testGlobal :: Compile C ()
 testGlobal = do
     x <- global @Word8
     y <- global @Word64
@@ -263,13 +180,14 @@ Arguments are
   1. ID of this source device
   2. ID of the next device
 -}
-source :: Exp Word64 -> Exp Word64 -> Compile ()
+source :: Exp Word64 -> Exp Word64 -> Compile C ()
 source this next = do
-    (ble, broadcast, scanning) <- enableBasicBLE
+    (ble, broadcast, broadcastControl, scanning) <- enableBLE
     let ?ble = ble
 
     schedule sourceCommunication
     schedule broadcast
+    schedule broadcastControl
     schedule scanning
   where
       sourceCommunication :: (?ble :: BBLE) => SSM ()
@@ -290,13 +208,14 @@ Arguments are:
   2. ID of previous device
   3. ID of next device
 -}
-relay :: Exp Word64 -> Exp Word64 -> Exp Word64 -> Compile ()
+relay :: Exp Word64 -> Exp Word64 -> Exp Word64 -> Compile C ()
 relay this previous next = do
-    (ble, broadcast, scanning) <- enableBasicBLE
+    (ble, broadcast, broadcastControl, scanning) <- enableBLE
     let ?ble = ble
 
     schedule relayMessage
     schedule broadcast
+    schedule broadcastControl
     schedule scanning
   where
       relayMessage :: (?ble :: BBLE) => SSM ()
@@ -319,14 +238,14 @@ relay this previous next = do
 
 {-****** Devie 4 (the sink) ******-}
 
-sink :: Exp Word64 -> Compile ()
+sink :: Exp Word64 -> Compile C ()
 sink this = do
-    (ble, broadcast, scanning) <- enableBasicBLE
+    (ble, broadcast, broadcastControl, scanning) <- enableBLE
 
-    (led0, lh0)                <- onoffLED 0
-    (led1, lh1)                <- onoffLED 1
-    (led2, lh2)                <- onoffLED 2
-    (led3, lh3)                <- onoffLED 3
+    (led0, lh0) <- output 0
+    (led1, lh1) <- output 1
+    (led2, lh2) <- output 2
+    (led3, lh3) <- output 3
 
     let ?ble  = ble
         ?led0 = led0
@@ -340,13 +259,14 @@ sink this = do
     schedule lh2
     schedule lh3
     schedule broadcast
+    schedule broadcastControl
     schedule scanning
   where
       theSink :: ( ?ble  :: BBLE
-                 , ?led0 :: Ref LED
-                 , ?led1 :: Ref LED
-                 , ?led2 :: Ref LED
-                 , ?led3 :: Ref LED
+                 , ?led0 :: Ref GPIO
+                 , ?led1 :: Ref GPIO
+                 , ?led2 :: Ref GPIO
+                 , ?led3 :: Ref GPIO
                  ) => SSM ()
       theSink = boxNullary "theSink" $ do
           while true $ do
@@ -373,10 +293,10 @@ sink this = do
               -- acknowledge message
               fork [acknowledge this from 0 ab]
 
-      ledBlinker :: Ref LED -> SSM ()
+      ledBlinker :: Ref GPIO -> SSM ()
       ledBlinker = box "ledBlinker" ["led"] $ \led -> do
-          assign led on
-          after (secs 1) led off
+          assign led high
+          after (secs 1) led low
           wait led
 
 switchCase :: SSMType a => Exp a -> [(Exp a, SSM ())] -> SSM ()
@@ -419,10 +339,10 @@ test2 = boxNullary "test2" $ do
 
 
 
-buttonBlinky :: Compile ()
+buttonBlinky :: Compile C ()
 buttonBlinky = do
-  button <- switch 0
-  (led, ledHandler) <- onoffLED 0
+  button <- input 0
+  (led, ledHandler) <- output 0
 
   let ?led = led
       ?button = button
@@ -432,7 +352,7 @@ buttonBlinky = do
   where
 
 
-    program :: (?led :: Ref LED, ?button :: Ref SW) => SSM ()
+    program :: (?led :: Ref GPIO, ?button :: Ref Switch) => SSM ()
     program = boxNullary "program" $ do
       while true $ do
         wait ?button

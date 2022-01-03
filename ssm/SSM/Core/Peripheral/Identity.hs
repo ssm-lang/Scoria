@@ -1,42 +1,41 @@
-{- | This module implements an identity peripheral. This is a peripheral that has no side
-effects. It is suitable for declaring references that should exist in the global scope
-rather than in the context of an activation record. -}
-module SSM.Core.Peripheral.Identity where
+{- | This module implements the core support for the identity peripheral, which is used
+only to create references that can be used globally, outside the context of a process. -}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+module SSM.Core.Peripheral.Identity
+  ( Globals(..)
+  , emptyGlobals
+  ) where
 
-import           SSM.Core.Ident
-import           SSM.Core.Peripheral
-import           SSM.Core.Reference
-import           SSM.Core.Type
+import SSM.Core.Type
+import SSM.Core.Ident
+import SSM.Core.Reference
+import SSM.Core.Backend
+import SSM.Core.Peripheral
 
-import qualified Data.Map                      as Map
+import qualified Data.Map as Map
 
-modulename :: String
-modulename = "SSM.Core.Peripheral.Identity"
+-- | The @Globals@ datatype associates reference names with reference types
+data Globals = Globals
+  {
+      references :: Map.Map Ident Type
+  }
+  deriving (Show, Eq)
 
-data IdentityPeripheral = IdentityPeripheral
-    { identitySVs :: (Map.Map Ident Type)
-    }
-  deriving (Show, Read, Eq)
+-- | Empty @Globals@, containing no references
+emptyGlobals :: Globals
+emptyGlobals = Globals Map.empty
 
-instance IsPeripheral IdentityPeripheral where
-    declaredReferences ip =
-        map (uncurry makeStaticRef) $ Map.toList $ identitySVs ip
-    mainInitializers ip =
-        map (Normal . uncurry makeStaticRef) $ Map.toList $ identitySVs ip
+{- | A @Globals@ can be used regardless of the backend, since there is no associated
+IO with a global reference. -}
+instance Backend backend => IsPeripheral backend Globals where
+    declareReference _ t id _ global =
+        let m = references global
+        in global { references = Map.insert id t m}
+    
+    declaredReferences _ globals =
+        map (uncurry makeStaticRef) $ Map.toList $ references globals
+    
+    globalDeclarations p globals = []
 
-emptyIdentityPeripheral :: IdentityPeripheral
-emptyIdentityPeripheral = IdentityPeripheral Map.empty
-
-getIdentitySVs :: IdentityPeripheral -> [(Ident, Type)]
-getIdentitySVs = Map.toList . identitySVs
-
-addIdentitySV :: Ident -> Type -> IdentityPeripheral -> IdentityPeripheral
-addIdentitySV id t ip = if Map.member id $ identitySVs ip
-    then error $ concat
-        [ modulename
-        , ".addIdentitySV error ---\n"
-        , "reference name "
-        , identName id
-        , "already registered"
-        ]
-    else ip { identitySVs = Map.insert id t $ identitySVs ip }
+    staticInitialization p globals = []

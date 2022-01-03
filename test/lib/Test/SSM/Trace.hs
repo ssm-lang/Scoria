@@ -1,4 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Test.SSM.Trace
   ( doParseOutput
   , doInterpret
@@ -21,12 +23,12 @@ import           Data.List                      ( isPrefixOf
 import           System.Timeout                 ( timeout )
 import           Text.Read                      ( readMaybe )
 
+import           SSM.Core                       ( Program, C, Interpret )
 import           SSM.Interpret                  ( InterpretConfig(..)
-                                                , SSMProgram(..)
-                                                , interpret
+                                                , interpret'
                                                 )
-import qualified SSM.Interpret.Trace           as Tr
-import qualified SSM.Interpret.TraceParser     as TrP
+import qualified SSM.Trace.Trace               as Tr
+import qualified SSM.Trace.TraceParser         as TrP
 
 import           SSM.Util.Default               ( Default(..) )
 
@@ -79,8 +81,7 @@ doParseOutput slug outs = do
 --
 -- The evaluation is functionally limited to the number of steps specified by
 -- limit, but also time-limited using the timeout function.
-doInterpret
-  :: SSMProgram a => Slug -> a -> Int -> (Int, Int) -> QC.PropertyM IO Tr.Trace
+doInterpret :: Slug -> Program Interpret -> Int -> (Int, Int) -> QC.PropertyM IO Tr.Trace
 doInterpret slug program limit (actQueueSize, eventQueueSize) = do
   iTrace <- QC.run timeoutEval
   reportOnFail slug "interpreted.out" $ show iTrace
@@ -101,7 +102,7 @@ doInterpret slug program limit (actQueueSize, eventQueueSize) = do
     reverse <$> readIORef ref
 
   interpreted :: Tr.Trace
-  interpreted = interpret
+  interpreted = interpret'
     def { boundActQueueSize   = actQueueSize
         , boundEventQueueSize = eventQueueSize
         }

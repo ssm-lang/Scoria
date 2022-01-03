@@ -8,7 +8,8 @@
 
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE QuasiQuotes #-}
-
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeApplications #-}
 module SSM.Backend.C.CodeGen
   ( compile_
   ) where
@@ -25,28 +26,33 @@ import qualified Data.Map                      as Map
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
 
+import           Data.Proxy
 import           Data.List                      ( sortOn )
 import           SSM.Backend.C.Identifiers
 import           SSM.Backend.C.Types
-import           SSM.Backend.C.Peripheral
 
 import           SSM.Core
 
-import qualified SSM.Interpret.Trace           as T
+import qualified SSM.Trace.Trace           as T
 
 -- | Given a 'Program', returns a tuple containing the compiled program and
 -- a list of all `include` statements.
-compile_ :: Program -> ([C.Definition], [C.Definition])
+compile_ :: Program C -> ([C.Definition], [C.Definition])
 compile_ program = (compUnit, includes)
  where
   -- | The file to generate, minus include statements
   compUnit :: [C.Definition]
-  compUnit = concat [ declarePeripherals program
+  compUnit = concat [ peripheralDeclarations
                     , preamble
                     , decls
                     , defns
                     , initProg
                     ]
+
+  peripheralDeclarations :: [C.Definition]
+  peripheralDeclarations = flip concatMap (peripherals program) (\pe ->
+                             flip map (declaredReferences (Proxy @C) pe) (\ref ->
+    [cedecl| $ty:(svt_ $ dereference $ refType ref) $id:(refName ref);|]))
 
   initProg :: [C.Definition]
   initProg = genInitProgram program
@@ -116,78 +122,47 @@ actm :: CIdent
 actm = "act"
 
 -- | Generate the entry point of a program - the first thing to be ran.
-genInitProgram :: Program -> [C.Definition]
+genInitProgram :: Program C -> [C.Definition]
 genInitProgram p = [cunit|
   int $id:initialize_program(void) {
-    $items:(initPeripherals p)
+    $items:initPeripheralReferences
+    $items:(concatMap (staticInitialization (Proxy @C)) (peripherals p))
     $items:(initialForks $ initialQueueContent p)
 
     return 0;
   }
   |]
  where
-  -- | Create statements for scheduling the initial ready-queue content
-  initialForks :: [QueueContent] -> [C.BlockItem]
-  initialForks ips =
-    zipWith
-      initialFork
-        (pdeps
-          (length ips)
-          [cexp|SSM_ROOT_PRIORITY|]
-          [cexp|SSM_ROOT_DEPTH|])
-        ips
+  initPeripheralReferences :: [C.BlockItem]
+  initPeripheralReferences =
+    concatMap (concatMap initSingle . declaredReferences (Proxy @C)) (peripherals p)
     where
-      -- | Create the schedule statement for a single schedulable thing
-      initialFork :: (C.Exp, C.Exp) -> QueueContent -> C.BlockItem
-      initialFork (priority, depth) (SSMProcedure id args) =
-        [citem| $id:fork($id:(enter_ (identName id))( &$id:top_parent
-                                                    , $exp:priority
-                                                    , $exp:depth
-                                                    , $args:(map cargs args)
-                                                    )
-                        ); |]
-      initialFork (priority, depth) (Handler h) =
-        [citem|$id:fork($id:(resolveNameOfHandler h)
-                                          ( &$id:top_parent
-                                          , $exp:priority
-                                          , $exp:depth
-                                          , $args:(argsOfHandler h)
-                                          )
-                       );|]
+      initSingle :: Reference -> [C.BlockItem]
+      initSingle ref =
+        let bt     = dereference $ refType ref
+            init   = initialize_ bt [cexp| &$id:(refName ref) |]
+            assign = assign_ bt [cexp| &$id:(refName ref) |] [cexp|0|] [cexp|0|]
+        in [citems| $exp:init; $exp:assign; |]
 
-      -- | Take a handler and return a list of arguments to it
-      argsOfHandler :: Handler -> [C.Exp]
-      argsOfHandler (Output variant ref) = case variant of
-        LED id -> [ [cexp| &$id:(refName ref).sv |]
-                  , [cexp| $uint:id |]
-                  ]
-        BLE bh -> case bh of
-          Broadcast          -> [ [cexp| &$id:(refName ref).sv |] ]
-          BroadcastControl   -> [ [cexp| &$id:(refName ref).sv |] ]
-          ScanControl        -> [ [cexp| &$id:(refName ref).sv |] ]
+  -- | Create statements for scheduling the initial ready-queue content
+  initialForks :: [QueueContent C] -> [C.BlockItem]
+  initialForks ips = concat $ zipWith3 initialFork [1..length ips] (repeat $ length ips) ips
+    where
+      initialFork :: Int -> Int -> QueueContent C -> [C.BlockItem]
+      initialFork k cs (SSMProcedure id args) =
+        let (prio, depth) = pdep k cs priority_at_root depth_at_root
+        in [[citem| $id:fork($id:(enter_ (identName id))( &$id:top_parent
+                                                        , $exp:prio
+                                                        , $exp:depth
+                                                        , $args:(map cargs args)
+                                                        )
+                            ); |]]
+      initialFork k cs (OutputHandler (Handler f)) = f k cs
 
       cargs :: Either SSMExp Reference -> C.Exp
       cargs (Left e)  = genExp [] e
       cargs (Right r@(Static _)) = [cexp| &$id:(refName r).sv|]
       cargs (Right r@(Dynamic _)) = error "Why does StaticOutputHandler refer to a non-static var?"
-      x = refName
-
-{- | Create C expressions that represent the new priorities and depths of the
-initially scheduled processes. -}
-pdeps :: Int -> C.Exp -> C.Exp -> [(C.Exp, C.Exp)]
-pdeps cs currentPrio currentDepth =
-      [ let prio  = [cexp|$exp:currentPrio + ($int:(i-1) * (1 << $exp:depth))|]
-            depth = [cexp|$exp:currentDepth - $exp:(depthSub cs)|]
-        in (prio, depth)
-      | i <- [1..cs]
-      ]
-
-{- | Calculate the subexpression that should be subtracted from the current depth
-in order to achieve the new depth of the processes to fork.
-
-The argument is the number of new processes that are being forked. -}
-depthSub :: Int -> C.Exp
-depthSub k = [cexp|$int:(ceiling $ logBase (2 :: Double) $ fromIntegral $ k :: Int) |]
 
 -- | Generate include statements, to be placed at the top of the generated C.
 genPreamble :: [C.Definition]

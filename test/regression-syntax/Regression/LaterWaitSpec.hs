@@ -7,6 +7,7 @@ import           Prelude hiding (sum)
 
 import SSM.Language
 import SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Core
 import Data.Map as Map
 import qualified Test.Hspec                    as H
@@ -20,7 +21,10 @@ fun0 = routine $ do
     after (nsecs 2) fresh0 1
     wait fresh0
 
-p :: Program
+p1 :: Compile backend ()
+p1 = schedule fun0
+
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList
@@ -28,11 +32,11 @@ p = Program
       , Procedure
         { name = Ident "fun0" Nothing
         , arguments = []
-        , body = [ NewRef (Ident "fresh0" Nothing) TInt32 (Lit TInt32 (LInt32 0))
+        , body = [ NewRef (Ident "var0" Nothing) TInt32 (Lit TInt32 (LInt32 0))
                  , After (Lit TUInt64 (LUInt64 2))
-                         (Dynamic (Ident "fresh0" Nothing, Ref TInt32))
+                         (Dynamic (Ident "var0" Nothing, Ref TInt32))
                          (Lit TInt32 (LInt32 1))
-                 , Wait [Dynamic (Ident "fresh0" Nothing, Ref TInt32)]
+                 , Wait [Dynamic (Ident "var0" Nothing, Ref TInt32)]
                  ]
         }
       )
@@ -40,4 +44,4 @@ p = Program
   , peripherals = []}
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "LaterWait" fun0 p
+spec = T.propSyntacticEquality "LaterWait" (toProgram p1) p

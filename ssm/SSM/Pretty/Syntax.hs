@@ -1,11 +1,14 @@
 {-| This module exposes a pretty printer of programs. -}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module SSM.Pretty.Syntax ( prettyProgram ) where
 
 import qualified Data.Map as Map
 import Data.List
+import Data.Proxy
 
 import Control.Monad.Reader
-    ( ReaderT(runReaderT), MonadReader(local, ask) )
+    ( ReaderT(runReaderT), MonadReader(local, ask), forM, forM_ )
 import Control.Monad.Writer
     ( execWriter, MonadWriter(tell), Writer )
 
@@ -36,51 +39,74 @@ intercalateM ma (x:y:xs) = do
 {- | Pretty print a program. There is no control of line width currently.
 If your program contains many nested if's or something, they will be turned
 into quite wide statements. -}
-prettyProgram :: Program -> String
+prettyProgram :: Program PrettyPrint -> String
 prettyProgram ssm = let wr = runReaderT (prettyProgram' ssm) 0
                         h  = execWriter wr
                     in unlines $ fromHughes h
 
-prettyProgram' :: Program -> PP ()
+prettyProgram' :: Program PrettyPrint -> PP ()
 prettyProgram' p = do
-    emit "initial ready-queue content:"
-    mapM_ (indent . emit . prettyQueueContent) (initialQueueContent p) 
-    emit ""
-    emit "global variables:"
+    emit "-- ** global variables **"
     mapM_ prettyPeripheralDeclarations (peripherals p)
     emit ""
+    emit "-- ** global declarations by peripherals **"
+    globaldecls p
+    emit ""
+    emit "-- ** program setup function **"
+    program_setup p
+    emit ""
+    emit "-- ** executable entry point **"
+    run_program p
+    emit ""
+    emit "-- ***** user-written Scoria procedures *****"
     intercalateM (emit "") $ map prettyProcedure (Map.elems (funs p))
     return ()
 
-prettyQueueContent :: QueueContent -> String
-prettyQueueContent (SSMProcedure id args) = prettyApp (id, args)
-prettyQueueContent (Handler h           ) = case h of
-    Output variant ref -> case variant of
-        LED id -> prettyApp
-            ( Ident "led_output_handler" Nothing
-            , [Right ref, Left $ Lit TUInt8 $ LUInt8 id]
-            )
-        BLE bh -> case bh of
-            Broadcast        -> prettyApp
-                ( Ident "broadcast_output_handler" Nothing
-                , [Right ref]
-                )
-            BroadcastControl -> prettyApp
-                ( Ident "broadcast_control_output_handler" Nothing
-                , [Right ref]
-                )
-            ScanControl    -> prettyApp
-                ( Ident "scan_control_output_handler" Nothing
-                , [Right ref]
-                )
+globaldecls :: Program PrettyPrint -> PP ()
+globaldecls p = do
+    intercalateM (emit "") $ concatMap
+      (\pe -> map emit (globalDeclarations (Proxy @PrettyPrint) pe))
+      (peripherals p)
+    return ()
+
+program_setup :: Program PrettyPrint -> PP ()
+program_setup p = do
+    emit "setup() {"
+
+    indent $ emit "-- initialize global references"
+    forM_ (map (declaredReferences (Proxy @PrettyPrint)) (peripherals p)) $ \refs ->
+        forM_ refs $ \ref -> indent $ emit $ concat ["initialize_ref(", refName ref, ")"]
+
+    emit ""
+    indent $ emit "-- initialize output peripherals"
+    forM_ (map (staticInitialization (Proxy @PrettyPrint)) (peripherals p)) $ \inits -> 
+        mapM_ (indent . emit) inits
+
+    emit ""
+    indent $ emit "-- schedule initial ready-queue content"
+    forM_ (initialQueueContent p) $ \qc ->
+        mapM_ (indent . emit . \x -> concat ["schedule(", x, ")"]) $ prettyQueueContent qc
+
+    emit "}"
+
+run_program :: Program PrettyPrint -> PP ()
+run_program p = do
+    emit "run_program() {"
+    indent $ emit "setup()"
+    indent $ emit "run_scheduler()"
+    emit "}"
+
+prettyQueueContent :: QueueContent PrettyPrint -> [String]
+prettyQueueContent (SSMProcedure id args)      = [prettyApp (id, args)]
+prettyQueueContent (OutputHandler (Handler p)) = p 0 0
 
 prettyReferenceDecls :: [Reference] -> PP ()
 prettyReferenceDecls xs = flip mapM_ xs $ \ref ->
-    indent $ emit $ concat [prettyType (refType ref), " ", refName ref]
+    emit $ concat [prettyType (refType ref), " ", refName ref]
 
-prettyPeripheralDeclarations :: Peripheral -> PP ()
+prettyPeripheralDeclarations :: Peripheral PrettyPrint -> PP ()
 prettyPeripheralDeclarations (Peripheral p) =
-    prettyReferenceDecls $ declaredReferences p
+    prettyReferenceDecls $ declaredReferences (Proxy @PrettyPrint) p
 
 prettyProcedure :: Procedure -> PP ()
 prettyProcedure p = do

@@ -1,3 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Test.SSM.Report
   ( (</>)
   , reportDir
@@ -21,7 +24,8 @@ import           System.Directory               ( createDirectoryIfMissing
                                                 , setPermissions
                                                 )
 
-import           SSM.Compile                    ( SSMProgram(..) )
+import           SSM.Core                       ( Program, PrettyPrint )
+import           SSM.Compile
 import           SSM.Pretty                     ( prettyProgram )
 
 import           Data.Char                      ( isUpper )
@@ -103,10 +107,9 @@ reportFileOnFail slug src dst = do
 
 -- | Leave both pretty-printed and regression-testable stub of program in report
 -- directory if the test fails.
-reportProgramOnFail
-  :: (Monad m, SSMProgram p) => Slug -> p -> QC.PropertyM m ()
+reportProgramOnFail :: (Monad m) => Slug -> Program PrettyPrint -> QC.PropertyM m ()
 reportProgramOnFail slug program = do
-  reportOnFail slug (show slug ++ ".ssm") $ prettyProgram $ toProgram program
+  reportOnFail slug (show slug ++ ".ssm") $ prettyProgram program
   reportOnFail slug (show slug ++ "Spec.hs") regressionSpec
   reportScriptOnFail slug "save-regression" saveSpecScript
  where
@@ -134,7 +137,7 @@ reportProgramOnFail slug program = do
     , "spec = T.correctSpec \"" ++ show slug ++ "\" p"
     , ""
     , "p :: Program"
-    , "p = " ++ show (toProgram program)
+    , "p = " ++ show program
     ]
 
   saveSpecScript = unlines

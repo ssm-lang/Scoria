@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
-module SSM.Interpret.TraceParser where
+module SSM.Trace.TraceParser where
 
 import           SSM.Core.Type
-import           SSM.Interpret.Trace
+import           SSM.Trace.Trace
 
 import           Data.List.NonEmpty
 import           Data.Maybe

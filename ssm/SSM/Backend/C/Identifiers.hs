@@ -14,7 +14,7 @@ module SSM.Backend.C.Identifiers
   , initialize_static_output_ble_scan_control_device
   , initialize_static_output_ble_broadcast_control_device
   , initialize_static_output_ble_broadcast_device
-  , resolveNameOfHandler
+  , enable_ble_stack
   , top_return
   , top_parent
   , fork
@@ -29,6 +29,11 @@ module SSM.Backend.C.Identifiers
   , exhausted_priority
   , now
   , never
+  , pdep
+  , pdeps
+  , depthSub
+  , depth_at_root
+  , priority_at_root
 
       -- * Type names recognized by the the C runtime system.
   , time_t
@@ -111,13 +116,8 @@ initialize_static_output_ble_broadcast_device :: CIdent
 initialize_static_output_ble_broadcast_device =
   "bind_static_ble_broadcast_device"
 
-resolveNameOfHandler :: Handler -> CIdent
-resolveNameOfHandler (Output variant _) = case variant of
-  LED _  -> initialize_static_output_device
-  BLE bh -> case bh of
-    Broadcast        -> initialize_static_output_ble_broadcast_device
-    BroadcastControl -> initialize_static_output_ble_broadcast_control_device
-    ScanControl      -> initialize_static_output_ble_scan_control_device
+enable_ble_stack :: CIdent
+enable_ble_stack = "enable_ble_stack"
 
 -- | Name of top level return step-function
 top_return :: CIdent
@@ -174,6 +174,41 @@ throw = "SSM_THROW"
 -- | Exhausted priority
 exhausted_priority :: C.Exp
 exhausted_priority = [cexp|SSM_EXHAUSTED_PRIORITY|]
+
+-- | Generate a list of priority-depth pairs to use when forking new processes.
+pdeps :: Int -> C.Exp -> C.Exp -> [(C.Exp, C.Exp)]
+pdeps cs currentPrio currentDepth =
+  map (\k -> pdep k cs currentPrio currentDepth) [1..cs]
+
+{- | Generate a priority-depth pair to use when populating the ready queue.
+
+Arguments are:
+
+  1. We want the priority and depth of the k:th procedure
+  2. Total number of processes that are being enqueued
+  3. Expression that represents priority of parent
+  4. Expression that represents depth of parent
+-}
+pdep :: Int -> Int -> C.Exp -> C.Exp -> (C.Exp, C.Exp)
+pdep k cs currentPrio currentDepth =
+  let prio  = [cexp|$exp:currentPrio + ($int:(k-1) * (1 << $exp:depth))|]
+      depth = [cexp|$exp:currentDepth - $exp:(depthSub cs)|]
+  in (prio, depth)
+
+{- | Calculate the subexpression that should be subtracted from the current depth
+in order to achieve the new depth of the processes to fork.
+
+The argument is the number of new processes that are being forked. -}
+depthSub :: Int -> C.Exp
+depthSub k = [cexp|$int:(ceiling $ logBase (2 :: Double) $ fromIntegral $ k :: Int) |]
+
+-- | Depth at program initialization
+depth_at_root :: C.Exp
+depth_at_root = [cexp|SSM_ROOT_DEPTH|]
+
+-- | Priority at program initialization
+priority_at_root :: C.Exp
+priority_at_root = [cexp|SSM_ROOT_PRIORITY|]
 
 -- | C type that represents model time
 time_t :: C.Type

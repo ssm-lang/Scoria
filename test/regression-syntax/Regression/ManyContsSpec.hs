@@ -7,6 +7,7 @@ import           Prelude hiding (sum)
 
 import SSM.Language
 import SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Core
 import Data.Map as Map
 import qualified Test.Hspec                    as H
@@ -28,7 +29,10 @@ fun1 ref2 = routine $ do
          , fun1 ref2
          ]
 
-p :: Program
+p1 :: Compile backend ()
+p1 = schedule fun0
+
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs  = fromList
@@ -36,10 +40,10 @@ p = Program
       , Procedure
         { name      = Ident "fun0" Nothing
         , arguments = []
-        , body      = [ NewRef (Ident "fresh0" Nothing)
+        , body      = [ NewRef (Ident "var0" Nothing)
                                 TUInt64
                                 (Lit TUInt64 (LUInt64 0))
-                      , Fork [(Ident "fun1" Nothing, [Right $ Dynamic (Ident "fresh0" Nothing, Ref TUInt64)])]
+                      , Fork [(Ident "fun1" Nothing, [Right $ Dynamic (Ident "var0" Nothing, Ref TUInt64)])]
                       ]
         }
       )
@@ -76,4 +80,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "ManyConts" fun0 p
+spec = T.propSyntacticEquality "ManyConts" (toProgram p1) p

@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Test.SSM.Build
   ( doCompile
   , doMake
@@ -11,9 +12,8 @@ import           System.Directory               ( createDirectoryIfMissing )
 import           System.Exit                    ( ExitCode(..) )
 import           System.Process                 ( readProcessWithExitCode )
 
-import           SSM.Compile                    ( SSMProgram(..)
-                                                , toC
-                                                )
+import           SSM.Core                       ( Program, C )
+import           SSM.Compile                    ( toC' )
 
 import qualified Test.QuickCheck               as QC
 import qualified Test.QuickCheck.Monadic       as QC
@@ -32,9 +32,9 @@ buildPlatform :: String
 buildPlatform = "trace"
 
 -- | Compile an SSM program to a C program's string representation.
-doCompile :: (Monad m, SSMProgram p) => Slug -> p -> QC.PropertyM m String
+doCompile :: Monad m => Slug -> Program C -> QC.PropertyM m String
 doCompile slug program = do
-  let cSrc = toC program
+  let cSrc = toC' program
   reportOnFail slug (show slug ++ ".c") cSrc
   return cSrc
 

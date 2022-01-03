@@ -14,7 +14,7 @@ import Debug.Trace
 
 {- | Shrinks a program into several sub programs by making every wait statement
 one reference smaller, if the wait statement has more than 1 reference. -}
-waits :: Program -> [Program]
+waits :: Program backend -> [Program backend]
 waits = transformProcedures shrinkWaitProcedure
 
 shrinkWaitProcedure :: Procedure -> [Procedure]

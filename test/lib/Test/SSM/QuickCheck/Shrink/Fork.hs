@@ -12,7 +12,7 @@ import Data.List
 
 {- | Shrink fork statements in a program. Each resulting program contains only one
 mutation. -}
-forks :: Program -> [Program]
+forks :: Program backend -> [Program backend]
 forks = transformProcedures shrinkForksProcedure
 
 {- | Shrink all fork statements found in a procedure. Every procedure in the output

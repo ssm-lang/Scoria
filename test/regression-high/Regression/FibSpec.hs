@@ -3,6 +3,7 @@ module Regression.FibSpec where
 
 import           Prelude hiding (sum)
 
+import SSM.Frontend.Compile
 import           Data.Word
 import           SSM.Frontend.Language
 import           SSM.Frontend.Box
@@ -40,5 +41,8 @@ main = do
   r <- var 0
   fork [ fib 13 r ]
 
+program :: Compile backend ()
+program = schedule main
+
 spec :: H.Spec
-spec = T.correctSpec "Fib" main
+spec = T.correctSpec "Fib" (toProgram program)

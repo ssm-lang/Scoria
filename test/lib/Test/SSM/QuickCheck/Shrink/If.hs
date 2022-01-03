@@ -13,7 +13,7 @@ the program is turned into three mutations. One mutation does not have the If-st
 at all, one mutation has the then-branch inlined while the third mutation has the
 else-branch inlined. This is done once for each If-statement, so a program with three
 If-else-statements will be turned into a total of nine different mutations. -}
-ifs :: Program -> [Program]
+ifs :: Program backend -> [Program backend]
 ifs = transformProcedures shrinkIfProcedure
 
 -- | Shrink a procedure into several (or none) different mutations.

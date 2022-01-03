@@ -327,7 +327,7 @@ it was created in terminates. -}
 var :: Exp a -> SSM (Ref a)
 var (Exp e) = do
     n <- fresh
-    let id = Ident n Nothing
+    let id = Ident ("var" <> show n) Nothing
     emit $ NewRef id e
     return $ Ptr $ makeDynamicRef id (mkReference $ expType e)
 

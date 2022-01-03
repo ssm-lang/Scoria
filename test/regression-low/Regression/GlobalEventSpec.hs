@@ -10,6 +10,7 @@ module Regression.GlobalEventSpec where
 
 import           Data.Map                       ( fromList )
 import           SSM.Core
+import           SSM.Frontend.Peripheral.Identity
 import qualified Test.Hspec                    as H
 import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
@@ -17,7 +18,7 @@ import qualified Test.SSM.Prop                 as T
 spec :: H.Spec
 spec = T.correctSpec "GlobalEventSpec" p
 
-p :: Program
+p :: Backend backend => Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs             = fromList
@@ -29,5 +30,5 @@ p = Program
                              }
                            )
                          ]
-  , peripherals = [Peripheral $ IdentityPeripheral (fromList [(Ident "glob0" Nothing, Ref TUInt8)])]
+  , peripherals = [Peripheral $ Globals (fromList [(Ident "glob0" Nothing, Ref TUInt8)])]
   }

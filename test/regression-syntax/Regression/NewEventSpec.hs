@@ -7,6 +7,7 @@ import           Prelude hiding (sum)
 
 import SSM.Language
 import SSM.Frontend.Peripheral.Identity
+import SSM.Frontend.Compile hiding ( initialQueueContent, peripherals )
 import SSM.Core
 import Data.Map as Map
 import qualified Test.Hspec                    as H
@@ -16,10 +17,13 @@ import Data.Int
 
 fun0 :: SSM ()
 fun0 = routine $ do
-    var event'
+    var event
     return ()
 
-p :: Program
+p1 :: Compile backend ()
+p1 = schedule fun0
+
+p :: Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs             = fromList
@@ -28,7 +32,7 @@ p = Program
                              { name = Ident { identName = "fun0", identSrcInfo = Nothing }
                              , arguments = []
                              , body = [ NewRef
-                                          (Ident { identName    = "fresh0"
+                                          (Ident { identName    = "var0"
                                                  , identSrcInfo = Nothing
                                                  }
                                           )
@@ -42,4 +46,4 @@ p = Program
   }
 
 spec :: H.Spec
-spec = T.propSyntacticEquality "NewEvent" fun0 p
+spec = T.propSyntacticEquality "NewEvent" (toProgram p1) p

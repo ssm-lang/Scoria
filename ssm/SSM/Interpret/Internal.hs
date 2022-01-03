@@ -1,4 +1,8 @@
 -- | Helper functions and auxiliary definitions the interpreter uses.
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module SSM.Interpret.Internal
   ( -- * Interpretation monad, re-exported from "SSM.Interpret.Types".
     Interp
@@ -94,21 +98,22 @@ import           Data.STRef.Lazy                ( STRef
 import           Data.Word                      ( Word64
                                                 , Word8
                                                 )
+import           Data.Proxy
 import           SSM.Util.HughesList            ( toHughes )
 import           SSM.Util.Operators             ( (<#>) )
 
 import           SSM.Core
 
-import qualified SSM.Interpret.Trace           as T
+import qualified SSM.Trace.Trace           as T
 import           SSM.Interpret.Types
 
 {-********** Main interpret function helpers **********-}
 
 -- | Create initial global variable storage
-globals :: Program -> ST s (Map.Map Ident (Var s))
+globals :: forall backend s . Program backend -> ST s (Map.Map Ident (Var s))
 globals p = do
   vars <- forM (peripherals p) $ \(Peripheral p) -> do
-    forM (declaredReferences p) $ \ref -> do
+    forM (declaredReferences (Proxy @backend) p) $ \ref -> do
       let initval = defaultValue (dereference (refType ref))
       v <- newVar' initval 0
       return (refIdent ref, v)

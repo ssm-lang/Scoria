@@ -1,14 +1,18 @@
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleContexts #-}
 module SSM.Interpret.Interpreter
   ( interpret
   , InterpretConfig(..)
   , interpret_
-  , SSMProgram(..)
   ) where
 
 import           SSM.Core
 
 import           SSM.Interpret.Internal
-import qualified SSM.Interpret.Trace           as T
+import qualified SSM.Trace.Trace           as T
 
 import           SSM.Util.Default               ( Default(def) )
 import           SSM.Util.HughesList     hiding ( (++) )
@@ -23,7 +27,7 @@ import           Control.Monad.State.Lazy
 import           Control.Monad.Writer.Lazy
 
 -- | Interpret an SSM program with the default configuration.
-interpret_ :: SSMProgram p => p -> T.Trace
+interpret_ :: Program Interpret -> T.Trace
 interpret_ = interpret def
 
 {-| Interpret an SSM program.
@@ -36,9 +40,8 @@ issue. What you do to get the output in that case is to ask it for a finite amou
 of output, such as @take 10000 (interpret program)@. After evaluating enough to
 give you @10000@ trace items, it will not evaluate more.
 -}
-interpret :: SSMProgram p => InterpretConfig -> p -> T.Trace
-interpret config program = runST $ do
-  let p = toProgram program
+interpret :: InterpretConfig -> Program Interpret -> T.Trace
+interpret config p = runST $ do
   -- Fetch procedure body
   fun <- case Map.lookup (entry p) (funs p) of
     Just p' -> return p'
