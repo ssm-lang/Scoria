@@ -1,30 +1,46 @@
 {- | Programs are parameterized over different backends. This file lists the available
-backends and declares some type families that can be used to talk about backend-specific
-code in a general way. -}
+backends and declares a typeclass with two associated types that are needed to generate
+code in a backend-specific way. -}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module SSM.Core.Backend
-  ( C
+  ( -- * Backend typeclass
+    Backend(..)
+    -- * Compiler-supported backends
+  , C
   , PrettyPrint
   , Interpret
-  , Definition
-  , Statement
   ) where
 
 import qualified Language.C.Syntax as C
 
+
 -- | Programs can be compiled to C
 data C
+-- | Programs can be pretty-printed
 data PrettyPrint
+-- | Programs can be interpreted
 data Interpret
 
--- | Type of top-level declarations
-type family Definition backend where
-    Definition C           = C.Definition
-    Definition PrettyPrint = String
-    Definition Interpret   = () -- FIXME add meaning
+{- | Any type that implements the backend typeclass is available as a backend. The
+associated types @Definition@ and @Statement@ mainly refers to how peripheral
+initialization is handled. -}
+class Backend backend where
+  type Definition backend
+  type Statement  backend
 
--- | Type of statements
-type family Statement backend where
-    Statement C           = C.BlockItem
-    Statement PrettyPrint = String
-    Statement Interpret   = () -- FIXME add meaning
+{- | For C, the definitions are of type @Definition@ from mainland-c, and the statements
+are @BlockItem@s. -}
+instance Backend C where
+  type Definition C = C.Definition
+  type Statement  C = C.BlockItem
+
+-- | The pretty-printing backend deals solely with strings
+instance Backend PrettyPrint where
+  type Definition PrettyPrint = String
+  type Statement  PrettyPrint = String
+
+-- FIXME add meaning
+instance Backend Interpret where
+  type Definition Interpret = ()
+  type Statement  Interpret = ()

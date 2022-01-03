@@ -18,7 +18,7 @@ import qualified Test.SSM.Prop                 as T
 spec :: H.Spec
 spec = T.correctSpec "GlobalEventSpec" p
 
-p :: Program backend
+p :: Backend backend => Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs             = fromList

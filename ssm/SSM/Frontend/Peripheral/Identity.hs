@@ -38,7 +38,7 @@ emptyGlobals :: Globals
 emptyGlobals = Globals Map.empty
 
 -- | The identity peripheral works regardless of backend, since no IO is involved
-instance IsPeripheral backend Globals where
+instance Backend backend => IsPeripheral backend Globals where
     declareReference _ t id _ global =
         let m = references global
         in global { references = Map.insert id t m}
@@ -66,7 +66,7 @@ main = assign ?ref 5
 @
 
 -}
-global :: forall a backend . SSMType a => Compile backend (Ref a)
+global :: forall a backend . (Backend backend, SSMType a) => Compile backend (Ref a)
 global = do
     n <- fresh
     let id = Ident ("global" <> show n) Nothing

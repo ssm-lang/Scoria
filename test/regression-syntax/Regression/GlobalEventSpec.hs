@@ -15,7 +15,7 @@ import qualified Test.Hspec.QuickCheck         as H
 import qualified Test.SSM.Prop                 as T
 import Data.Word
 
-program :: Compile backend ()
+program :: Backend backend => Compile backend ()
 program = do
     glob0 <- global @Word8
     let ?glob0 = glob0
@@ -24,7 +24,7 @@ program = do
 fun0 :: (?glob0 :: Ref Word8) => SSM ()
 fun0 = routine $ return ()
 
-p :: Program backend
+p :: Backend backend => Program backend
 p = Program
   { initialQueueContent = [SSMProcedure (Ident "fun0" Nothing) []]
   , funs             = fromList

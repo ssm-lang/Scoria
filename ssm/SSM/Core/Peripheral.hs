@@ -21,12 +21,12 @@ import           Data.Word                      ( Word8 )
 import           SSM.Core.Reference             ( Reference )
 import           SSM.Core.Type                  ( Type )
 import           SSM.Core.Ident                 ( Ident )
-import           SSM.Core.Backend
+import           SSM.Core.Backend               ( Backend(..) )
 
 -- | Type of peripherals
 data Peripheral backend where
     -- | A `Peripheral` holds an object that has an instance of `IsPeripheral`
-    Peripheral :: forall backend a . (IsPeripheral backend a, Show a, Eq a) => a -> Peripheral backend
+    Peripheral :: forall backend a . (Backend backend, IsPeripheral backend a, Show a, Eq a) => a -> Peripheral backend
 
 instance Show (Peripheral backend) where
     show (Peripheral p) = show p
@@ -35,7 +35,7 @@ instance Eq (Peripheral backend) where
     (==) = undefined
 
 -- | @IsPeripheral@ describes everything that a peripheral is and what it can do
-class IsPeripheral backend a where
+class Backend backend => IsPeripheral backend a where
     {- | Declare a reference that is declared in the global scope. The peripheral
     might need to identify some IO driver that it needs to be connected to, which
     is what the @Word8@ parameter is for. -}
@@ -65,7 +65,7 @@ class IsPeripheral backend a where
     staticInitialization :: proxy backend -> a -> [Statement backend]
 
 -- | Dummy instance to prevent the need for wrapping/unwrapping of @Peripherals@
-instance IsPeripheral backend (Peripheral backend) where
+instance Backend backend => IsPeripheral backend (Peripheral backend) where
     declareReference proxy t id i (Peripheral p) =
         Peripheral $ declareReference proxy t id i p
     declaredReferences proxy (Peripheral p)      = declaredReferences proxy p

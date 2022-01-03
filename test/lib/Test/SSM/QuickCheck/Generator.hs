@@ -15,6 +15,7 @@ import SSM.Core.Reference
 import SSM.Core.Program
 import SSM.Core.Type
 import SSM.Core.Peripheral
+import SSM.Core.Backend
 
 import SSM.Frontend.Peripheral.Identity
 
@@ -48,7 +49,7 @@ genListOfLength :: Gen a -> Int -> Gen [a]
 genListOfLength ga 0 = return []
 genListOfLength ga n = (:) <$> ga <*> genListOfLength ga (n-1)
 
-instance Arbitrary (Program backend) where
+instance Backend backend => Arbitrary (Program backend) where
   shrink = shrinkProgram
 
   arbitrary = do
