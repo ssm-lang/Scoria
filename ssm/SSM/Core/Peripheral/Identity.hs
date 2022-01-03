@@ -3,8 +3,7 @@ only to create references that can be used globally, outside the context of a pr
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 module SSM.Core.Peripheral.Identity
-  ( Globals
-  , references
+  ( Globals(..)
   , emptyGlobals
   ) where
 

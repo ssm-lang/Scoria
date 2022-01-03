@@ -15,6 +15,7 @@ import SSM.Core.Reference
 import SSM.Core.Program
 import SSM.Core.Type
 import SSM.Core.Peripheral
+import SSM.Core.Peripheral.Identity
 import SSM.Core.Backend
 
 import SSM.Frontend.Peripheral.Identity
