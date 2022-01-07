@@ -30,6 +30,9 @@ library
       SSM.Backend.C.Identifiers
       SSM.Backend.C.Peripherals
       SSM.Backend.C.Types
+      SSM.Backend.C2.CodeGen
+      SSM.Backend.C2.Identifiers
+      SSM.Backend.C2.IR
       SSM.Compile
       SSM.Core
       SSM.Core.Backend

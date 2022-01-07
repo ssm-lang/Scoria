@@ -8,6 +8,7 @@ module SSM.Compile
   , compileFile
   , compileCli
   , compileCli_
+  , toProgram
   ) where
 import           Data.Maybe                     ( fromMaybe )
 import           System.Environment             ( getArgs

@@ -8,6 +8,7 @@ module SSM.Core.Backend
     Backend(..)
     -- * Compiler-supported backends
   , C
+  , C2
   , PrettyPrint
   , Interpret
   ) where
@@ -17,6 +18,7 @@ import qualified Language.C.Syntax as C
 
 -- | Programs can be compiled to C
 data C
+data C2
 -- | Programs can be pretty-printed
 data PrettyPrint
 -- | Programs can be interpreted
@@ -34,6 +36,10 @@ are @BlockItem@s. -}
 instance Backend C where
   type Definition C = C.Definition
   type Statement  C = C.BlockItem
+
+instance Backend C2 where
+  type Definition C2 = C.Definition
+  type Statement  C2 = C.BlockItem
 
 -- | The pretty-printing backend deals solely with strings
 instance Backend PrettyPrint where

@@ -19,6 +19,8 @@ import SSM.Interpret
 
 import Data.Word
 
+import SSM.Backend.C2.IR
+
 program :: (SupportGPIO backend, SupportBBLE backend) => Compile backend ()
 program = do
     (led0, handler0) <- output 0
@@ -52,3 +54,14 @@ program = do
           ?led2 <~ high
           ?input0 <~ deref ?led0
           ?glo  <~ 0
+
+
+program2 :: Compile backend ()
+program2 = schedule test
+  where
+    test :: SSM ()
+    test = routine $ do
+      r <- var true
+      r1 <- var false
+      wait (r, r1)
+      fork [ wait r ]
