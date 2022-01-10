@@ -2,11 +2,11 @@
 {-# LANGUAGE TypeApplications #-}
 module SSM.Backend.C2.CodeGen where
 
-import SSM.Core hiding (Program(..), Procedure(..), Stm(..))
+import SSM.Core hiding (Program(..), Procedure(..), Stm(..), SSMExp(..), QueueContent(..))
 import SSM.Core.Backend
 
 import SSM.Backend.C2.Identifiers
-import SSM.Backend.C2.IR hiding (localrefs)
+import SSM.Backend.C2.IR hiding (localrefs, unmarshal)
 
 import Data.Proxy
 import Data.List
@@ -31,17 +31,27 @@ compile :: Program C2 -> String
 compile = pretty 120 . pprList . compilationUnit
 
 compilationUnit :: Program C2 -> [C.Definition]
-compilationUnit p = SSM.Backend.C2.CodeGen.globalDeclarations init' <>
-                    map struct procs <>
-                    concatMap prototypes procs <>
-                    concatMap methods procs <>
-                    [ SSM.Backend.C2.CodeGen.init init'
-                    , exit init'
-                    ]
+compilationUnit p =
+    includes                                        <>
+    SSM.Backend.C2.CodeGen.globalDeclarations init' <>
+    map struct procs                                <>
+    concatMap prototypes procs                      <>
+    concatMap methods procs                         <>
+    [ SSM.Backend.C2.CodeGen.init init'
+    , exit init'
+    ]
   where
+      procs :: [CompiledProcedure]
       procs = flip map (Map.elems $ funs p) $ \p ->
           compileProcedure p (genProcedureInfo p)
+
+      init' :: ProgramInit
       init' = genProgramInit p
+
+      includes :: [C.Definition]
+      includes = [ [cedecl| $esc:("#include <ssm.h>") |]
+                 , [cedecl| $esc:("#include <ssm-internal.h>") |]
+                 ]
 
 initializeProgram :: Program C2 -> C.Definition
 initializeProgram p = undefined
@@ -240,7 +250,7 @@ compileProcedure p procedureInfo =
 
             typedef struct {
                 $ty:ssm_act_t $id:act;
-
+                
                 // locally declared references
                 $sdecls:lrefs
 
@@ -257,7 +267,7 @@ compileProcedure p procedureInfo =
       genEnter =
           [cedecl|
 
-            $ty:ssm_act_t $id:ssm_enter_proc($params:(staticArgs <> args)) {
+            $ty:ssm_act_t *$id:ssm_enter_proc($params:(staticArgs <> args)) {
               $ty:act_proc_t *cont = container_of
                   ( $id:ssm_enter
                         ( sizeof(*$id:cont)
@@ -289,7 +299,7 @@ compileProcedure p procedureInfo =
 
       genEnterPrototype :: C.Definition
       genEnterPrototype =
-          [cedecl| $ty:ssm_act_t $id:ssm_enter_proc($params:(staticArgs <> args)); |]
+          [cedecl| $ty:ssm_act_t *$id:ssm_enter_proc($params:(staticArgs <> args)); |]
 
       genStep :: C.Definition
       genStep =
@@ -333,17 +343,17 @@ compileProcedure p procedureInfo =
                     d' = compileExp lrefs d
                     v' = compileExp lrefs v
                     r' = accessRef r
-                in [citems| $id:ssm_later(&$id:r', $id:ssm_now() + $exp:d', $exp:v'); |]
+                in [citems| $id:ssm_later($id:ssm_to_sv($id:r'), $id:ssm_now() + $exp:d', $exp:v'); |]
             genStm (Sensitize n r) =
                 let t       = fetchTrigger n
                     trigger = "trigger" <> show t
-                in [citems| $id:ssm_sensitize(&$id:(accessRef r), &$id:cont->$id:trigger); |]
+                in [citems| $id:ssm_sensitize($id:ssm_to_sv($id:(accessRef r)), &$id:cont->$id:trigger); |]
             genStm (Desensitize n r) =
                 let t = fetchTrigger n
                     trigger = "trigger" <> show t
                 in [citems| $id:ssm_desensitize(&$id:cont->$id:trigger); |]
             genStm (Fork n id k i args) = fork (Fork n id k i args)
-            genStm (Yield n)       = [citems| $id:cont->pc += 1; return; |]
+            genStm (Yield n)       = [citems| $id:act->pc += 1; return; |]
             genStm (Terminate n)   = [citems| ssm_leave(&cont->$id:act, sizeof($id:act_proc)); |]
             genStm (Dup n r)       = [citems| $id:ssm_dup($id:(accessRef r)); |]
             genStm (Drop n r)      = [citems| $id:ssm_drop($id:(accessRef r)); |]
@@ -384,7 +394,9 @@ compileProcedure p procedureInfo =
 
 -- compile expressions
 
-compileExp :: [Reference] -> SSMExp -> C.Exp
+compileExp :: [Reference] -> MUExp -> C.Exp
+compileExp localrefs (Marshal e)      = [cexp| $id:marshal($exp:(compileExp localrefs e)) |]
+compileExp localrefs (Unmarshal e)    = [cexp| $id:unmarshal($exp:(compileExp localrefs e)) |]
 compileExp localrefs (Var t id)       = [cexp| $id:cont->$id:id |]
 compileExp localrefs (Lit t l)        = compileLit localrefs l
 compileExp localrefs (UOpE t e op)    = compileUOpE localrefs e op
@@ -392,42 +404,42 @@ compileExp localrefs (UOpR t r op)    = compileUOpR localrefs r op
 compileExp localrefs (BOp t e1 e2 op) = compileBinOp localrefs e1 e2 op
 
 compileLit :: [Reference] -> SSMLit -> C.Exp
-compileLit localrefs (LUInt8 w)  = [cexp| $id:marshal($uint:w) |]
-compileLit localrefs (LUInt32 w) = [cexp| $id:marshal($uint:w) |]
-compileLit localrefs (LUInt64 w) = [cexp| $id:marshal($uint:w) |]
-compileLit localrefs (LInt32 i)  = [cexp| $id:marshal($int:i) |]
-compileLit localrefs (LInt64 i)  = [cexp| $id:marshal($int:i) |]
-compileLit localrefs LEvent      = [cexp| $id:marshal(0) |]
+compileLit localrefs (LUInt8 w)  = [cexp| $uint:w |]
+compileLit localrefs (LUInt32 w) = [cexp| $uint:w |]
+compileLit localrefs (LUInt64 w) = [cexp| $uint:w |]
+compileLit localrefs (LInt32 i)  = [cexp| $int:i |]
+compileLit localrefs (LInt64 i)  = [cexp| $int:i |]
+compileLit localrefs LEvent      = [cexp| 0 |]
 compileLit localrefs (LBool b)   = let lit = if b then [cexp| true|] else [cexp|false|]
-                                   in [cexp| $id:marshal($exp:lit) |]
+                                   in [cexp| $exp:lit |]
 
-compileUOpE :: [Reference] -> SSMExp -> UnaryOpE -> C.Exp
-compileUOpE localrefs e Neg = [cexp| $id:marshal(- $id:unmarshal($exp:(compileExp localrefs e))) |]
-compileUOpE localrefs e Not = [cexp| $id:marshal(! $id:unmarshal($exp:(compileExp localrefs e))) |]
+compileUOpE :: [Reference] -> MUExp -> UnaryOpE -> C.Exp
+compileUOpE localrefs e Neg = [cexp| - $exp:(compileExp localrefs e) |]
+compileUOpE localrefs e Not = [cexp| ! $exp:(compileExp localrefs e) |]
 
 compileUOpR :: [Reference] -> Reference -> UnaryOpR -> C.Exp
 compileUOpR localrefs r op = case op of
     Changed -> [cexp| $id:(accessRef r)->last_updated == $id:ssm_now() |]
     Deref   -> [cexp| $id:ssm_deref($id:(accessRef r)) |]
 
-compileBinOp :: [Reference] -> SSMExp -> SSMExp -> BinOp -> C.Exp
+compileBinOp :: [Reference] -> MUExp -> MUExp -> BinOp -> C.Exp
 compileBinOp localrefs e1 e2 op = case op of
-    OPlus   -> [cexp| $id:marshal($exp:e1' + $exp:e2') |]
-    OMinus  -> [cexp| $id:marshal($exp:e1' - $exp:e2') |]
-    OTimes  -> [cexp| $id:marshal($exp:e1' * $exp:e2') |]
-    ODiv    -> [cexp| $id:marshal($exp:e1' / $exp:e2') |]
-    ORem    -> [cexp| $id:marshal($exp:e1' % $exp:e2') |]
-    OMin    -> [cexp| $id:marshal($exp:e1' < $exp:e2' ? $exp:e1' : $exp:e2') |]
-    OMax    -> [cexp| $id:marshal($exp:e1' < $exp:e2' ? $exp:e2' : $exp:e1') |]
-    OLT     -> [cexp| $id:marshal($exp:e1' < $exp:e2') |]
-    OEQ     -> [cexp| $id:marshal($exp:e1' == $exp:e2') |]
-    OAnd    -> [cexp| $id:marshal($exp:e1' && $exp:e2') |]
-    OOr     -> [cexp| $id:marshal($exp:e1' || $exp:e2') |]
-    OLShift -> [cexp| $id:marshal($exp:e1' << $exp:e2') |]
-    ORShift -> [cexp| $id:marshal($exp:e1' >> $exp:e2') |]
-    OBAnd   -> [cexp| $id:marshal($exp:e1' & $exp:e2') |]
-    OBOr    -> [cexp| $id:marshal($exp:e1' | $exp:e2') |]
-    OBXor   -> [cexp| $id:marshal($exp:e1' ^ $exp:e2') |]
+    OPlus   -> [cexp| $exp:e1' + $exp:e2' |]
+    OMinus  -> [cexp| $exp:e1' - $exp:e2' |]
+    OTimes  -> [cexp| $exp:e1' * $exp:e2' |]
+    ODiv    -> [cexp| $exp:e1' / $exp:e2' |]
+    ORem    -> [cexp| $exp:e1' % $exp:e2' |]
+    OMin    -> [cexp| $exp:e1' < $exp:e2' ? $exp:e1' : $exp:e2' |]
+    OMax    -> [cexp| $exp:e1' < $exp:e2' ? $exp:e2' : $exp:e1' |]
+    OLT     -> [cexp| $exp:e1' < $exp:e2' |]
+    OEQ     -> [cexp| $exp:e1' == $exp:e2' |]
+    OAnd    -> [cexp| $exp:e1' && $exp:e2' |]
+    OOr     -> [cexp| $exp:e1' || $exp:e2' |]
+    OLShift -> [cexp| $exp:e1' << $exp:e2' |]
+    ORShift -> [cexp| $exp:e1' >> $exp:e2' |]
+    OBAnd   -> [cexp| $exp:e1' & $exp:e2' |]
+    OBOr    -> [cexp| $exp:e1' | $exp:e2' |]
+    OBXor   -> [cexp| $exp:e1' ^ $exp:e2' |]
   where
-      e1' = [cexp| $id:unmarshal($exp:(compileExp localrefs e1)) |]
-      e2' = [cexp| $id:unmarshal($exp:(compileExp localrefs e2)) |]
+      e1' = [cexp| $exp:(compileExp localrefs e1) |]
+      e2' = [cexp| $exp:(compileExp localrefs e2) |]

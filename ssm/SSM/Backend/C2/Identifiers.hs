@@ -22,7 +22,10 @@ ssm_enter_ :: String -> String
 ssm_enter_ routineName = "ssm_enter_" <> routineName
 
 ssm_act_t :: C.Type
-ssm_act_t = [cty| struct ssm_act_t |]
+ssm_act_t = [cty| typename ssm_act_t |]
+
+ssm_to_sv :: String
+ssm_to_sv = "ssm_to_sv"
 
 ssm_priority_t :: C.Type
 ssm_priority_t = [cty| typename ssm_priority_t |]
@@ -103,10 +106,10 @@ ssm_top_parent :: String
 ssm_top_parent = "ssm_top_parent"
 
 ssm_root_priority :: String
-ssm_root_priority = "ssm_root_priority"
+ssm_root_priority = "SSM_ROOT_PRIORITY"
 
 ssm_root_depth :: String
-ssm_root_depth = "ssm_root_depth"
+ssm_root_depth = "SSM_ROOT_DEPTH"
 
 accessRef :: Reference -> String
 accessRef r

@@ -87,10 +87,10 @@ fib n r = routine $ do
           , SSM.Test.sum r1 r2 r
           ])
 
-main' :: SSM ()
-main' = routine $ do
+main2 :: SSM ()
+main2 = routine $ do
   r <- var 0
   fork [ fib 13 r ]
 
 program3 :: Compile backend ()
-program3 = schedule main'
+program3 = schedule main2

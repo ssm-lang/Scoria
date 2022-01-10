@@ -10,27 +10,56 @@ import Control.Monad.Reader
 
 import qualified Data.Map as Map
 
+import Data.Bifunctor
 import Data.Either
 import Data.List
+
+data MUExp
+    = Marshal MUExp
+    | Unmarshal MUExp
+    | Var S.Type S.Ident
+    | Lit S.Type S.SSMLit
+    | UOpE S.Type MUExp S.UnaryOpE
+    | UOpR S.Type S.Reference S.UnaryOpR
+    | BOp S.Type MUExp MUExp S.BinOp
+  deriving Show
+
+ssmexpToMUExp :: S.SSMExp -> MUExp
+ssmexpToMUExp e = case e of
+    S.Var t n         -> Var t n
+    S.Lit t l         -> Marshal $ Lit t l
+    S.UOpE t e op     -> Marshal $ UOpE t (unmarshal $ ssmexpToMUExp e) op
+    S.UOpR t r op     -> Marshal $ UOpR t r op
+    S.BOp t e1 e2 bop -> Marshal $ BOp t (unmarshal $ ssmexpToMUExp e1) (unmarshal $ ssmexpToMUExp e2) bop
+
+unmarshal :: MUExp -> MUExp
+unmarshal (Marshal e) = e
+unmarshal e           = Unmarshal e
+
+testE :: S.SSMExp
+testE = S.BOp S.TInt32 (S.Lit S.TInt32 (S.LInt32 5)) (S.Lit S.TInt32 (S.LInt32 5)) S.OPlus
+
+lowerexp :: S.SSMExp -> MUExp
+lowerexp = ssmexpToMUExp
 
 data Stm =
     -- Reference management
     CreateRef Int S.Ident S.Type
-  | InitializeRef Int S.Reference S.SSMExp
-  | SetRef Int S.Reference S.SSMExp
+  | InitializeRef Int S.Reference MUExp
+  | SetRef Int S.Reference MUExp
 
     -- Control flow
-  | If Int S.SSMExp [Stm] [Stm]
-  | While Int S.SSMExp [Stm]
+  | If Int MUExp [Stm] [Stm]
+  | While Int MUExp [Stm]
   | Skip Int
 
     -- Time management
-  | After Int S.SSMExp S.Reference S.SSMExp
+  | After Int MUExp S.Reference MUExp
   | Sensitize Int S.Reference
   | Desensitize Int S.Reference
 
     -- Procedure management
-  | Fork Int S.Ident Int Int [Either S.SSMExp S.Reference]
+  | Fork Int S.Ident Int Int [Either MUExp S.Reference]
   | Yield Int
   | Terminate Int
 
@@ -49,8 +78,16 @@ data Procedure = Procedure
   }
   deriving Show
 
+data QueueContent backend
+    = SSMProcedure S.Ident [Either MUExp S.Reference]
+    | OutputHandler (S.Handler backend)
+
+instance Show (QueueContent backend) where
+  show (SSMProcedure id args) = "SSMProcedure " <> show id <> " " <> show args
+  show (OutputHandler _)      = "<output-handler>"
+
 data Program backend = Program
-  { initialQueueContent :: [S.QueueContent backend]
+  { initialQueueContent :: [QueueContent backend]
   , funs                :: Map.Map S.Ident Procedure
   , peripherals         :: [S.Peripheral backend]
   }
@@ -133,13 +170,15 @@ prettyLit l = case l of
     S.LBool b   -> show b
     S.LEvent    -> show ()
 
-prettyExp :: S.SSMExp -> String
+prettyExp :: MUExp -> String
 prettyExp e = case e of
-    S.Var t n         -> S.identName n
-    S.Lit t l         -> prettyLit l
-    S.UOpE t e op     -> prettyUnaryOpE op e
-    S.UOpR t r op     -> prettyUnaryOpR op r
-    S.BOp t e1 e2 bop -> concat [ "("
+    Marshal e       -> prettyExp e
+    Unmarshal e     -> prettyExp e
+    Var t n         -> S.identName n
+    Lit t l         -> prettyLit l
+    UOpE t e op     -> prettyUnaryOpE op e
+    UOpR t r op     -> prettyUnaryOpR op r
+    BOp t e1 e2 bop -> concat [ "("
                               , prettyExp e1
                               , " "
                               , prettyBinop bop
@@ -148,7 +187,7 @@ prettyExp e = case e of
                               , ")"
                               ]
 
-prettyUnaryOpE :: S.UnaryOpE -> S.SSMExp -> String
+prettyUnaryOpE :: S.UnaryOpE -> MUExp -> String
 prettyUnaryOpE op e = case op of
     S.Neg -> concat ["(-", prettyExp e, ")"] 
     S.Not -> concat ["!", prettyExp e]
@@ -210,7 +249,10 @@ incrementState = do
 transpile :: S.Program backend -> Program backend
 transpile p = 
     let procedures = Map.map (flip evalState (St 0 [] 0) . transpileProcedure) (S.funs p)
-    in Program (S.initialQueueContent p) procedures (S.peripherals p)
+        initconts  = flip map (S.initialQueueContent p) $ \qc -> case qc of
+            S.SSMProcedure id' args -> SSMProcedure id' $ map (bimap lowerexp id) args
+            S.OutputHandler h      -> OutputHandler h
+    in Program initconts procedures (S.peripherals p)
 
 transpileProcedure :: S.Procedure -> Transpile Procedure
 transpileProcedure p = do
@@ -231,25 +273,25 @@ transpileProcedure p = do
               n1 <- number
               n2 <- number
               ref <- declareRef id t
-              return [CreateRef n1 id t, InitializeRef n2 ref e]
+              return [CreateRef n1 id t, InitializeRef n2 ref (lowerexp e)]
           S.SetRef r e -> do
               n <- number
-              return [SetRef n r e]
+              return [SetRef n r (lowerexp e)]
           S.If c thn els -> do
               n <- number
               thn' <- transpileBody thn
               els' <- transpileBody els
-              return [If n c thn' els']
+              return [If n (unmarshal $ lowerexp c) thn' els']
           S.While c bdy -> do
               n <- number
               bdy' <- transpileBody bdy
-              return [While n c bdy']
+              return [While n (unmarshal $ lowerexp c) bdy']
           S.Skip -> do
               n <- number
               return [Skip n]
           S.After e r v -> do
               n <- number
-              return [After n e r v]
+              return [After n (unmarshal $ lowerexp e) r (lowerexp v)]
           S.Wait refs -> do
               sensitizes <- forM refs $ \r -> do
                   n <- number
@@ -285,7 +327,10 @@ transpileProcedure p = do
       lowerFork k i (f, args) = do
           let toDup = map unsafeFromRight $ filter isRight args
           dups' <- mapM (\r -> Dup <$> number <*> pure r) toDup
-          return (\n -> Fork n f k i args, dups')
+
+          let args' = map (bimap lowerexp id) args
+
+          return (\n -> Fork n f k i args', dups')
         where
             unsafeFromRight :: Either a b -> b
             unsafeFromRight (Right x) = x
