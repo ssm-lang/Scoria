@@ -36,6 +36,9 @@ ssm_value_t = [cty| typename ssm_value_t |]
 cont :: String
 cont = "cont"
 
+act :: String
+act = "act"
+
 asType :: String -> C.Type
 asType typ = [cty| typename $id:typ |]
 
@@ -44,6 +47,18 @@ marshal = "ssm_marshal"
 
 unmarshal :: String
 unmarshal = "ssm_unmarshal"
+
+ssm_new :: String
+ssm_new = "ssm_new"
+
+ssm_sv_init :: String
+ssm_sv_init = "ssm_sv_init"
+
+ssm_builtin :: String
+ssm_builtin = "SSM_BUILTIN"
+
+ssm_sv_t :: String
+ssm_sv_t = "SSM_SV_T"
 
 ssm_deref :: String
 ssm_deref = "ssm_deref"
@@ -75,10 +90,25 @@ ssm_sensitize = "ssm_sensitize"
 ssm_desensitize :: String
 ssm_desensitize = "ssm_desensitize"
 
-ssm_fork :: String
-ssm_fork = "ssm_fork"
+ssm_activate :: String
+ssm_activate = "ssm_activate"
+
+ssm_program_init :: String
+ssm_program_init = "ssm_program_init"
+
+ssm_program_exit :: String
+ssm_program_exit = "ssm_program_exit"
+
+ssm_top_parent :: String
+ssm_top_parent = "ssm_top_parent"
+
+ssm_root_priority :: String
+ssm_root_priority = "ssm_root_priority"
+
+ssm_root_depth :: String
+ssm_root_depth = "ssm_root_depth"
 
 accessRef :: Reference -> String
 accessRef r
-  | isStatic r = cont <> "->" <> refName r
+  | isDynamic r = cont <> "->" <> refName r
   | otherwise  = refName r

@@ -16,6 +16,7 @@ import Data.List
 data Stm =
     -- Reference management
     CreateRef Int S.Ident S.Type
+  | InitializeRef Int S.Reference S.SSMExp
   | SetRef Int S.Reference S.SSMExp
 
     -- Control flow
@@ -81,6 +82,8 @@ prettyProcedure p = do
       prettyStm stm = case stm of
         CreateRef n id t -> emit $
             concat [show n, ": ", prettyType t, " ", S.identName id]
+        InitializeRef n r e -> emit $
+            concat [show n, ": initialize(", S.refName r,", ", prettyExp e, ")"]
         SetRef n r e -> emit $
             concat [show n, ": ", S.refName r, " = ", prettyExp e]
         If n c thn els -> do
@@ -228,7 +231,7 @@ transpileProcedure p = do
               n1 <- number
               n2 <- number
               ref <- declareRef id t
-              return [CreateRef n1 id t, SetRef n2 ref e]
+              return [CreateRef n1 id t, InitializeRef n2 ref e]
           S.SetRef r e -> do
               n <- number
               return [SetRef n r e]

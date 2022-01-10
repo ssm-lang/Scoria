@@ -30,23 +30,28 @@ initialization is handled. -}
 class Backend backend where
   type Definition backend
   type Statement  backend
+  type Expression backend
 
 {- | For C, the definitions are of type @Definition@ from mainland-c, and the statements
 are @BlockItem@s. -}
 instance Backend C where
   type Definition C = C.Definition
   type Statement  C = C.BlockItem
+  type Expression C = C.Exp
 
 instance Backend C2 where
   type Definition C2 = C.Definition
   type Statement  C2 = C.BlockItem
+  type Expression C2 = C.Exp
 
 -- | The pretty-printing backend deals solely with strings
 instance Backend PrettyPrint where
   type Definition PrettyPrint = String
   type Statement  PrettyPrint = String
+  type Expression PrettyPrint = String
 
 -- FIXME add meaning
 instance Backend Interpret where
   type Definition Interpret = ()
   type Statement  Interpret = ()
+  type Expression Interpret = ()

@@ -65,3 +65,32 @@ program2 = schedule test
       r1 <- var false
       wait (r, r1)
       fork [ wait r ]
+
+
+mywait :: Ref a -> SSM ()
+mywait r = routine $ wait r
+
+sum :: Ref Word64 -> Ref Word64
+    -> Ref Word64 -> SSM ()
+sum r1 r2 r = routine $ do
+  fork [ mywait r1, mywait r2 ]
+  after (secs 1) r (deref r1 + deref r2)
+
+fib :: Exp Word64 -> Ref Word64 -> SSM ()
+fib n r = routine $ do
+  r1 <- var 0
+  r2 <- var 0
+  ifThenElse (n <. 2)
+    (after (secs 1) r 1)
+    (fork [ fib (n-1) r1
+          , fib (n-2) r2
+          , SSM.Test.sum r1 r2 r
+          ])
+
+main' :: SSM ()
+main' = routine $ do
+  r <- var 0
+  fork [ fib 13 r ]
+
+program3 :: Compile backend ()
+program3 = schedule main'

@@ -1,4 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TypeApplications #-}
 module SSM.Backend.C2.CodeGen where
 
 import SSM.Core hiding (Program(..), Procedure(..), Stm(..))
@@ -7,6 +8,7 @@ import SSM.Core.Backend
 import SSM.Backend.C2.Identifiers
 import SSM.Backend.C2.IR hiding (localrefs)
 
+import Data.Proxy
 import Data.List
 import qualified Data.Map as Map
 
@@ -15,12 +17,31 @@ import Control.Monad.Reader
 
 import           Language.C.Quote.GCC
 import qualified Language.C.Syntax             as C
+import qualified Language.C                    as LC
+
+import           Text.PrettyPrint.Mainland      ( pretty )
+import           Text.PrettyPrint.Mainland.Class
+                                                ( pprList )
+
+
+instance ToIdent Ident where
+    toIdent = LC.Id . ident
 
 compile :: Program C2 -> String
-compile p = undefined
+compile = pretty 120 . pprList . compilationUnit
 
 compilationUnit :: Program C2 -> [C.Definition]
-compilationUnit p = undefined
+compilationUnit p = SSM.Backend.C2.CodeGen.globalDeclarations init' <>
+                    map struct procs <>
+                    concatMap prototypes procs <>
+                    concatMap methods procs <>
+                    [ SSM.Backend.C2.CodeGen.init init'
+                    , exit init'
+                    ]
+  where
+      procs = flip map (Map.elems $ funs p) $ \p ->
+          compileProcedure p (genProcedureInfo p)
+      init' = genProgramInit p
 
 initializeProgram :: Program C2 -> C.Definition
 initializeProgram p = undefined
@@ -89,6 +110,86 @@ genProcedureInfo p =
                    , currentSensitized = cs
                    }
 
+-- compile program init
+
+data ProgramInit = ProgramInit
+  { globalDeclarations :: [C.Definition]
+  , init               :: C.Definition
+  , exit               :: C.Definition
+  }
+
+genProgramInit :: Program C2 -> ProgramInit
+genProgramInit p =
+  ProgramInit
+    (globalDeclarations <> declareReferences)
+
+    ([cedecl| void $id:ssm_program_init(void) {
+                  $items:setupReferences
+                  $items:staticInitialization
+                  $items:dupReferences
+                  $items:initialForks
+              }
+  
+    |])
+
+    ([cedecl| void $id:ssm_program_exit(void) {
+                  $items:dropReferences
+              }
+    |])
+
+  where
+      globalReferences :: [Reference]
+      globalReferences = concatMap (declaredReferences (Proxy @C2)) $ peripherals p
+
+      declareReferences :: [C.Definition]
+      declareReferences = flip map globalReferences $ \r ->
+          [cedecl| $ty:ssm_value_t $id:(refName r); |]
+
+      -- | FIXME the marshal(0) is not the best, and should be done with some typeclass
+      setupReferences :: [C.BlockItem]
+      setupReferences = flip concatMap globalReferences $ \r ->
+          [citems| $id:(refName r) = $id:ssm_new($id:ssm_builtin, $id:ssm_sv_t);
+                   $id:ssm_sv_init($id:(accessRef r), $id:marshal(0));
+         |]
+
+      dupReferences :: [C.BlockItem]
+      dupReferences = flip map globalReferences $ \r ->
+          [citem| $id:ssm_dup($id:(refName r)); |]
+
+      dropReferences :: [C.BlockItem]
+      dropReferences = flip map globalReferences $ \r ->
+          [citem| $id:ssm_drop($id:(refName r)); |]
+
+      initialForks :: [C.BlockItem]
+      initialForks =
+          let k = length (initialQueueContent p)
+
+              f i (SSMProcedure id args)  =
+                  let ds = [cexp| $int:(ceiling $ logBase (2 :: Double) $ fromIntegral $ k :: Int) |]
+                      d  = [cexp| $id:ssm_root_depth - $exp:ds |]
+                      p  = [cexp| $id:ssm_root_priority + ($int:i * (1 << $exp:ds)) |]
+                      args' = flip map args $ \a -> case a of
+                          Left e  -> compileExp [] e
+                          Right r -> [cexp| $id:(refName r) |]
+                  in [citems| $id:ssm_activate($id:(ssm_enter_ $ identName id)
+                                                      ( &$id:ssm_top_parent
+                                                      , $exp:p
+                                                      , $exp:d
+                                                      , $args:args'
+                                                      )
+                                              ); |]
+              f i (OutputHandler handler) = gen_handler @C2 handler k i
+
+          in concat $ zipWith f [0..] (initialQueueContent p)
+
+      -- peripheral management
+
+      globalDeclarations :: [C.Definition]
+      globalDeclarations = concatMap (SSM.Core.globalDeclarations (Proxy @C2)) $ peripherals p
+
+      staticInitialization :: [C.BlockItem]
+      staticInitialization = concatMap (SSM.Core.staticInitialization (Proxy @C2)) $ peripherals p
+
 -- compile procedures
 
 data CompiledProcedure = CompiledProcedure
@@ -132,13 +233,13 @@ compileProcedure p procedureInfo =
               lrefs     = flip map lr $ \r ->
                 [csdecl| $ty:ssm_value_t $id:(refName r); |]
 
-              args'     = flip map (arguments p) $ \(id,t) ->
-                [csdecl| $ty:ssm_value_t $id:(identName id); |]
+              args'     = flip map (arguments p) $ \(id,_) ->
+                [csdecl| $ty:ssm_value_t $id:id; |]
 
           in [cedecl|
 
             typedef struct {
-                $ty:ssm_act_t act;
+                $ty:ssm_act_t $id:act;
 
                 // locally declared references
                 $sdecls:lrefs
@@ -166,10 +267,10 @@ compileProcedure p procedureInfo =
                         , depth
                         )
                   , $id:act_proc
-                  , act
+                  , $id:act
                   );
               $items:assigns
-              return &cont->act;
+              return &$id:cont->$id:act;
             }
 
             |]
@@ -177,8 +278,8 @@ compileProcedure p procedureInfo =
       args    :: [C.Param]
       assigns :: [C.BlockItem]
       (args, assigns) = unzip $ flip map (arguments p) $ \(id,_) ->
-          ( [cparam| $ty:ssm_value_t $id:(identName id) |]
-          , [citem| $id:cont->$id:(identName id) = $id:(identName id); |])
+          ( [cparam| $ty:ssm_value_t $id:id |]
+          , [citem| $id:cont->$id:id = $id:id; |])
 
       staticArgs :: [C.Param]
       staticArgs = [ [cparam| $ty:struct_ssm_act *parent  |]
@@ -195,9 +296,9 @@ compileProcedure p procedureInfo =
           let stms = concatMap genStm $ body p
           in [cedecl|
 
-            void $id:step_proc ($ty:struct_ssm_act *act) {
-                $ty:act_proc_t *cont = container_of(act, $id:act_proc, act);
-                switch(act->pc) {
+            void $id:step_proc ($ty:struct_ssm_act *$id:act) {
+                $ty:act_proc_t *cont = container_of($id:act, $id:act_proc, $id:act);
+                switch($id:act->pc) {
                     $items:stms
                 }
             }
@@ -205,7 +306,12 @@ compileProcedure p procedureInfo =
             |]
         where
             genStm :: Stm -> [C.BlockItem]
-            genStm (CreateRef n id t) = undefined
+            genStm (CreateRef n id t) =
+                [citems| $id:cont->$id:id = $id:ssm_new($id:ssm_builtin, $id:ssm_sv_t); |]
+            genStm (InitializeRef n r e) =
+                let lrefs = localrefs procedureInfo
+                    e' = compileExp lrefs e
+                in [citems| $id:ssm_sv_init($id:(accessRef r), $exp:e'); |]
             genStm (SetRef n r e) =
                 let lrefs = localrefs procedureInfo
                     e' = compileExp lrefs e
@@ -235,13 +341,34 @@ compileProcedure p procedureInfo =
             genStm (Desensitize n r) =
                 let t = fetchTrigger n
                     trigger = "trigger" <> show t
-                in [citems| $id:ssm_desensitize(&$id:(accessRef r), &$id:cont->$id:trigger); |]
-            genStm (Fork n id k i args) = [citems| $id:ssm_fork(); |]
+                in [citems| $id:ssm_desensitize(&$id:cont->$id:trigger); |]
+            genStm (Fork n id k i args) = fork (Fork n id k i args)
             genStm (Yield n)       = [citems| $id:cont->pc += 1; return; |]
-            genStm (Terminate n)   = [citems| ssm_leave(&cont->act, sizeof($id:act_proc)); |]
-            genStm (Dup n r)       = [citems| $id:ssm_dup(&$id:(accessRef r)); |]
-            genStm (Drop n r)      = [citems| $id:ssm_drop(&$id:(accessRef r)); |]
+            genStm (Terminate n)   = [citems| ssm_leave(&cont->$id:act, sizeof($id:act_proc)); |]
+            genStm (Dup n r)       = [citems| $id:ssm_dup($id:(accessRef r)); |]
+            genStm (Drop n r)      = [citems| $id:ssm_drop($id:(accessRef r)); |]
             genStm (SetState n st) = [citems| case $int:st:; |]
+
+            fork :: Stm -> [C.BlockItem]
+            fork (Fork n id k i args) =
+                let ds = [cexp| $int:(ceiling $ logBase (2 :: Double) $ fromIntegral $ k :: Int) |]
+                    d  = [cexp| $id:act->depth - $exp:ds |]
+                    p  = [cexp| $id:act->priority + ($int:i * (1 << $exp:ds)) |]
+                    
+                    lrefs = localrefs procedureInfo
+                    
+                    args' = flip map args $ \a -> case a of
+                        Left e -> compileExp lrefs e
+                        Right r -> [cexp| $id:(accessRef r) |]
+
+                in [citems| $id:ssm_activate($id:(ssm_enter_ $ identName id)
+                                              ( $id:act
+                                              , $exp:p
+                                              , $exp:d
+                                              , $args:args'
+                                              )
+                                            ); |]
+            fork _ = error "not a fork"
 
             fetchTrigger :: Int -> Int
             fetchTrigger n = do
@@ -253,12 +380,12 @@ compileProcedure p procedureInfo =
 
       genStepPrototype :: C.Definition
       genStepPrototype =
-          [cedecl| void $id:step_proc($ty:struct_ssm_act *act); |]
+          [cedecl| void $id:step_proc($ty:struct_ssm_act *$id:act); |]
 
 -- compile expressions
 
 compileExp :: [Reference] -> SSMExp -> C.Exp
-compileExp localrefs (Var t id)       = undefined
+compileExp localrefs (Var t id)       = [cexp| $id:cont->$id:id |]
 compileExp localrefs (Lit t l)        = compileLit localrefs l
 compileExp localrefs (UOpE t e op)    = compileUOpE localrefs e op
 compileExp localrefs (UOpR t r op)    = compileUOpR localrefs r op

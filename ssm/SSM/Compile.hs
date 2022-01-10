@@ -5,6 +5,7 @@
 module SSM.Compile
   ( toC
   , toC'
+  , toC2
   , compileFile
   , compileCli
   , compileCli_
@@ -23,6 +24,12 @@ import           SSM.Backend.C.Peripherals -- import this for the instances
 import           SSM.Core.Program
 import           SSM.Core.Backend
 import           SSM.Frontend.Compile
+
+import qualified SSM.Backend.C2.CodeGen as C2
+import qualified SSM.Backend.C2.IR      as IR
+
+toC2 :: Compile C2 () -> String
+toC2 p = C2.compile $ IR.transpile $ toProgram p
 
 -- | Compile a program to a C-file.
 --
