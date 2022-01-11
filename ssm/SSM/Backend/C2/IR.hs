@@ -281,17 +281,17 @@ transpileProcedure p = do
               n <- number
               thn' <- transpileBody thn
               els' <- transpileBody els
-              return [If n (unmarshal $ lowerexp c) thn' els']
+              return [If n (lowerexp c) thn' els']
           S.While c bdy -> do
               n <- number
               bdy' <- transpileBody bdy
-              return [While n (unmarshal $ lowerexp c) bdy']
+              return [While n (lowerexp c) bdy']
           S.Skip -> do
               n <- number
               return [Skip n]
           S.After e r v -> do
               n <- number
-              return [After n (unmarshal $ lowerexp e) r (lowerexp v)]
+              return [After n (lowerexp e) r (lowerexp v)]
           S.Wait refs -> do
               sensitizes <- forM refs $ \r -> do
                   n <- number

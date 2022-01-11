@@ -5,8 +5,8 @@ module SSM.Backend.C2.CodeGen where
 import SSM.Core hiding (Program(..), Procedure(..), Stm(..), SSMExp(..), QueueContent(..))
 import SSM.Core.Backend
 
-import SSM.Backend.C2.Identifiers
-import SSM.Backend.C2.IR hiding (localrefs, unmarshal)
+import SSM.Backend.C2.Identifiers as ID
+import SSM.Backend.C2.IR as IR hiding (localrefs)
 
 import Data.Proxy
 import Data.List
@@ -249,6 +249,7 @@ compileProcedure p procedureInfo =
           in [cedecl|
 
             typedef struct {
+                // super struct
                 $ty:ssm_act_t $id:act;
                 
                 // locally declared references
@@ -311,6 +312,7 @@ compileProcedure p procedureInfo =
                 switch($id:act->pc) {
                     $items:stms
                 }
+                // FIXME dequeue references?
             }
 
             |]
@@ -328,19 +330,19 @@ compileProcedure p procedureInfo =
                 in [citems| $id:ssm_assign(&$id:(accessRef r), $id:cont->prio, $exp:e'); |]
             genStm (If n c thn els) =
                 let lrefs = localrefs procedureInfo
-                    c'   = compileExp lrefs c
+                    c'   = compileExp lrefs $ IR.unmarshal c
                     thn' = concatMap genStm thn
                     els' = concatMap genStm els
                 in [citems| if($exp:c') { $items:thn' } else { $items:els' } |]
             genStm (While n c bdy) =
                 let lrefs = localrefs procedureInfo
-                    c'    = compileExp lrefs c
+                    c'    = compileExp lrefs $ IR.unmarshal c
                     bdy'  = concatMap genStm bdy
                 in [citems| while($exp:c') { $items:bdy' } |]
             genStm (Skip n) = []
             genStm (After n d r v) =
                 let lrefs = localrefs procedureInfo
-                    d' = compileExp lrefs d
+                    d' = compileExp lrefs $ IR.unmarshal d
                     v' = compileExp lrefs v
                     r' = accessRef r
                 in [citems| $id:ssm_later($id:ssm_to_sv($id:r'), $id:ssm_now() + $exp:d', $exp:v'); |]
@@ -396,7 +398,7 @@ compileProcedure p procedureInfo =
 
 compileExp :: [Reference] -> MUExp -> C.Exp
 compileExp localrefs (Marshal e)      = [cexp| $id:marshal($exp:(compileExp localrefs e)) |]
-compileExp localrefs (Unmarshal e)    = [cexp| $id:unmarshal($exp:(compileExp localrefs e)) |]
+compileExp localrefs (Unmarshal e)    = [cexp| $id:(ID.unmarshal)($exp:(compileExp localrefs e)) |]
 compileExp localrefs (Var t id)       = [cexp| $id:cont->$id:id |]
 compileExp localrefs (Lit t l)        = compileLit localrefs l
 compileExp localrefs (UOpE t e op)    = compileUOpE localrefs e op
