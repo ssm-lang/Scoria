@@ -36,11 +36,20 @@ ssm_depth_t = [cty| typename ssm_depth_t |]
 ssm_value_t :: C.Type
 ssm_value_t = [cty| typename ssm_value_t |]
 
+ssm_time_t :: C.Type
+ssm_time_t = [cty| typename ssm_time_t |]
+
+ssm_new_sv :: String
+ssm_new_sv = "ssm_new_sv"
+
 cont :: String
 cont = "cont"
 
 act :: String
 act = "act"
+
+priority :: String
+priority = "priority"
 
 asType :: String -> C.Type
 asType typ = [cty| typename $id:typ |]
@@ -50,6 +59,18 @@ marshal = "ssm_marshal"
 
 unmarshal :: String
 unmarshal = "ssm_unmarshal"
+
+nil_pointer :: String
+nil_pointer = "nil_pointer"
+
+is_nil :: String
+is_nil = "is_nil"
+
+ssm_new_time :: String
+ssm_new_time = "ssm_new_time"
+
+ssm_time_read :: String
+ssm_time_read = "ssm_time_read"
 
 ssm_new :: String
 ssm_new = "ssm_new"
@@ -111,7 +132,35 @@ ssm_root_priority = "SSM_ROOT_PRIORITY"
 ssm_root_depth :: String
 ssm_root_depth = "SSM_ROOT_DEPTH"
 
+ssm_never :: String
+ssm_never = "SSM_NEVER"
+
+ssm_throw :: String
+ssm_throw = "SSM_THROW"
+
+ssm_exhausted_priority :: String
+ssm_exhausted_priority = "SSM_EXHAUSTED_PRIORITY"
+
 accessRef :: Reference -> String
 accessRef r
   | isDynamic r = cont <> "->" <> refName r
   | otherwise  = refName r
+
+baseType :: Type -> C.Type
+baseType (Ref _) = error "baseType of ref, what is the intended result?"
+baseType TUInt8  = [cty| typename uint8_t  |]
+baseType TUInt32 = [cty| typename uint32_t |]
+baseType TUInt64 = [cty| typename uint64_t |]
+baseType TInt32  = [cty| typename int32_t  |]
+baseType TInt64  = [cty| typename int64_t  |]
+baseType TBool   = [cty| typename bool     |]
+baseType TEvent  = [cty| typename uint8_t  |]
+
+
+-- debug stuff
+
+debug_microtick :: String
+debug_microtick = "SSM_DEBUG_MICROTICK"
+
+debug_trace :: String
+debug_trace = "SSM_DEBUG_TRACE"

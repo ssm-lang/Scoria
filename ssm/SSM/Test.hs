@@ -94,3 +94,12 @@ main2 = routine $ do
 
 program3 :: Compile backend ()
 program3 = schedule main2
+
+program4 :: Compile backend ()
+program4 = schedule main3
+
+main3 :: SSM ()
+main3 = routine $ do
+  x <- var $ u64 0
+  y <- var $ deref x
+  x <~ 5

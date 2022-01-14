@@ -24,12 +24,21 @@ data MUExp
     | BOp S.Type MUExp MUExp S.BinOp
   deriving Show
 
+expType :: MUExp -> S.Type
+expType (Marshal e)   = expType e
+expType (Unmarshal e) = expType e
+expType (Var t _)     = t
+expType (Lit t _)     = t
+expType (UOpE t _ _)  = t
+expType (UOpR t _ _)  = t
+expType (BOp t _ _ _) = t
+
 ssmexpToMUExp :: S.SSMExp -> MUExp
 ssmexpToMUExp e = case e of
     S.Var t n         -> Var t n
     S.Lit t l         -> Marshal $ Lit t l
     S.UOpE t e op     -> Marshal $ UOpE t (unmarshal $ ssmexpToMUExp e) op
-    S.UOpR t r op     -> Marshal $ UOpR t r op
+    S.UOpR t r op     -> UOpR t r op
     S.BOp t e1 e2 bop -> Marshal $ BOp t (unmarshal $ ssmexpToMUExp e1) (unmarshal $ ssmexpToMUExp e2) bop
 
 unmarshal :: MUExp -> MUExp
@@ -39,8 +48,31 @@ unmarshal e           = Unmarshal e
 testE :: S.SSMExp
 testE = S.BOp S.TInt32 (S.Lit S.TInt32 (S.LInt32 5)) (S.Lit S.TInt32 (S.LInt32 5)) S.OPlus
 
+dups :: MUExp -> [Int -> Stm]
+dups e = dupdrops (\i r -> Dup i $ E $ UOpR (S.dereference $ S.refType r) r S.Deref) e
+
+drops :: MUExp -> [Int -> Stm]
+drops e = dupdrops (\i r -> Drop i $ E $ UOpR (S.dereference $ S.refType r) r S.Deref) e
+
+dupdrops :: (Int -> S.Reference -> Stm) -> MUExp -> [Int -> Stm]
+dupdrops f (UOpR t r S.Deref) = if isHeapAllocated t then [flip f r] else []
+dupdrops _ _                  = []
+
 lowerexp :: S.SSMExp -> MUExp
 lowerexp = ssmexpToMUExp
+
+isHeapAllocated :: S.Type -> Bool
+isHeapAllocated (S.Ref t) = isHeapAllocated t
+isHeapAllocated S.TUInt32 = True
+isHeapAllocated S.TUInt64 = True
+isHeapAllocated S.TInt32  = True
+isHeapAllocated S.TInt64  = True
+isHeapAllocated _         = False
+
+data Value
+  = R S.Reference
+  | E MUExp
+  deriving Show
 
 data Stm =
     -- Reference management
@@ -64,11 +96,14 @@ data Stm =
   | Terminate Int
 
     -- Memory management
-  | Dup Int S.Reference
-  | Drop Int S.Reference
+  | Dup Int Value
+  | Drop Int Value
 
     -- State management
   | SetState Int Int
+
+    -- Documentation
+  | Comment String
   deriving Show
 
 data Procedure = Procedure
@@ -140,10 +175,15 @@ prettyProcedure p = do
             concat [show n, ": fork-", S.identName id, "(", intercalate ", " (map (either prettyExp S.refName) args), ")"]
         Yield n -> emit $ concat [show n, ": yield"]
         Terminate n -> emit $ concat [show n, ": terminate"]
-        Dup n r -> emit $ concat [show n, ": dup ", S.refName r]
-        Drop n r -> emit $ concat [show n, ": drop ", S.refName r]
+        Dup n r -> emit $ concat [show n, ": dup ", prettyValue r]
+        Drop n r -> emit $ concat [show n, ": drop ", prettyValue r]
         SetState n st -> emit $ concat [show n, ": set-state ", show st]
+        Comment str -> emit $ "-- " <> str
 
+
+      prettyValue :: Value -> String
+      prettyValue (R r) = S.refName r
+      prettyValue (E e) = prettyExp e
 
       prettyArgs :: [(S.Ident, S.Type)] -> String
       prettyArgs args =
@@ -262,36 +302,51 @@ transpileProcedure p = do
     st <- get
     drops <- forM (localrefs st) $ \r -> do
         n <- number
-        return $ Drop n r
+        return $ Drop n $ R r
     
     n <- number
-    return $ Procedure (S.name p) (S.arguments p) (setstate : body' <> drops <> [Terminate n])
+    let comment = Comment "dropping references before terminating"
+    return $ Procedure (S.name p) (S.arguments p) (setstate : body' <> [comment] <> drops <> [Terminate n])
   where
       transpileBody :: [S.Stm] -> Transpile [Stm]
       transpileBody stms = flip concatMapM stms $ \stm -> case stm of
           S.NewRef id t e -> do
-              n1 <- number
-              n2 <- number
-              ref <- declareRef id t
-              return [CreateRef n1 id t, InitializeRef n2 ref (lowerexp e)]
+              let e' = lowerexp e
+              n1    <- number
+              dupds <- sequence $ map (<$> number) $ dups e'
+              n2    <- number
+              ref   <- declareRef id t
+              let comment = Comment $ "var " <> S.ident id <> " = " <> prettyExp e'
+              return $ [comment, CreateRef n1 id t] <> dupds <> [InitializeRef n2 ref e']
           S.SetRef r e -> do
-              n <- number
-              return [SetRef n r (lowerexp e)]
+              let e' = lowerexp e
+              dupds <- sequence $ map (<$> number) $ dups e'
+              drop <- if isHeapAllocated (S.refType r)
+                  then let value = E $ UOpR (S.dereference $ S.refType r) r S.Deref
+                       in sequence [flip Drop value <$> number]
+                  else return []
+              n     <- number
+              let comment = Comment $ S.refName r <> " = " <> prettyExp e'
+              return $ [comment] <> dupds <> drop <> [SetRef n r e']
           S.If c thn els -> do
-              n <- number
+              n    <- number
               thn' <- transpileBody thn
               els' <- transpileBody els
-              return [If n (lowerexp c) thn' els']
+              return [Comment "if", If n (lowerexp c) thn' els']
           S.While c bdy -> do
-              n <- number
+              n    <- number
               bdy' <- transpileBody bdy
-              return [While n (lowerexp c) bdy']
+              return [Comment "while", While n (lowerexp c) bdy']
           S.Skip -> do
               n <- number
               return [Skip n]
           S.After e r v -> do
-              n <- number
-              return [After n (lowerexp e) r (lowerexp v)]
+              let e' = lowerexp e
+                  v' = lowerexp v
+              dupds <- sequence $ map (<$> number) $ dups v'
+              n     <- number
+              let comment = Comment $ concat ["after ", prettyExp e', " then ", S.refName r, " = ", prettyExp v']
+              return [comment, After n e' r v']
           S.Wait refs -> do
               sensitizes <- forM refs $ \r -> do
                   n <- number
@@ -301,7 +356,8 @@ transpileProcedure p = do
               desensitizes <- forM refs $ \r -> do
                   n <- number
                   return $ Desensitize n r
-              return $ sensitizes <> [incst, Yield n] <> desensitizes
+              let comment = Comment $ concat ["wait (", intercalate ", " $ map S.refName refs,")"]
+              return $ [comment] <> sensitizes <> [incst, Yield n] <> desensitizes
           S.Fork procs -> do
               (forks, dups) <- unzip <$> zipWithM (lowerFork $ length procs) [0..] procs
               forks' <- forM forks $ \f -> do
@@ -314,8 +370,11 @@ transpileProcedure p = do
               drops <- forM (concat dups) $ \(Dup _ r) -> do
                   n <- number
                   return $ Drop n r
-              
-              return $ concat dups -- first dup references
+
+              let comment = Comment "fork"
+
+              return $ [comment]
+                    <> concat dups -- first dup references
                     <> forks'      -- fork the procedures
                     <> [incst, yield]     -- yield control to children
                     <> drops       -- drop reference count
@@ -326,7 +385,7 @@ transpileProcedure p = do
                 -> Transpile (Int -> Stm, [Stm])
       lowerFork k i (f, args) = do
           let toDup = map unsafeFromRight $ filter isRight args
-          dups' <- mapM (\r -> Dup <$> number <*> pure r) toDup
+          dups' <- mapM (\r -> Dup <$> number <*> pure (R r)) toDup
 
           let args' = map (bimap lowerexp id) args
 
