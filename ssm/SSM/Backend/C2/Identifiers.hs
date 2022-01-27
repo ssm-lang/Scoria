@@ -81,8 +81,8 @@ ssm_sv_init = "ssm_sv_init"
 ssm_builtin :: String
 ssm_builtin = "SSM_BUILTIN"
 
-ssm_sv_t :: String
-ssm_sv_t = "SSM_SV_T"
+ssm_sv_k :: String
+ssm_sv_k = "SSM_SV_K"
 
 ssm_deref :: String
 ssm_deref = "ssm_deref"

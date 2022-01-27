@@ -90,7 +90,7 @@ fib n r = routine $ do
 main2 :: SSM ()
 main2 = routine $ do
   r <- var 0
-  fork [ fib 13 r ]
+  fork [ fib 4 r ]
 
 program3 :: Compile backend ()
 program3 = schedule main2
@@ -103,3 +103,11 @@ main3 = routine $ do
   x <- var $ u64 0
   y <- var $ deref x
   x <~ 5
+
+program5 :: Compile backend ()
+program5 = schedule main4
+
+main4 :: SSM ()
+main4 = routine $ do
+  x <- var $ i32 maxBound
+  x <~ deref x + 1

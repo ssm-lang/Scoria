@@ -30,10 +30,14 @@ instance ToIdent Ident where
     toIdent = LC.Id . ident
 
 compile :: Program C2 -> String
-compile = pretty 120 . pprList . compilationUnit (CompilationFlags True)
+compile = pretty 120 . pprList . compilationUnit (CompilationFlags Verbose)
+
+data DebugFlag
+    = Verbose
+  deriving Eq
 
 data CompilationFlags = CompilationFlags
-  { debug :: Bool
+  { debugFlag :: DebugFlag
   }
 
 compilationUnit :: CompilationFlags -> Program C2 -> [C.Definition]
@@ -58,7 +62,7 @@ compilationUnit cf p =
       includes = [ [cedecl| $esc:("#include <ssm.h>") |]
                  , [cedecl| $esc:("#include <ssm-internal.h>") |]
                  ] <>
-                 if debug cf
+                 if debugFlag cf == Verbose
                      then [ [cedecl| $esc:("#include <ssm-test-platform.h>") |] ]
                      else []
 
@@ -167,9 +171,10 @@ genProgramInit p =
       -- | FIXME the marshal(0) is not the best, and should be done with some typeclass
       setupReferences :: [C.BlockItem]
       setupReferences = flip concatMap globalReferences $ \r ->
-          [citems| $id:(refName r) = $id:ssm_new($id:ssm_builtin, $id:ssm_sv_t);
-                   $id:ssm_sv_init($id:(accessRef r), $id:marshal(0));
-         |]
+        --   [citems| $id:(refName r) = $id:ssm_new($id:ssm_builtin, $id:ssm_sv_k);
+        --            $id:ssm_sv_init($id:(accessRef r), $id:marshal(0));
+        --   |]
+          [citems| $id:(refName r) = $id:ssm_new_sv($id:marshal(0)); |]
 
       dupReferences :: [C.BlockItem]
       dupReferences = flip map globalReferences $ \r ->
@@ -333,9 +338,9 @@ compileProcedure cf p procedureInfo =
             |]
         where
             debugStms :: [C.BlockItem]
-            debugStms = if debug cf
+            debugStms = if debugFlag cf == Verbose
                 then [citems|
-                         $id:debug_trace($string:(renderActStepBegin $ identName $ name p));
+                         $id:debug_trace($string:((renderActStepBegin $ identName $ name p) <> "\n"));
                          $items:(map (((uncurry . flip) renderSV)) $ sortOn fst $ arguments p)
                          $items:(map renderSVifChanged $ sortOn refName (localrefs $ procedureInfo))
                          $id:debug_microtick();                
@@ -374,8 +379,8 @@ compileProcedure cf p procedureInfo =
                 let t       = fetchTrigger n
                     trigger = "trigger" <> show t
 
-                    dt      = if debug cf
-                        then [citems| $id:debug_trace($string:(show $ ActSensitize $ refName r)); |]
+                    dt      = if debugFlag cf == Verbose
+                        then [citems| $id:debug_trace($string:((show $ ActSensitize $ refName r) <> "\n")); |]
                         else []
 
                 in [citems| $items:dt;
@@ -408,11 +413,11 @@ compileProcedure cf p procedureInfo =
                         Left e -> compileExp lrefs e
                         Right r -> [cexp| $id:(accessRef r) |]
                     
-                    dt = if debug cf
+                    dt = if debugFlag cf == Verbose
                            then [citems| if($id:act->depth < $exp:ds) {
                                              $id:ssm_throw($id:ssm_exhausted_priority);
                                          }
-                                         $id:debug_trace($string:(show $ ActActivate $ identName $ id));
+                                         $id:debug_trace($string:((show $ ActActivate $ identName $ id) <> "\n"));
                                 |]
                            else []
 
@@ -472,7 +477,7 @@ compileUOpE localrefs e Not = [cexp| ! $exp:(compileExp localrefs e) |]
 
 compileUOpR :: [Reference] -> Reference -> UnaryOpR -> C.Exp
 compileUOpR localrefs r op = case op of
-    Changed -> [cexp| $id:(accessRef r)->last_updated == $id:ssm_now() |]
+    Changed -> [cexp| $id:marshal($id:ssm_to_sv($id:(accessRef r))->last_updated == $id:ssm_now()) |]
     Deref   -> [cexp| $id:ssm_deref($id:(accessRef r)) |]
 
 compileBinOp :: [Reference] -> MUExp -> MUExp -> BinOp -> C.Exp
@@ -531,8 +536,8 @@ renderSV t id = case t of
 
       renderSV' :: Type -> Ident -> C.Exp -> C.BlockItem
       renderSV' t id v = case t of
-          TEvent -> [citem| $id:debug_trace($string:fmt); |]
-          _      -> [citem| $id:debug_trace($string:fmt, $exp:v); |]
+          TEvent -> [citem| $id:debug_trace($string:(fmt <> "\n")); |]
+          _      -> [citem| $id:debug_trace($string:(fmt <> "\n"), $exp:v); |]
         where
             fmt :: String
             fmt = case t of

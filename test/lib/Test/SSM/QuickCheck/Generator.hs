@@ -144,14 +144,6 @@ arbProc funs vars refs c n = frequency $
         )
       ] ++
 
-      (if null vars then [] else
-      [ (1, do (name,t) <- elements vars
-               e        <- choose (0,3) >>= arbExp t vars refs
-               (rest,c') <- arbProc funs vars refs c (n-1)
-               let stm   = SetLocal name t e
-               return (stm:rest, c')
-        )]) ++
-
       (if null refs then [] else
       [ (1, do r       <- elements refs
                e       <- choose (0,3) >>= arbExp (dereference $ refType r) vars refs

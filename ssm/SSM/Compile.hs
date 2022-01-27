@@ -6,6 +6,7 @@ module SSM.Compile
   ( toC
   , toC'
   , toC2
+  , toC2'
   , compileFile
   , compileCli
   , compileCli_
@@ -30,6 +31,9 @@ import qualified SSM.Backend.C2.IR      as IR
 
 toC2 :: Compile C2 () -> String
 toC2 p = C2.compile $ IR.transpile $ toProgram p
+
+toC2' :: Program C2 -> String
+toC2' = C2.compile . IR.transpile
 
 -- | Compile a program to a C-file.
 --

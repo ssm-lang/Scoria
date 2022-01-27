@@ -373,11 +373,11 @@ transpileProcedure p = do
 
               let comment = Comment "fork"
 
-              return $ [comment]
-                    <> concat dups -- first dup references
-                    <> forks'      -- fork the procedures
-                    <> [incst, yield]     -- yield control to children
-                    <> drops       -- drop reference count
+              return $ [comment]       -- comment describing the statements
+                    <> concat dups     -- first dup references
+                    <> forks'          -- fork the procedures
+                    <> [incst, yield]  -- yield control to children
+                    <> drops           -- drop reference count
 
       lowerFork :: Int
                 -> Int
