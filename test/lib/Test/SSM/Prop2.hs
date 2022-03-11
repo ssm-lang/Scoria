@@ -20,11 +20,6 @@ doMake cSrc = do
     QC.run $ createSourceFile cSrc
     compileSourceFile
 
-exec :: String -> QC.PropertyM IO String
-exec f = do
-    (code, out, err) <- QC.run $ readProcessWithExitCode f undefined ""
-    undefined
-
 -- remove build artifacs from previous test
 cleanBuildDir :: IO ()
 cleanBuildDir = do
