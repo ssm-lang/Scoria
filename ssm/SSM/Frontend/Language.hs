@@ -83,6 +83,7 @@ module SSM.Frontend.Language
     , (<~)
     , assign
     , wait
+    , Waitable
     , after
     , fork
     , changed

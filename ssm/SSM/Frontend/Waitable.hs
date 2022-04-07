@@ -23,6 +23,7 @@ module SSM.Frontend.Waitable
     , makeWaitableInstance
     ) where
 
+import           Control.Monad.State
 import           SSM.Core.Syntax         hiding ( Wait )
 import           SSM.Frontend.Ref
 import           SSM.Frontend.Syntax
@@ -33,6 +34,18 @@ import           Language.Haskell.TH.Syntax
 -- | Class of types that can be waited for
 class Waitable a where
     wait :: a -> SSM ()
+
+instance {-# INCOHERENT #-} (Waitable a, Waitable b) => Waitable (a,b) where
+  wait = uncurry combineWaitables
+
+combineWaitables :: (Waitable a, Waitable b) => a -> b -> SSM ()
+combineWaitables a b = do
+  wait a
+  wait b
+  st <- get
+  let Wait refs  = last (init (statements st))
+  let Wait refs' = last (statements st)
+  put $ st { statements = init (init (statements st)) ++ [Wait (refs ++ refs')]}
 
 -- | @makeWaitableInstance n@ creates an instance of `Waitable` for tuples of size @n@
 makeWaitableInstance :: Int -> Dec

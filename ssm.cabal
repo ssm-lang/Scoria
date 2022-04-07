@@ -42,6 +42,7 @@ library
       SSM.Core.Reference
       SSM.Core.Syntax
       SSM.Core.Type
+      SSM.FibGen
       SSM.FreqGen
       SSM.Freqmime
       SSM.FrequencyMime
