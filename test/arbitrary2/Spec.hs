@@ -11,6 +11,7 @@ import           Test.Hspec                     ( describe
 import           Test.Hspec.QuickCheck          ( modifyMaxSuccess
                                                 , prop
                                                 )
+import qualified Test.SSM.Prop as T hiding (propCorrect)
 -- | Hspec entry point for arbitrary quickcheck test.
 --
 -- To specify the number of random programs to test from the command line,
@@ -32,4 +33,4 @@ main = hspec $ do
     -- prop "compiles and runs without memory errors"
     --   $ T.propValgrind T.RandomTest
 
-    prop "compiles" (T.propCompiles :: Program C2 -> QC.Property) -- FIXME
+    prop "correct" (T.propCorrect T.RandomTest :: Program C2 -> QC.Property) -- FIXME
