@@ -30,7 +30,7 @@ data Reference
     reside in an activation record in the generated C-code. It can be referenced from any
     context. -}
     | Static Ref
-    deriving (Eq, Show)
+    deriving (Eq, Show, Ord)
 
 -- * Destructing references
 

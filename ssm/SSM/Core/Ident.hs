@@ -3,7 +3,10 @@ module SSM.Core.Ident
     ( Ident(..)
     , makeIdent
     , appendIdent
+    , Identifiable(..)
     ) where
+
+import Data.String
 
 -- * Identifiers
 
@@ -13,6 +16,21 @@ data Ident = Ident
   , identSrcInfo :: Maybe SrcInformation  -- ^ And possibly some source information
   }
   deriving (Show)
+
+class Identifiable a where
+  ident :: a -> String
+
+instance Identifiable Ident where
+  ident = identName
+
+instance IsString Ident where
+  fromString = makeIdent
+
+instance Semigroup Ident where
+  id1 <> id2 = makeIdent $ ident id1 <> ident id2
+
+instance Monoid Ident where
+  mempty = makeIdent ""
 
 makeIdent :: String -> Ident
 makeIdent str = Ident str Nothing

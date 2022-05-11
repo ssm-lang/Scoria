@@ -30,6 +30,9 @@ library
       SSM.Backend.C.Identifiers
       SSM.Backend.C.Peripherals
       SSM.Backend.C.Types
+      SSM.Backend.C2.CodeGen
+      SSM.Backend.C2.Identifiers
+      SSM.Backend.C2.IR
       SSM.Compile
       SSM.Core
       SSM.Core.Backend
@@ -129,6 +132,7 @@ test-suite 1-regression-syntax
   other-modules:
       Test.SSM.Build
       Test.SSM.Prop
+      Test.SSM.Prop2
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
@@ -197,6 +201,7 @@ test-suite 2-regression-high
   other-modules:
       Test.SSM.Build
       Test.SSM.Prop
+      Test.SSM.Prop2
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
@@ -251,6 +256,7 @@ test-suite 3-regression-low
   other-modules:
       Test.SSM.Build
       Test.SSM.Prop
+      Test.SSM.Prop2
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions
@@ -315,6 +321,7 @@ test-suite 4-arbitrary
   other-modules:
       Test.SSM.Build
       Test.SSM.Prop
+      Test.SSM.Prop2
       Test.SSM.QuickCheck.Generator
       Test.SSM.QuickCheck.Shrink
       Test.SSM.QuickCheck.Shrink.Expressions

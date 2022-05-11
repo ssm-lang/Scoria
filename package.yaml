@@ -122,3 +122,20 @@ tests:
     - QuickCheck
     - hspec
     - Diff
+  # 5-arbitrary2:
+  #   main:                Spec.hs
+  #   source-dirs:
+  #   - test/lib
+  #   - test/arbitrary2
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   dependencies:
+  #   - ssm
+  #   - directory
+  #   - process
+  #   - text
+  #   - QuickCheck
+  #   - hspec
+  #   - Diff

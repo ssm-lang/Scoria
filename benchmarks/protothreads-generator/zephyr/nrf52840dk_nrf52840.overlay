@@ -1,0 +1,14 @@
+/ {
+    aliases {
+        ssm-timer = &timer4;
+        ssm-button = &button4;
+    };
+
+    buttons {
+        compatible = "gpio-keys";
+        button4: button_4 {
+            gpios = <&gpio0 25 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+            label = "Fake GPIO Button";
+        };
+    };
+};
