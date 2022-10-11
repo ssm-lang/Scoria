@@ -13,10 +13,10 @@ import qualified Test.SSM.Prop                 as T
 
 fun0 :: SSM ()
 fun0 = routine $ do
-    v0 <- var false'
-    after (nsecs 1) v0 true'
+    v0 <- var false
+    after (nsecs 1) v0 true
     v1 <- var $ changed v0
-    after (nsecs 3872) v1 false'
+    after (nsecs 3872) v1 false
 
 p :: Program
 p = Program

@@ -12,7 +12,7 @@ import qualified Test.SSM.Prop                 as T
 
 sender :: Ref () -> SSM ()
 sender = box "sender" ["myEvent"] $ \myEvent -> do
-    after (mins 1 + secs 1) myEvent event'
+    after (mins 1 + secs 1) myEvent event
 
         
 receiver :: Ref () -> SSM ()
@@ -21,7 +21,7 @@ receiver = box "receiver" ["myEvent"] $ \myEvent -> do
 
 main ::  SSM ()
 main = boxNullary "main" $ do
-    myEvent <- var event'
+    myEvent <- var event
     fork [ sender myEvent, receiver myEvent ]
 
 spec :: H.Spec

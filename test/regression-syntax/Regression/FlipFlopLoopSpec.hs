@@ -13,15 +13,15 @@ import Data.Int
 
 fun0 :: SSM ()
 fun0 = routine $ do
-    ref2 <- var true'
+    ref2 <- var true
     fork [fun1 ref2]
 
 fun1 :: Ref Bool -> SSM ()
 fun1 fresh2 = routine $ do
-    while true' $ do
-        after (nsecs 2) fresh2 false'
+    while true $ do
+        after (nsecs 2) fresh2 false
         wait fresh2
-        after (nsecs 2) fresh2 true'
+        after (nsecs 2) fresh2 true
         wait fresh2
 
 p :: Program

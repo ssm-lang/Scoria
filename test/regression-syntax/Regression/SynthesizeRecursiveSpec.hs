@@ -16,7 +16,7 @@ import Data.Int
 
 fun0 :: SSM ()
 fun0 = routine $ do
-    x <- var event'
+    x <- var event
     fork [ do wait x
               fork [wait x]
          ]

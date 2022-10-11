@@ -16,8 +16,8 @@ import Data.Int
 
 delay :: Exp Time -> SSM ()
 delay time = do
-    wake <- var event'
-    after time wake event'
+    wake <- var event
+    after time wake event
     wait wake
 
 fun0 :: SSM ()

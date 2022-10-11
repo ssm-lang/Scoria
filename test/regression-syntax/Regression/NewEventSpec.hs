@@ -16,7 +16,7 @@ import Data.Int
 
 fun0 :: SSM ()
 fun0 = routine $ do
-    var event'
+    var event
     return ()
 
 p :: Program

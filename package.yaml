@@ -42,69 +42,69 @@ library:
   source-dirs: ssm
 
 tests:
-  0-trace-parser:
-    main:                Spec.hs
-    source-dirs:
-    - test/trace-parser
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - ssm
-    - QuickCheck
-    - hspec
-  1-regression-syntax:
-    main:                Spec.hs
-    source-dirs:
-    - test/lib
-    - test/regression-syntax
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - ssm
-    - directory
-    - process
-    - text
-    - QuickCheck
-    - hspec
-    - Diff
-  2-regression-high:
-    main:                Spec.hs
-    source-dirs:
-    - test/lib
-    - test/regression-high
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - ssm
-    - directory
-    - process
-    - text
-    - QuickCheck
-    - hspec
-    - Diff
-  3-regression-low:
-    main:                Spec.hs
-    source-dirs:
-    - test/lib
-    - test/regression-low
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - ssm
-    - directory
-    - process
-    - text
-    - QuickCheck
-    - hspec
-    - Diff
+  # 0-trace-parser:
+  #   main:                Spec.hs
+  #   source-dirs:
+  #   - test/trace-parser
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   dependencies:
+  #   - ssm
+  #   - QuickCheck
+  #   - hspec
+  # 1-regression-syntax:
+  #   main:                Spec.hs
+  #   source-dirs:
+  #   - test/lib
+  #   - test/regression-syntax
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   dependencies:
+  #   - ssm
+  #   - directory
+  #   - process
+  #   - text
+  #   - QuickCheck
+  #   - hspec
+  #   - Diff
+  # 2-regression-high:
+  #   main:                Spec.hs
+  #   source-dirs:
+  #   - test/lib
+  #   - test/regression-high
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   dependencies:
+  #   - ssm
+  #   - directory
+  #   - process
+  #   - text
+  #   - QuickCheck
+  #   - hspec
+  #   - Diff
+  # 3-regression-low:
+  #   main:                Spec.hs
+  #   source-dirs:
+  #   - test/lib
+  #   - test/regression-low
+  #   ghc-options:
+  #   - -threaded
+  #   - -rtsopts
+  #   - -with-rtsopts=-N
+  #   dependencies:
+  #   - ssm
+  #   - directory
+  #   - process
+  #   - text
+  #   - QuickCheck
+  #   - hspec
+  #   - Diff
   4-arbitrary:
     main:                Spec.hs
     source-dirs:

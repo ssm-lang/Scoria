@@ -16,8 +16,8 @@ import Data.Int
 
 fun0 :: SSM ()
 fun0 = routine $ do
-    fork [ do wake <- var event'
-              after (secs 1) wake event'
+    fork [ do wake <- var event
+              after (secs 1) wake event
               wait wake
          ]
 

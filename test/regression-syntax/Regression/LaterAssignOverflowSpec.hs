@@ -16,13 +16,13 @@ import Data.Int
 
 fun0 :: SSM ()
 fun0 = routine $ do
-    fresh0 <- var true'
+    fresh0 <- var true
     fresh1 <- var (0 :: Exp Int32)
     fork [fun1 fresh0 fresh1]
 
 fun1 :: Ref Bool -> Ref Int32 -> SSM ()
 fun1 ref1 ref3 = routine $ do
-    after (nsecs 2) ref1 true'
+    after (nsecs 2) ref1 true
     after (nsecs 1) ref3 3
     ref3 <~ 4
     wait ref1
